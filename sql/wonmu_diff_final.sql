@@ -359,7 +359,7 @@ SELECT COUNT(*) AS 대상건수,
 /* 3-5. 차액 건 원인 자동 분류: 마감 후 변경 → 이전 수납 건 대비 변동 항목 순으로 판정 */
 WITH base AS (
     SELECT a.*,
-           a.onbr_amt - a.rdex_amt - a.midl_amt - a.prrc_amt - a.blan_amt - a.uncl_amt AS exp_rcpc_amt  -- 〔추정〕 1-1과 동일 식
+           a.onbr_amt - a.rdex_amt - a.midl_amt - a.prrc_amt - a.blan_amt - a.uncl_amt AS exp_rcpc_amt  -- 〔추정〕 식R1 → 3-4 결과로 확정한 식으로 교체
       FROM acrcrcpct a
      WHERE a.mcrc_ymd >= TO_DATE(:p_date, 'YYYY-MM-DD')
        AND a.mcrc_ymd <  TO_DATE(:p_date, 'YYYY-MM-DD') + 1
@@ -570,7 +570,7 @@ WITH cash AS (
     SELECT s.mdrp_no, s.mcrc_ymd, s.mcrc_rno, SUM(s.pymn_amt) AS csap_amt
       FROM acvncsapt s
      WHERE s.work_ymd >= TO_DATE(:p_date, 'YYYY-MM-DD') AND s.work_ymd < TO_DATE(:p_date, 'YYYY-MM-DD') + 1
-       AND s.use_yn = 'Y'                                           -- 〔추정〕 3-3 결과로 확인
+       AND s.use_yn = 'Y'                                           -- 〔추정〕 5-3 결과로 확인
      GROUP BY s.mdrp_no, s.mcrc_ymd, s.mcrc_rno
 ),
 hdr AS (
