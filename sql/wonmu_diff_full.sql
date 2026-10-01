@@ -8,6 +8,12 @@
      ACCLPAORT  원무처방     PK(PTNO, INPT_YMD, PTAD_ORDR_SNO) I01 = MDRP_NO
      ACVNCDAPT  VAN카드승인  ACVNCSAPT VAN현금승인             연결: MDRP_NO + MCRC_YMD + MCRC_RNO
      ACETCLSGT  수익수입마감로그 (마감 실행 일시·생성구분·에러)
+   [인덱스·성능]  〔확인〕 정의서 기준
+     ACRCRCPCT : I04 = MCRC_YMD 선두 → 날짜 범위 조회 가능
+     ACCLMCCLT : MCRC_YMD 선두 인덱스 없음(I03=MDRP_NO, I06=PTNO, I08=MCCL_YMD) → 헤더의 접수번호로 세미조인
+     ACCLPAORT : PTAD_CLBA_YMD 선두 인덱스 없음(I01=MDRP_NO) → 헤더의 접수번호로 세미조인
+     ACVNCDAPT/ACVNCSAPT : PK·I01 선두 = WORK_YMD(작업일자) → 날짜 필터는 WORK_YMD로 건다
+     ※ 실제 인덱스 사용 여부는 실행계획으로 확인한다.
    [NULL 주의]  입원 구분은 NOT NULL 컬럼으로 판정한다.
      수납: CODV_CD(NOT NULL) / 계산: PTAD_CODV_CD(NOT NULL) / 처방: 둘 다 NULL 허용 → COALESCE
    [리포트 검산]  〔확인〕 2026-10-01 엑셀, 입원 컬럼
@@ -57,6 +63,15 @@ SELECT tc.table_name, tc.comments
  ORDER BY tc.table_name;
 
 
+/* 0-2b. 컬럼명으로 마감 금액 테이블 찾기 (미수 구분별 컬럼을 가진 테이블) */
+SELECT col.table_name, col.column_name
+  FROM all_tab_columns col
+ WHERE col.owner = :p_owner
+   AND (col.column_name LIKE '%UNCL%' OR col.column_name LIKE '%CLSN%' OR col.column_name LIKE '%CLOS%')
+   AND col.table_name NOT IN ('ACRCRCPCT', 'ACCLMCCLT', 'ACCLPAORT', 'ACVNCDAPT', 'ACVNCSAPT')
+ ORDER BY col.table_name, col.column_id;
+
+
 /* 0-3. 구분값 분포 + 미수 집계 후보 (입원 행의 값이 점검/마감 어느 쪽과 맞는지 확인)
         22,443,900=점검 / 22,443,990=마감.  헌혈감면합이 18,700이면 헌혈 컬럼 매핑 확정 〔추정〕 */
 SELECT a.codv_cd                                                          AS 내원구분,
@@ -103,6 +118,23 @@ SELECT COUNT(*) AS 대상건수,
    AND a.cncl_dt IS NULL;
 
 
+/* 0-5. 미수 구분별 합계 대조 — 90원이 어느 미수 구분에서 어긋났는지 직접 확인
+        엑셀 입원 마감값(개인 -2,782,300 / 보훈 8,636,960 / 보훈위탁 12,773,020 / 산전 941,000 /
+        필수예방접종 27,310 / 외부지원 2,782,300 / 임상연구 65,700 / 헌혈 18,700)과 비교한다.
+        어떤 컬럼(UNCL_RESN_CD, ISTY_CD, SCLW_QLDV_CD 등)이 리포트 구분과 대응하는지는 코드 테이블로 확인 〔확인 필요〕 */
+SELECT a.uncl_resn_cd AS 미수사유, a.isty_cd AS 보험유형, a.isty_asst_cd AS 보험유형보조,
+       COUNT(*) AS 건수, SUM(a.uncl_amt) AS 미수합, SUM(a.uncl_deps_amt) AS 미수입금합,
+       SUM(a.bldt_rdex_amt) AS 헌혈감면합
+  FROM acrcrcpct a
+ WHERE a.mcrc_ymd >= :p_date
+   AND a.mcrc_ymd <  :p_date + 1
+   AND (:p_io IS NULL OR a.codv_cd = :p_io)
+   AND a.cncl_dt IS NULL
+   AND a.uncl_amt <> 0
+ GROUP BY a.uncl_resn_cd, a.isty_cd, a.isty_asst_cd
+ ORDER BY 1, 2, 3;
+
+
 /* ############################################################################
    1. 차액 확인
    ############################################################################ */
@@ -134,6 +166,7 @@ SELECT a.mdrp_no, a.mcrc_ymd, a.mcrc_sno, a.rcpc_amt, a.cdrc_amt, a.ddc_rcpc_amt
             WHEN a.cncl_dt IS NOT NULL AND a.rcpc_amt <> 0               THEN '취소일시 있으나 수납액 잔존'
             WHEN a.card_apcn_dt IS NOT NULL AND a.cdrc_amt <> 0          THEN '카드취소일시 있으나 카드액 잔존'
             WHEN a.ddc_apcn_dt  IS NOT NULL AND a.ddc_rcpc_amt <> 0      THEN 'DDC취소일시 있으나 DDC액 잔존'
+            WHEN a.capy_cncl_dt IS NOT NULL AND a.rcpc_amt - a.cdrc_amt - a.ddc_rcpc_amt <> 0 THEN '현금취소일시 있으나 현금액 잔존'
             WHEN a.uncl_deps_amt > a.uncl_amt                            THEN '미수입금이 미수금액 초과'
             WHEN a.uncl_amt > 0 AND a.uncl_resn_cd IS NULL               THEN '미수금 있으나 미수사유 없음'
             WHEN a.tomc_amt <> a.totl_inpy_amt + a.totl_nnpy_amt         THEN '총진료비 ≠ 급여+비급여'
@@ -147,6 +180,7 @@ SELECT a.mdrp_no, a.mcrc_ymd, a.mcrc_sno, a.rcpc_amt, a.cdrc_amt, a.ddc_rcpc_amt
         OR (a.cncl_dt IS NOT NULL AND a.rcpc_amt <> 0)
         OR (a.card_apcn_dt IS NOT NULL AND a.cdrc_amt <> 0)
         OR (a.ddc_apcn_dt  IS NOT NULL AND a.ddc_rcpc_amt <> 0)
+        OR (a.capy_cncl_dt IS NOT NULL AND a.rcpc_amt - a.cdrc_amt - a.ddc_rcpc_amt <> 0)
         OR a.uncl_deps_amt > a.uncl_amt
         OR (a.uncl_amt > 0 AND a.uncl_resn_cd IS NULL)
         OR a.tomc_amt <> a.totl_inpy_amt + a.totl_nnpy_amt
@@ -164,6 +198,8 @@ WITH det AS (
        AND c.mcrc_ymd <  :p_date + 1
        AND (:p_io IS NULL OR c.ptad_codv_cd = :p_io)
        AND c.cncl_dt IS NULL
+       AND c.mdrp_no IN (SELECT x.mdrp_no FROM acrcrcpct x                      -- I03(MDRP_NO 선두) 활용
+                          WHERE x.mcrc_ymd >= :p_date AND x.mcrc_ymd < :p_date + 1)
      GROUP BY c.mdrp_no, c.mcrc_ymd, c.mcrc_sno
 )
 SELECT h.mdrp_no, h.mcrc_ymd, h.mcrc_sno, d.line_cnt AS 항목수,
@@ -240,14 +276,14 @@ SELECT a.mdrp_no, a.mcrc_ymd, a.mcrc_sno, a.mcrc_rno, a.rcdv_cd, a.rcst_cd, a.is
  ORDER BY a.mdrp_no, a.mcrc_sno;
 
 
-/* 2-3. B3 마감 이후 변경·취소 건 (수납): 마감과 점검 사이의 시차 확인 */
+/* 2-3. B3 마감 이후 변경·취소 건 (수납): 마감과 점검 사이의 시차 확인. :p_close_dt가 NULL이면 당일 수납분 조건은 빠진다 */
 SELECT a.mdrp_no, a.mcrc_ymd, a.mcrc_sno, a.rcdv_cd, a.uncl_amt, a.uncl_deps_amt, a.rcpc_amt,
        a.cncl_dt, a.cncr_id, a.frst_rgst_dt, a.last_updt_dt, a.last_updr_id, a.last_updt_clnt_prgm_id
   FROM acrcrcpct a
  WHERE (:p_io IS NULL OR a.codv_cd = :p_io)
    AND (   (a.mcrc_ymd >= :p_date AND a.mcrc_ymd < :p_date + 1
             AND (a.last_updt_dt > :p_close_dt OR a.cncl_dt > :p_close_dt))      -- 당일 수납 건이 마감 후 변경/취소
-        OR (a.mcrc_ymd < :p_date
+        OR (a.mcrc_ymd < :p_date AND a.mcrc_ymd >= :p_date - 90      -- 과거 90일로 제한(Full Scan 방지)
             AND (   (a.cncl_dt >= :p_date AND a.cncl_dt < :p_date + 1)
                  OR (a.last_updt_dt >= :p_date AND a.last_updt_dt < :p_date + 1))))  -- 과거 수납 건이 당일 변경
  ORDER BY a.last_updt_dt;
@@ -281,6 +317,8 @@ SELECT c.mdrp_no, c.mccl_sno, c.mcrc_ymd, c.mcrc_sno, c.edi_cd,
    AND c.mcrc_ymd <  :p_date + 1
    AND (:p_io IS NULL OR c.ptad_codv_cd = :p_io)
    AND c.cncl_dt IS NULL
+   AND c.mdrp_no IN (SELECT x.mdrp_no FROM acrcrcpct x
+                      WHERE x.mcrc_ymd >= :p_date AND x.mcrc_ymd < :p_date + 1)
    AND (   ABS(c.onbr_amt - c.befr_onbr_amt) = :p_diff OR ABS(c.rcpc_amt - c.befr_rcpc_amt) = :p_diff
         OR ABS(c.ninl_onbr_amt) = :p_diff OR ABS(c.ninl_rcpc_amt) = :p_diff)
  ORDER BY c.mdrp_no, c.mccl_sno;
@@ -298,6 +336,8 @@ SELECT c.chck_upre_cd AS 심사수정사유,
    AND c.mcrc_ymd <  :p_date + 1
    AND (:p_io IS NULL OR c.ptad_codv_cd = :p_io)
    AND c.cncl_dt IS NULL
+   AND c.mdrp_no IN (SELECT x.mdrp_no FROM acrcrcpct x
+                      WHERE x.mcrc_ymd >= :p_date AND x.mcrc_ymd < :p_date + 1)
  GROUP BY c.chck_upre_cd, CASE WHEN c.adjs_rmrk_ctn IS NULL THEN 'N' ELSE 'Y' END, c.ninl_dvsn_cd
  ORDER BY 1, 2, 3;
 
@@ -310,6 +350,8 @@ SELECT p.mdrp_no, p.ptad_ordr_sno, p.ordr_ymd, p.ordr_sno, p.odki_cd, p.mdfe_cd,
  WHERE p.ptad_clba_ymd >= :p_date
    AND p.ptad_clba_ymd <  :p_date + 1
    AND (:p_io IS NULL OR COALESCE(p.ptad_codv_cd, p.codv_cd) = :p_io)
+   AND p.mdrp_no IN (SELECT x.mdrp_no FROM acrcrcpct x                         -- I01(MDRP_NO) 활용. MDRP_NO NULL 처방은 제외됨
+                      WHERE x.mcrc_ymd >= :p_date AND x.mcrc_ymd < :p_date + 1)
    AND (p.last_updt_dt > :p_close_dt OR p.cncl_dt > :p_close_dt OR p.rtrn_rqst_dt > :p_close_dt)
  ORDER BY p.last_updt_dt;
 
@@ -324,26 +366,31 @@ SELECT p.mdrp_no, p.ordr_ymd, p.ordr_sno, p.mdfe_cd,
                SUM(m.cqy) AS cqy, MAX(m.ntm) AS ntm, MAX(m.ddcn) AS ddcn, MAX(m.last_updt_dt) AS last_updt_dt
           FROM acclmcclt m
          WHERE m.cncl_dt IS NULL
+           AND m.mdrp_no IN (SELECT x.mdrp_no FROM acrcrcpct x
+                              WHERE x.mcrc_ymd >= :p_date AND x.mcrc_ymd < :p_date + 1)
          GROUP BY m.mdrp_no, m.ordr_ymd, m.ordr_sno) c
     ON c.mdrp_no = p.mdrp_no AND c.ordr_ymd = p.ordr_ymd AND c.ordr_sno = p.ordr_sno
  WHERE p.cncl_dt IS NULL
    AND p.ptad_clba_ymd >= :p_date
    AND p.ptad_clba_ymd <  :p_date + 1
    AND (:p_io IS NULL OR COALESCE(p.ptad_codv_cd, p.codv_cd) = :p_io)
+   AND p.mdrp_no IN (SELECT x.mdrp_no FROM acrcrcpct x
+                      WHERE x.mcrc_ymd >= :p_date AND x.mcrc_ymd < :p_date + 1)
    AND (p.cqy <> c.cqy OR p.ntm <> c.ntm OR p.ddcn <> c.ddcn)
  ORDER BY p.mdrp_no, p.ordr_sno;
 
 
 /* ############################################################################
-   3. 카드·현금 (현금수입 점검 차액: 2026-10-01 합계 58,900원 〔확인〕, 구분별 점검값 0 → 리포트 집계 방식 의심 〔추정〕)
+   3. 카드·현금 (VAN은 작업일자 WORK_YMD로 필터. 작업일과 수납일이 다른 건은 'VAN만 존재'/'수납헤더만 존재'로 보일 수 있음 〔추정〕)
+      (현금수입 점검 차액: 2026-10-01 합계 58,900원 〔확인〕, 구분별 점검값 0 → 리포트 집계 방식 의심 〔추정〕)
    ############################################################################ */
 
 /* 3-1. VAN 카드 승인 구분·입금구분 분포 (구분값·금액 부호 확인 → :p_apv / :p_cncl 확정) */
 SELECT v.card_apcn_dvsn_cd AS 카드승인취소구분, v.deps_dvsn_cd AS 입금구분, v.codv_cd AS 내원구분,
        COUNT(*) AS 건수, SUM(v.pymn_amt) AS 결제금액합, MIN(v.pymn_amt) AS 최소금액
   FROM acvncdapt v
- WHERE v.mcrc_ymd >= :p_date
-   AND v.mcrc_ymd <  :p_date + 1
+ WHERE v.work_ymd >= :p_date
+   AND v.work_ymd <  :p_date + 1
  GROUP BY v.card_apcn_dvsn_cd, v.deps_dvsn_cd, v.codv_cd
  ORDER BY 1, 2, 3;
 
@@ -354,7 +401,7 @@ WITH van AS (
            SUM(CASE WHEN v.card_apcn_dvsn_cd = :p_apv  THEN v.pymn_amt ELSE 0 END) AS apv_amt,
            SUM(CASE WHEN v.card_apcn_dvsn_cd = :p_cncl THEN v.pymn_amt ELSE 0 END) AS cncl_amt
       FROM acvncdapt v
-     WHERE v.mcrc_ymd >= :p_date AND v.mcrc_ymd < :p_date + 1
+     WHERE v.work_ymd >= :p_date AND v.work_ymd < :p_date + 1                  -- 인덱스 선두(WORK_YMD)
      GROUP BY v.mdrp_no, v.mcrc_ymd, v.mcrc_rno
 ),
 hdr AS (
@@ -377,8 +424,8 @@ SELECT NVL(h.mdrp_no, v.mdrp_no) AS 진료접수번호, NVL(h.mcrc_ymd, v.mcrc_y
 SELECT s.apcn_dvsn_cd AS 승인취소구분, s.cash_apcn_dvsn_cd AS 현금승인취소구분, s.cash_apcn_resn_cd AS 취소사유,
        s.use_yn AS 사용여부, COUNT(*) AS 건수, SUM(s.pymn_amt) AS 결제금액합, MIN(s.pymn_amt) AS 최소금액
   FROM acvncsapt s
- WHERE s.mcrc_ymd >= :p_date
-   AND s.mcrc_ymd <  :p_date + 1
+ WHERE s.work_ymd >= :p_date
+   AND s.work_ymd <  :p_date + 1
  GROUP BY s.apcn_dvsn_cd, s.cash_apcn_dvsn_cd, s.cash_apcn_resn_cd, s.use_yn
  ORDER BY 1, 2, 3, 4;
 
@@ -388,7 +435,7 @@ SELECT s.apcn_dvsn_cd AS 승인취소구분, s.cash_apcn_dvsn_cd AS 현금승인
 WITH cash AS (
     SELECT s.mdrp_no, s.mcrc_ymd, s.mcrc_rno, SUM(s.pymn_amt) AS csap_amt
       FROM acvncsapt s
-     WHERE s.mcrc_ymd >= :p_date AND s.mcrc_ymd < :p_date + 1
+     WHERE s.work_ymd >= :p_date AND s.work_ymd < :p_date + 1
        AND s.use_yn = 'Y'                                           -- 〔추정〕 3-3 결과로 확인
      GROUP BY s.mdrp_no, s.mcrc_ymd, s.mcrc_rno
 ),
@@ -417,11 +464,11 @@ SELECT '수납헤더' AS 출처, h.mdrp_no, h.mcrc_ymd, h.mcrc_rno,
 UNION ALL
 SELECT '카드승인', v.mdrp_no, v.mcrc_ymd, v.mcrc_rno, v.pymn_amt, v.card_apcn_ymd
   FROM acvncdapt v
- WHERE v.mcrc_ymd >= :p_date AND v.mcrc_ymd < :p_date + 1 AND ABS(v.pymn_amt) = :p_diff
+ WHERE v.work_ymd >= :p_date AND v.work_ymd < :p_date + 1 AND ABS(v.pymn_amt) = :p_diff
 UNION ALL
 SELECT '현금승인', s.mdrp_no, s.mcrc_ymd, s.mcrc_rno, s.pymn_amt, s.cash_apcn_ymd
   FROM acvncsapt s
- WHERE s.mcrc_ymd >= :p_date AND s.mcrc_ymd < :p_date + 1 AND ABS(s.pymn_amt) = :p_diff;
+ WHERE s.work_ymd >= :p_date AND s.work_ymd < :p_date + 1 AND ABS(s.pymn_amt) = :p_diff;
 
 
 /* ############################################################################
@@ -462,6 +509,8 @@ SELECT TO_CHAR(t.mcrc_ymd, 'YYYY-MM-DD') AS 수납일자, t.codv_cd AS 내원구
       헌혈감면합이 18,700이면 BLDT_RDEX_AMT = 리포트 '헌혈미수' 로 매핑이 확정된다. 〔추정〕
    3. 취소 건은 CNCL_DT IS NULL 로 제외했다. 취소가 별도 행(음수)이면 0-3의 음수수납건수로 확인한다.
    4. 0-2/0-4로 마감 금액 테이블과 점검 SQL을 확보하면 90원이 어느 미수 구분(개인/보훈/보훈위탁 등)인지 확정할 수 있다.
-   5. 날짜 조건은 컬럼에 함수를 씌우지 않는 범위 조건으로 작성했다(I04: MCRC_YMD 선두 활용).
+   5. 날짜 조건은 컬럼에 함수를 씌우지 않는 범위 조건으로 작성했다. ACRCRCPCT는 I04, VAN은 WORK_YMD,
+      계산·처방은 헤더 접수번호 세미조인으로 인덱스를 타도록 했다(실행계획으로 확인).
+   5-1. 0-5의 구분별 미수합을 엑셀 마감 구분별 값과 대조하면 90원이 어느 구분인지 직접 확인할 수 있다.
    6. UPDATE 등 보정은 포함하지 않았다. 운영 DB 변경은 원무과 확인 후 별도 절차로 진행한다.
    ============================================================================ */
