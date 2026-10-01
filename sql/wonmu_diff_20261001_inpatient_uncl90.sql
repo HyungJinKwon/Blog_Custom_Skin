@@ -181,3 +181,48 @@ SELECT tc.table_name, tc.comments
  WHERE tc.owner = :p_owner
    AND (tc.table_name LIKE 'ACETC%' OR tc.comments LIKE '%마감%' OR tc.comments LIKE '%수입%')
  ORDER BY tc.table_name;
+
+
+/* ----------------------------------------------------------------------------
+   E3. 진료비계산(ACCLMCCLT) 항목 중 이전값(BEFR_*) 대비 ±90 변동 / 신포괄(NINL_*) ±90 건
+       BEFR_ONBR_AMT·BEFR_RCPC_AMT = 수정 직전 값을 보존하는 컬럼 〔추정〕
+       → 수정 전후 값이 90원 어긋난 항목이 마감 이후 변경 후보다.
+   ---------------------------------------------------------------------------- */
+SELECT c.mdrp_no, c.mccl_sno, c.mcrc_ymd, c.mcrc_sno, c.ordr_cd, c.edi_cd,
+       c.onbr_amt,  c.befr_onbr_amt,  c.onbr_amt - c.befr_onbr_amt   AS 본인부담_증감,
+       c.rcpc_amt,  c.befr_rcpc_amt,  c.rcpc_amt - c.befr_rcpc_amt   AS 수납_증감,
+       c.ninl_dvsn_cd, c.ninl_onbr_amt, c.ninl_rcpc_amt, c.ninl_clam_amt,
+       c.chck_upre_cd, c.adjs_rmrk_ctn, c.rcst_cd,
+       c.last_updt_dt, c.last_updr_id, c.last_updt_clnt_prgm_id
+  FROM acclmcclt c
+ WHERE c.mcrc_ymd >= :p_date
+   AND c.mcrc_ymd <  :p_date + 1
+   AND c.adms_otdv_cd = :p_io
+   AND c.cncl_dt IS NULL
+   AND (   ABS(c.onbr_amt - c.befr_onbr_amt) = 90
+        OR ABS(c.rcpc_amt - c.befr_rcpc_amt) = 90
+        OR ABS(c.ninl_onbr_amt) = 90
+        OR ABS(c.ninl_rcpc_amt) = 90)
+ ORDER BY c.mdrp_no, c.mccl_sno;
+
+
+/* ----------------------------------------------------------------------------
+   E4. 심사수정사유(CHCK_UPRE_CD)·조정비고 존재 건 분포 (입원, 점검일 수납분)
+       수동 조정(조정비고)이 걸린 건은 자동 계산식과 어긋날 수 있다. 〔추정〕
+   ---------------------------------------------------------------------------- */
+SELECT c.chck_upre_cd                                   AS 심사수정사유,
+       CASE WHEN c.adjs_rmrk_ctn IS NULL THEN 'N' ELSE 'Y' END AS 조정비고유무,
+       c.ninl_dvsn_cd                                   AS 신포괄구분,
+       COUNT(*)                                         AS 항목수,
+       COUNT(DISTINCT c.mdrp_no)                        AS 접수수,
+       SUM(c.onbr_amt - c.befr_onbr_amt)                AS 본인부담_증감합,
+       SUM(c.rcpc_amt - c.befr_rcpc_amt)                AS 수납_증감합
+  FROM acclmcclt c
+ WHERE c.mcrc_ymd >= :p_date
+   AND c.mcrc_ymd <  :p_date + 1
+   AND c.adms_otdv_cd = :p_io
+   AND c.cncl_dt IS NULL
+ GROUP BY c.chck_upre_cd,
+          CASE WHEN c.adjs_rmrk_ctn IS NULL THEN 'N' ELSE 'Y' END,
+          c.ninl_dvsn_cd
+ ORDER BY 1, 2, 3;
