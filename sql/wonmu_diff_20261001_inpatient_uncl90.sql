@@ -121,3 +121,63 @@ SELECT a.mdrp_no, a.mcrc_ymd, a.mcrc_sno,
    D4. 건 확정 후: 해당 접수번호 이력은 sql/wonmu_diff_check.sql 의 Q4(타임라인)에
        :p_mdrp 를 넣어 확인한다.
    ============================================================================ */
+
+
+/* ----------------------------------------------------------------------------
+   E1. 헤더(ACRCRCPCT) vs 항목 합계(ACCLMCCLT 진료비계산) 불일치 건 (입원, 점검일 수납분)
+       항목별 본인부담/감면/계약처부담 등을 건 단위로 합산해 헤더와 비교한다.
+       10원 단위 절사·반올림 누적차가 건당 수 원~수십 원 발생하면 90원 같은 차액이 된다. 〔추정〕
+       연결키: MDRP_NO + MCRC_YMD + MCRC_SNO (ACCLMCCLT_I03 인덱스 경로: MDRP_NO 선두)
+   ---------------------------------------------------------------------------- */
+WITH det AS (
+    SELECT c.mdrp_no, c.mcrc_ymd, c.mcrc_sno,
+           COUNT(*)                AS line_cnt,
+           SUM(c.onbr_amt)         AS onbr_amt,
+           SUM(c.cnpl_brdn_amt)    AS cnpl_brdn_amt,
+           SUM(c.rdex_amt)         AS rdex_amt,
+           SUM(c.slmc_amt)         AS slmc_amt,
+           SUM(c.txtn_amt)         AS txtn_amt,
+           SUM(c.clam_amt)         AS clam_amt
+      FROM acclmcclt c
+     WHERE c.mcrc_ymd >= :p_date
+       AND c.mcrc_ymd <  :p_date + 1
+       AND c.adms_otdv_cd = :p_io
+       AND c.cncl_dt IS NULL
+     GROUP BY c.mdrp_no, c.mcrc_ymd, c.mcrc_sno
+)
+SELECT h.mdrp_no, h.mcrc_ymd, h.mcrc_sno, h.rcdv_cd,
+       d.line_cnt                                    AS 항목수,
+       h.onbr_amt - NVL(d.onbr_amt, 0)               AS 본인부담_차이,
+       h.cnpl_brdn_amt - NVL(d.cnpl_brdn_amt, 0)     AS 계약처부담_차이,
+       h.rdex_amt - NVL(d.rdex_amt, 0)               AS 감면_차이,
+       h.slmc_amt - NVL(d.slmc_amt, 0)               AS 선택진료_차이,
+       h.txtn_amt - NVL(d.txtn_amt, 0)               AS 과세_차이,
+       h.clam_amt - NVL(d.clam_amt, 0)               AS 청구_차이,
+       h.uncl_amt, h.blan_amt, h.rcpc_amt
+  FROM acrcrcpct h
+  LEFT JOIN det d
+    ON d.mdrp_no  = h.mdrp_no
+   AND d.mcrc_ymd = h.mcrc_ymd
+   AND d.mcrc_sno = h.mcrc_sno
+ WHERE h.mcrc_ymd >= :p_date
+   AND h.mcrc_ymd <  :p_date + 1
+   AND h.adms_otdv_cd = :p_io
+   AND h.cncl_dt IS NULL
+   AND (   d.mdrp_no IS NULL
+        OR h.onbr_amt      <> d.onbr_amt
+        OR h.cnpl_brdn_amt <> d.cnpl_brdn_amt
+        OR h.rdex_amt      <> d.rdex_amt
+        OR h.slmc_amt      <> d.slmc_amt
+        OR h.txtn_amt      <> d.txtn_amt
+        OR h.clam_amt      <> d.clam_amt)
+ ORDER BY h.mdrp_no, h.mcrc_sno;
+
+
+/* ----------------------------------------------------------------------------
+   F0. 마감 금액 테이블 찾기 (DB 메타데이터 조회) — 마감(미수 구분별) 값을 저장한 테이블 후보
+   ---------------------------------------------------------------------------- */
+SELECT tc.table_name, tc.comments
+  FROM all_tab_comments tc
+ WHERE tc.owner = :p_owner
+   AND (tc.table_name LIKE 'ACETC%' OR tc.comments LIKE '%마감%' OR tc.comments LIKE '%수입%')
+ ORDER BY tc.table_name;
