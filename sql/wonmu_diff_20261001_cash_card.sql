@@ -92,3 +92,82 @@ SELECT v.mdrp_no, v.mcrc_ymd, NULL, v.mcrc_rno, NULL, v.card_apcn_dvsn_cd,
  WHERE v.mcrc_ymd >= :p_date
    AND v.mcrc_ymd <  :p_date + 1
    AND ABS(v.pymn_amt) = 58900;
+
+
+/* ============================================================================
+   현금영수증(ACVNCSAPT VAN현금승인) 대조 — 현금수입 58,900원 후보 확인
+   [연결] MDRP_NO + MCRC_YMD + MCRC_RNO / 금액: PYMN_AMT(결제금액), TOTL_PYMN_AMT(총결제금액)
+   [구분] APCN_DVSN_CD(승인취소구분), CASH_APCN_DVSN_CD(현금승인취소구분), CASH_APCN_RESN_CD(사유),
+          USE_YN(사용여부), ORGL_APRV_NO(원승인번호: 취소 건이 가리키는 원 승인)
+   ※ 현금영수증은 현금 수납의 일부(발행 요청 건)에만 존재하므로 현금수입 전체와 일치하지 않는다. 〔추정〕
+   ============================================================================ */
+
+/* ----------------------------------------------------------------------------
+   C3. 현금승인 구분·사용여부별 분포 (구분 코드값과 금액 부호 확인)
+   ---------------------------------------------------------------------------- */
+SELECT s.apcn_dvsn_cd                          AS 승인취소구분,
+       s.cash_apcn_dvsn_cd                     AS 현금승인취소구분,
+       s.cash_apcn_resn_cd                     AS 취소사유,
+       s.use_yn                                AS 사용여부,
+       COUNT(*)                                AS 건수,
+       SUM(s.pymn_amt)                         AS 결제금액합,
+       MIN(s.pymn_amt)                         AS 최소금액
+  FROM acvncsapt s
+ WHERE s.mcrc_ymd >= :p_date
+   AND s.mcrc_ymd <  :p_date + 1
+ GROUP BY s.apcn_dvsn_cd, s.cash_apcn_dvsn_cd, s.cash_apcn_resn_cd, s.use_yn
+ ORDER BY 1, 2, 3, 4;
+
+
+/* ----------------------------------------------------------------------------
+   C4. 현금영수증 승인액이 실제 현금 수납액을 초과하거나, 취소만 있고 원승인이 없는 건
+       현금등 = 수납금액 - 카드 - DDC 〔추정〕  (헤더 단위: 접수·회차)
+   ---------------------------------------------------------------------------- */
+WITH cash AS (
+    SELECT s.mdrp_no, s.mcrc_ymd, s.mcrc_rno,
+           SUM(s.pymn_amt)  AS csap_amt,
+           COUNT(*)         AS csap_cnt
+      FROM acvncsapt s
+     WHERE s.mcrc_ymd >= :p_date
+       AND s.mcrc_ymd <  :p_date + 1
+       AND s.use_yn = 'Y'                          -- 〔추정〕 사용여부 Y=유효, C3에서 확인
+     GROUP BY s.mdrp_no, s.mcrc_ymd, s.mcrc_rno
+),
+hdr AS (
+    SELECT h.mdrp_no, h.mcrc_ymd, h.mcrc_rno,
+           SUM(h.rcpc_amt - h.cdrc_amt - h.ddc_rcpc_amt) AS cash_amt
+      FROM acrcrcpct h
+     WHERE h.mcrc_ymd >= :p_date
+       AND h.mcrc_ymd <  :p_date + 1
+       AND h.cncl_dt IS NULL
+     GROUP BY h.mdrp_no, h.mcrc_ymd, h.mcrc_rno
+)
+SELECT NVL(h.mdrp_no,  c.mdrp_no)       AS 진료접수번호,
+       NVL(h.mcrc_ymd, c.mcrc_ymd)      AS 수납일자,
+       NVL(h.mcrc_rno, c.mcrc_rno)      AS 회차,
+       NVL(h.cash_amt, 0)               AS 헤더_현금등,
+       NVL(c.csap_amt, 0)               AS 현금영수증_승인액,
+       NVL(c.csap_amt, 0) - NVL(h.cash_amt, 0) AS 초과분,
+       CASE WHEN h.mdrp_no IS NULL THEN '현금영수증만 존재' ELSE '양쪽 존재' END AS 존재구분
+  FROM cash c
+  LEFT JOIN hdr h
+    ON h.mdrp_no  = c.mdrp_no
+   AND h.mcrc_ymd = c.mcrc_ymd
+   AND h.mcrc_rno = c.mcrc_rno
+ WHERE h.mdrp_no IS NULL
+    OR c.csap_amt > h.cash_amt
+ ORDER BY 6 DESC;
+
+
+/* ----------------------------------------------------------------------------
+   C5. 58,900원 후보 (현금승인 테이블에서 ±58,900 건 + 취소·미사용 건)
+   ---------------------------------------------------------------------------- */
+SELECT s.work_ymd, s.work_sno, s.mdrp_no, s.mcrc_ymd, s.mcrc_rno,
+       s.apcn_dvsn_cd, s.cash_apcn_dvsn_cd, s.cash_apcn_resn_cd,
+       s.pymn_amt, s.totl_pymn_amt, s.csap_ymd, s.cash_apcn_ymd,
+       s.orgl_aprv_no, s.use_yn, s.last_updt_dt
+  FROM acvncsapt s
+ WHERE s.mcrc_ymd >= :p_date
+   AND s.mcrc_ymd <  :p_date + 1
+   AND (ABS(s.pymn_amt) = 58900 OR ABS(s.totl_pymn_amt) = 58900)
+ ORDER BY s.csap_ymd, s.work_sno;
