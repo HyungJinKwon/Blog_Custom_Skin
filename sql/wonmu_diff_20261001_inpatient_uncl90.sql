@@ -4,7 +4,7 @@
    [확인] 마감 22,443,990 / 점검 22,443,900 → 점검이 90원 적음 (입원 컬럼만 차이)
    [추정] 점검값은 ACRCRCPCT 원천 집계로 계산된다고 가정. 점검 프로그램의 SQL을 확인하면 확정 가능.
    [바인드]  :p_date 점검일자 (DATE '2026-10-01')
-             :p_io   입원 구분값 (ADMS_OTDV_CD 기준 〔추정〕, D0 결과로 확인)
+             :p_io   입원 구분값 (수납=CODV_CD, 계산=PTAD_CODV_CD 〔추정: 코드체계 동일〕, D0 결과로 확인)
              :p_close_dt 마감 종료일시 (L1 결과, D2용)
              :p_mdrp 진료접수번호 (D1/D3에서 찾은 건)
    ※ Test 환경에서 먼저 실행. 환자 식별정보는 조회하지 않는다.
@@ -42,7 +42,7 @@ SELECT a.mdrp_no, a.mcrc_ymd, a.mcrc_sno, a.mcrc_rno, a.rcdv_cd, a.rcst_cd, a.is
   FROM acrcrcpct a
  WHERE a.mcrc_ymd >= :p_date
    AND a.mcrc_ymd <  :p_date + 1
-   AND a.adms_otdv_cd = :p_io
+   AND a.codv_cd = :p_io
    AND (   ABS(a.uncl_amt)      = 90
         OR ABS(a.uncl_deps_amt) = 90
         OR ABS(a.blan_amt)      = 90
@@ -82,7 +82,7 @@ SELECT a.mdrp_no, a.mcrc_ymd, a.mcrc_sno, a.rcdv_cd,
        a.cncl_dt, a.cncr_id,
        a.frst_rgst_dt, a.last_updt_dt, a.last_updr_id, a.last_updt_clnt_prgm_id
   FROM acrcrcpct a
- WHERE a.adms_otdv_cd = :p_io
+ WHERE a.codv_cd = :p_io
    AND (   (a.mcrc_ymd >= :p_date AND a.mcrc_ymd < :p_date + 1
             AND (a.last_updt_dt > :p_close_dt OR a.cncl_dt > :p_close_dt))   -- 당일 수납 건이 마감 후 변경/취소
         OR (a.mcrc_ymd < :p_date
@@ -110,7 +110,7 @@ SELECT a.mdrp_no, a.mcrc_ymd, a.mcrc_sno,
    AND p.mcrc_sno = a.befr_mcrc_sno
  WHERE a.mcrc_ymd >= :p_date
    AND a.mcrc_ymd <  :p_date + 1
-   AND a.adms_otdv_cd = :p_io
+   AND a.codv_cd = :p_io
    AND a.cncl_dt IS NULL
    AND a.befr_mcrc_ymd IS NOT NULL
    AND a.uncl_amt <> NVL(p.uncl_amt, 0)
@@ -141,7 +141,7 @@ WITH det AS (
       FROM acclmcclt c
      WHERE c.mcrc_ymd >= :p_date
        AND c.mcrc_ymd <  :p_date + 1
-       AND c.adms_otdv_cd = :p_io
+       AND c.ptad_codv_cd = :p_io
        AND c.cncl_dt IS NULL
      GROUP BY c.mdrp_no, c.mcrc_ymd, c.mcrc_sno
 )
@@ -161,7 +161,7 @@ SELECT h.mdrp_no, h.mcrc_ymd, h.mcrc_sno, h.rcdv_cd,
    AND d.mcrc_sno = h.mcrc_sno
  WHERE h.mcrc_ymd >= :p_date
    AND h.mcrc_ymd <  :p_date + 1
-   AND h.adms_otdv_cd = :p_io
+   AND h.codv_cd = :p_io
    AND h.cncl_dt IS NULL
    AND (   d.mdrp_no IS NULL
         OR h.onbr_amt      <> d.onbr_amt
@@ -197,7 +197,7 @@ SELECT c.mdrp_no, c.mccl_sno, c.mcrc_ymd, c.mcrc_sno, c.ordr_cd, c.edi_cd,
   FROM acclmcclt c
  WHERE c.mcrc_ymd >= :p_date
    AND c.mcrc_ymd <  :p_date + 1
-   AND c.adms_otdv_cd = :p_io
+   AND c.ptad_codv_cd = :p_io
    AND c.cncl_dt IS NULL
    AND (   ABS(c.onbr_amt - c.befr_onbr_amt) = 90
         OR ABS(c.rcpc_amt - c.befr_rcpc_amt) = 90
@@ -220,7 +220,7 @@ SELECT c.chck_upre_cd                                   AS 심사수정사유,
   FROM acclmcclt c
  WHERE c.mcrc_ymd >= :p_date
    AND c.mcrc_ymd <  :p_date + 1
-   AND c.adms_otdv_cd = :p_io
+   AND c.ptad_codv_cd = :p_io
    AND c.cncl_dt IS NULL
  GROUP BY c.chck_upre_cd,
           CASE WHEN c.adjs_rmrk_ctn IS NULL THEN 'N' ELSE 'Y' END,
