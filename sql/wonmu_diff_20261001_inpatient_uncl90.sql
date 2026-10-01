@@ -226,3 +226,59 @@ SELECT c.chck_upre_cd                                   AS 심사수정사유,
           CASE WHEN c.adjs_rmrk_ctn IS NULL THEN 'N' ELSE 'Y' END,
           c.ninl_dvsn_cd
  ORDER BY 1, 2, 3;
+
+
+/* ============================================================================
+   원무처방(ACCLPAORT) 점검 — 처방 → 계산(ACCLMCCLT) → 수납(ACRCRCPCT) 경로의 원천 확인
+   [키]   PK = PTNO + INPT_YMD + PTAD_ORDR_SNO / I01 = MDRP_NO / I03 = ORDR_YMD ...
+   [연결] ACCLMCCLT 와는 MDRP_NO + ORDR_YMD + ORDR_SNO 로 연결 〔추정〕
+   [기준] 점검일 = PTAD_CLBA_YMD(원무계산기준일자, NOT NULL)
+   ※ 이 테이블에는 금액 컬럼이 없다. 수량·횟수·일수(CQY/NTM/DDCN)와 반납(RTRN_*) 정보로 금액 변동 원인을 본다.
+   ※ CODV_CD / PTAD_CODV_CD 모두 NULL 허용이므로 COALESCE 로 입원 구분을 판정한다.
+   ============================================================================ */
+
+/* ----------------------------------------------------------------------------
+   P1. 마감 이후 변경·취소·반납 요청된 처방 (입원, 점검일 계산기준)
+       :p_close_dt = L1 결과(마지막 정상 마감 종료일시)
+   ---------------------------------------------------------------------------- */
+SELECT p.mdrp_no, p.ptad_ordr_sno, p.ordr_ymd, p.ordr_sno, p.odki_cd, p.mdfe_cd,
+       p.cqy, p.ntm, p.ddcn,
+       p.rtrn_cqy, p.rtrn_ntm, p.rtrn_ddcn, p.rtrn_stts_cd, p.rtrn_rqst_dt, p.rtrn_rqpr_id,
+       p.rcst_cd, p.cncl_dt,
+       p.last_updt_dt, p.last_updr_id, p.last_updt_clnt_prgm_id
+  FROM acclpaort p
+ WHERE p.ptad_clba_ymd >= :p_date
+   AND p.ptad_clba_ymd <  :p_date + 1
+   AND COALESCE(p.ptad_codv_cd, p.codv_cd) = :p_io
+   AND (   p.last_updt_dt > :p_close_dt
+        OR p.cncl_dt      > :p_close_dt
+        OR p.rtrn_rqst_dt > :p_close_dt)
+ ORDER BY p.last_updt_dt;
+
+
+/* ----------------------------------------------------------------------------
+   P2. 처방 수량·횟수·일수 vs 계산 항목 합계 불일치 (입원, 점검일 계산기준)
+       계산 항목이 처방과 1:N(가산 등)일 수 있어 합계로 비교한다. 노이즈가 많으면 건별 확인. 〔추정〕
+   ---------------------------------------------------------------------------- */
+SELECT p.mdrp_no, p.ordr_ymd, p.ordr_sno, p.mdfe_cd,
+       p.cqy  AS 처방수량,  c.cqy  AS 계산수량,
+       p.ntm  AS 처방횟수,  c.ntm  AS 계산횟수,
+       p.ddcn AS 처방일수,  c.ddcn AS 계산일수,
+       p.rtrn_cqy AS 반납수량, p.rtrn_stts_cd AS 반납상태,
+       p.last_updt_dt AS 처방수정일시, c.last_updt_dt AS 계산수정일시
+  FROM acclpaort p
+  JOIN (SELECT m.mdrp_no, m.ordr_ymd, m.ordr_sno,
+               SUM(m.cqy) AS cqy, MAX(m.ntm) AS ntm, MAX(m.ddcn) AS ddcn,
+               MAX(m.last_updt_dt) AS last_updt_dt
+          FROM acclmcclt m
+         WHERE m.cncl_dt IS NULL
+         GROUP BY m.mdrp_no, m.ordr_ymd, m.ordr_sno) c
+    ON c.mdrp_no  = p.mdrp_no
+   AND c.ordr_ymd = p.ordr_ymd
+   AND c.ordr_sno = p.ordr_sno
+ WHERE p.cncl_dt IS NULL
+   AND p.ptad_clba_ymd >= :p_date
+   AND p.ptad_clba_ymd <  :p_date + 1
+   AND COALESCE(p.ptad_codv_cd, p.codv_cd) = :p_io
+   AND (p.cqy <> c.cqy OR p.ntm <> c.ntm OR p.ddcn <> c.ddcn)
+ ORDER BY p.mdrp_no, p.ordr_sno;
