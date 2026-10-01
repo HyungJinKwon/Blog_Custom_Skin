@@ -5,6 +5,7 @@
    [추정] 점검값은 ACRCRCPCT 원천 집계로 계산된다고 가정. 점검 프로그램의 SQL을 확인하면 확정 가능.
    [바인드]  :p_date 점검일자 (DATE '2026-10-01')
              :p_io   입원 구분값 (ADMS_OTDV_CD 기준 〔추정〕, D0 결과로 확인)
+             :p_close_dt 마감 종료일시 (L1 결과, D2용)
              :p_mdrp 진료접수번호 (D1/D3에서 찾은 건)
    ※ Test 환경에서 먼저 실행. 환자 식별정보는 조회하지 않는다.
    ============================================================================ */
@@ -52,8 +53,29 @@ SELECT a.mdrp_no, a.mcrc_ymd, a.mcrc_sno, a.mcrc_rno, a.rcdv_cd, a.rcst_cd, a.is
 
 
 /* ----------------------------------------------------------------------------
-   D2. 마감 이후 변경/취소 건 (마감 시점과 점검 시점 사이의 데이터 변동)
-       마감은 당일 시점 값, 점검은 출력 시점(10/02 07:49) 원천 값이라 시차로 어긋날 수 있다.
+   L1. 마감 실행 로그 (ACETCLSGT 수익수입마감로그) — 점검일자의 마감이 언제, 몇 번, 어떻게 돌았는지
+       → 마감 종료시각을 D2의 :p_close_dt 로 사용한다. 재마감(여러 행)·에러 여부도 확인한다.
+       CLSN_CRTN_DVSN_CD(생성구분) 값 의미는 코드 테이블로 확인 〔확인 필요〕
+   ---------------------------------------------------------------------------- */
+SELECT c.clsn_base_ymd                    AS 마감기준일자,
+       c.clsn_strt_dt                     AS 시작일시,
+       c.clsn_fnsh_dt                     AS 종료일시,
+       c.clsn_crtn_dvsn_cd                AS 생성구분,
+       c.clsn_crtn_resn_ctn               AS 생성사유,
+       c.clos_id                          AS 마감자,
+       c.err_mesg_ctn                     AS 에러메시지,
+       c.rmrk_ctn                         AS 비고,
+       c.last_updt_dt                     AS 최종수정일시
+  FROM acetclsgt c
+ WHERE c.clsn_base_ymd >= :p_date
+   AND c.clsn_base_ymd <  :p_date + 1
+ ORDER BY c.clsn_strt_dt;
+
+
+/* ----------------------------------------------------------------------------
+   D2. 마감 이후 변경/취소 건 (마감 종료시각 :p_close_dt 이후의 데이터 변동)
+       :p_close_dt = L1의 마지막 정상 마감 종료일시 (DATE)
+       마감은 그 시점 값, 점검은 출력 시점(10/02 07:49) 원천 값이라 시차로 어긋날 수 있다.
    ---------------------------------------------------------------------------- */
 SELECT a.mdrp_no, a.mcrc_ymd, a.mcrc_sno, a.rcdv_cd,
        a.uncl_amt, a.uncl_deps_amt, a.rcpc_amt,
@@ -62,7 +84,7 @@ SELECT a.mdrp_no, a.mcrc_ymd, a.mcrc_sno, a.rcdv_cd,
   FROM acrcrcpct a
  WHERE a.adms_otdv_cd = :p_io
    AND (   (a.mcrc_ymd >= :p_date AND a.mcrc_ymd < :p_date + 1
-            AND (a.last_updt_dt >= :p_date + 1 OR a.cncl_dt >= :p_date + 1))   -- 당일 수납 건이 이후 변경/취소
+            AND (a.last_updt_dt > :p_close_dt OR a.cncl_dt > :p_close_dt))   -- 당일 수납 건이 마감 후 변경/취소
         OR (a.mcrc_ymd < :p_date
             AND (   (a.cncl_dt >= :p_date AND a.cncl_dt < :p_date + 1)
                  OR (a.last_updt_dt >= :p_date AND a.last_updt_dt < :p_date + 1))))  -- 과거 수납 건이 당일 변경
