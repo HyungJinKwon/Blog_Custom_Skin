@@ -8,7 +8,7 @@ enumeration 경로와 도구가 완전히 갈린다. 이 모듈은 수집된 관
 증거 기반**으로 판정하고, 각 판정에 **확신도(confidence)** 와 근거(evidence)를
 붙인다.
 
-원칙 (ROADMAP P4/P5):
+원칙 (사실성·자기검증):
   - 증거가 강하면 〔확인〕, 약하면 〔추정〕 으로 태깅한다.
   - 모든 판정에 "왜 그렇게 봤는지" 근거 목록을 남긴다.
   - 결정적 신호(명시적 OS 문자열, Kerberos+LDAP 조합)를 우선한다.
@@ -163,10 +163,8 @@ def classify(
     # 승자 및 확신도
     if win > lin:
         winner = OSClass.WINDOWS
-        win_conf = win / total
     elif lin > win:
         winner = OSClass.LINUX
-        win_conf = lin / total
     else:
         # 동점 — 결정 불가, 보수적으로 UNKNOWN
         return ProfileResult(

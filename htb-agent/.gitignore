@@ -6,3 +6,6 @@ config/config.yaml
 .venv/
 writeup_*.md
 audit_*.jsonl
+*.egg-info/
+build/
+dist/

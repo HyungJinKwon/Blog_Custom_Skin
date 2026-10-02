@@ -2,7 +2,7 @@
 import sys
 sys.path.insert(0, "src")
 from htb_agent.llm.pricing import estimate_cost
-from htb_agent.llm.base import LLMResponse, Tier
+from htb_agent.llm.base import LLMResponse
 from htb_agent.llm.fake_provider import FakeProvider
 from htb_agent.llm.router import LLMRouter
 

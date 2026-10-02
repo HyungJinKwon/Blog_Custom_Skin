@@ -222,7 +222,6 @@ class Orchestrator:
                     break
             if len(report.enum_findings) + len(report.llm_findings) > phase_before:
                 phases_run.append(key)
-        rounds_run = len(phases_run)
 
         # ── PHASE 3.7: VULN (CVE/CWE 탐지 + 매핑) ──
         self._run_vuln(report, host, target)

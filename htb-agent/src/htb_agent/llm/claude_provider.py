@@ -15,9 +15,8 @@ class ClaudeProvider(LLMProvider):
     }
 
     def available(self) -> tuple[bool, str]:
-        try:
-            import anthropic  # noqa: F401
-        except ImportError:
+        import importlib.util
+        if importlib.util.find_spec("anthropic") is None:
             return False, "anthropic SDK 미설치 (pip install anthropic)"
         if not os.environ.get("ANTHROPIC_API_KEY"):
             return False, "ANTHROPIC_API_KEY 환경변수 미설정"

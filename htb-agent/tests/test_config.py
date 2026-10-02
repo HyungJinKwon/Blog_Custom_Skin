@@ -1,7 +1,7 @@
 # 실행: htb-agent 디렉토리에서  python3 tests/test_config.py
 import sys, tempfile, os, json
 sys.path.insert(0, "src")
-from htb_agent.config import load_config, Config, ConfigError, pick
+from htb_agent.config import load_config, ConfigError, pick
 
 passed = failed = 0
 def check(name, cond):
@@ -44,13 +44,13 @@ with tempfile.TemporaryDirectory() as d:
     except ConfigError: check("비매핑 최상위 에러", True)
 
 print("\n=== YAML (pyyaml 있을 때만) ===")
-try:
-    import yaml  # noqa
+import importlib.util
+if importlib.util.find_spec("yaml") is not None:
     with tempfile.TemporaryDirectory() as d:
         p = os.path.join(d, "c.yaml"); open(p,"w").write("max_enum: 2\nllm:\n  backend: ollama\n")
         c = load_config(p)
         check("YAML 파싱", c.max_enum == 2 and c.llm_backend == "ollama")
-except ImportError:
+else:
     with tempfile.TemporaryDirectory() as d:
         p = os.path.join(d, "c.yaml"); open(p,"w").write("max_enum: 2\n")
         try:
