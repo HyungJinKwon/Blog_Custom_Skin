@@ -78,6 +78,11 @@ TOOLS: list[Tool] = [
     Tool("evil-winrm", ["evil-winrm"], "ad", "WinRM 셸", apt=["evil-winrm"]),
     Tool("ldapsearch", ["ldapsearch"], "ad", "LDAP 질의", apt=["ldap-utils"]),
     Tool("responder", ["responder"], "ad", "LLMNR/NBT-NS 포이즈닝", apt=["responder"]),
+    # ── dns / snmp ──
+    Tool("dig", ["dig"], "recon", "DNS 질의/존 트랜스퍼", apt=["dnsutils"]),
+    Tool("dnsenum", ["dnsenum"], "recon", "DNS 열거", apt=["dnsenum"]),
+    Tool("snmpwalk", ["snmpwalk"], "recon", "SNMP OID 수집", apt=["snmp"]),
+    Tool("onesixtyone", ["onesixtyone"], "recon", "SNMP community 브루트", apt=["onesixtyone"]),
     # ── creds / cracking ──
     Tool("hydra", ["hydra"], "creds", "온라인 브루트포스", apt=["hydra"]),
     Tool("john", ["john"], "creds", "오프라인 해시 크랙", apt=["john"]),

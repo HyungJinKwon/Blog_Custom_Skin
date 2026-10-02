@@ -14,6 +14,7 @@ from .web import (parse_gobuster, parse_ffuf, parse_feroxbuster,
                   parse_nikto, parse_whatweb)
 from .smb import parse_smbclient_shares, parse_smbmap, parse_nxc_smb
 from .ad import parse_ldapsearch
+from .net import parse_dig, parse_snmpwalk
 
 
 def _truncate(stdout: str, stderr: str, limit: int = 200) -> str:
@@ -52,6 +53,14 @@ def summarize_tool_output(cmd: str, stdout: str, stderr: str = "") -> str:
         elif binary == "ldapsearch":
             r = parse_ldapsearch(stdout)
             if r.naming_contexts or r.dns:
+                return r.summary()
+        elif binary == "dig":
+            r = parse_dig(stdout)
+            if r.records:
+                return r.summary()
+        elif binary in ("snmpwalk", "snmp-check", "snmpbulkwalk"):
+            r = parse_snmpwalk(stdout)
+            if r.entries:
                 return r.summary()
         elif binary == "smbclient" and "-L" in cmd:
             r = parse_smbclient_shares(stdout)

@@ -191,6 +191,12 @@ class Orchestrator:
         # ── PHASE 3.7: VULN (CVE/CWE 탐지 + 매핑) ──
         self._run_vuln(report, host, target)
 
+        # NSE 취약점 스크립트 보수적 제안(실행은 무겁고 길어 수동 제안으로)
+        if host.open_ports:
+            ports = ",".join(str(p) for p in host.open_ports)
+            report.manual_suggestions.append(
+                f"nmap -sV --script vuln -p {ports} {target}   # NSE 취약점 스캔(수동)")
+
         # ── PHASE 4: REPORT ──
         report.status = "done"
         report.message += (f"OS={prof.os_class.value}({prof.tag}), "
