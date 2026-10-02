@@ -284,8 +284,12 @@ def validate(command: str, require_known_binary: bool = False) -> ValidationRepo
     if b64_found:
         report.detected["base64"] = b64_found
 
-    # 6) 포트 지정 검증 (nmap -p, msfvenom LPORT/RPORT 등)
-    for m in re.finditer(r"(?:^|\s)-p\s*=?\s*([0-9,\-]+)", cmd):
+    # 6) 포트 지정 검증 — '-p' 는 도구마다 의미가 다르다(예: hydra -p=password).
+    #    포트 플래그로 쓰는 스캐너에 한해 검증해 오탐을 막는다(감사 발견 A).
+    PORT_FLAG_TOOLS = {"nmap", "masscan", "rustscan", "naabu", "unicornscan"}
+    base = report.binary.rsplit("/", 1)[-1] if report.binary else ""
+    for m in (re.finditer(r"(?:^|\s)-p\s*=?\s*([0-9,\-]+)", cmd)
+              if base in PORT_FLAG_TOOLS else []):
         ok, msg = validate_port_spec(m.group(1))
         if not ok:
             report.issues.append(ValidationIssue("error", "PORT", f"포트 지정 오류: {msg}"))

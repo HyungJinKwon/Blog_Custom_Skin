@@ -74,5 +74,29 @@ check("Windows용 SSH 오판 방지", r.os_class in (OSClass.WINDOWS, OSClass.WI
 r = classify([80])
 check("모호 → 확신도 낮음/추정", r.tag=="〔추정〕")
 
+print("\n=== 감사 회귀 테스트 (발견 A~D) ===")
+# A: hydra -p 는 비밀번호 → 포트 오탐 금지
+r = cv.validate("hydra -l admin -p 999999 -t 4 10.129.1.5 ssh")
+check("A: hydra -p 숫자비번 포트오탐 없음", not any(i.code=="PORT" for i in r.errors))
+# A: 스캐너는 여전히 포트 검증
+check("A: masscan 포트초과 여전히 에러", any(i.code=="PORT" for i in cv.validate("masscan -p70000 10.129.1.5").errors))
+# A: nmap -p- 전체포트 허용
+check("A: nmap -p- 정상", not any(i.code=="PORT" for i in cv.validate("nmap -p- 10.129.1.5").errors))
+# 체이닝 문법 정상
+check("명령 체이닝(&&) 문법 통과", cv.validate("nmap -sV 10.129.1.5 && echo ok").ok)
+# B: 포트만으로 과신 금지 (Linux Samba 가 Windows 로 보여도 추정이어야)
+r = classify([139,445,80])
+check("B: 배너없는 SMB박스 → 추정(과신금지)", r.tag=="〔추정〕")
+# C: microsoft-ds 는 Windows 강증거 아님 → 추정
+r = classify([445], banners={445:"microsoft-ds"})
+check("C: microsoft-ds 강증거 아님(추정)", r.tag=="〔추정〕")
+# C: smb-os-discovery 라벨만으로 과신 금지 (출력이 Linux 면 Linux)
+r = classify([22,445], banners={22:"OpenSSH Ubuntu"}, script_output="smb-os-discovery attempted")
+check("C: Samba+Ubuntu배너 → Linux", r.os_class==OSClass.LINUX)
+# D: for_Windows 언더스코어 배너 탐지
+r = classify([22], banners={22:"OpenSSH for_Windows_8.1"})
+check("D: for_Windows 배너 → Windows", r.os_class in (OSClass.WINDOWS, OSClass.WINDOWS_AD))
+check("D: for_Windows 확신도 높음", r.confidence>=0.85)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

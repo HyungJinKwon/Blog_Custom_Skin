@@ -80,9 +80,13 @@ class ProfileResult:
         return "\n".join(lines)
 
 
-# 배너/스크립트 출력에서 OS 를 직접 말해 주는 강한 신호
-_WIN_TEXT = re.compile(r"\bwindows\b|microsoft|win(?:dows)?\s*server|smb[-_ ]?os", re.I)
-_LIN_TEXT = re.compile(r"\blinux\b|ubuntu|debian|centos|red\s*hat|fedora|\bunix\b|freebsd", re.I)
+# 배너/스크립트 출력에서 OS 를 직접 말해 주는 강한 신호.
+# 주의(감사 발견 C): "microsoft-ds" 는 nmap 이 445 포트에 붙이는 기본 라벨로
+# Linux Samba 에도 나타나므로 Windows 증거가 아니다 → microsoft 뒤 '-' 제외.
+# "smb-os-discovery" 는 스크립트 '이름'일 뿐(어느 OS 든 실행) → 제거.
+# 'windows' 는 "for_Windows_8.1" 같은 언더스코어 결합도 잡도록 경계 완화(발견 D).
+_WIN_TEXT = re.compile(r"windows|\bmicrosoft\b(?!-)", re.I)
+_LIN_TEXT = re.compile(r"linux|ubuntu|debian|centos|red\s*hat|fedora|\bunix\b|freebsd", re.I)
 _OPENSSH = re.compile(r"openssh", re.I)
 
 
@@ -176,6 +180,10 @@ def classify(
                         (winner == OSClass.LINUX and strong_lin)
     if strong_for_winner:
         confidence = max(confidence, 0.9)
+    else:
+        # 감사 발견 B: 명시적 OS 문자열/AD 구조 신호가 없으면 포트만으로
+        # 100% 단정하지 않는다. 0.8 로 상한 → 〔추정〕 으로 표기된다.
+        confidence = min(confidence, 0.8)
 
     is_dc = False
     os_class = winner
