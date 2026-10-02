@@ -59,6 +59,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--resume", action="store_true",
                    help="저장된 상태에서 재개 (RECON 재사용, 재스캔 생략)")
     p.add_argument("--no-save", action="store_true", help="상태 저장 안 함")
+    p.add_argument("--log-file", default=None,
+                   help="감사 로그(JSONL) 경로. 생략 시 <state-dir>/audit_<타겟>.jsonl")
+    p.add_argument("--no-audit", action="store_true", help="감사 로그 비활성")
     p.add_argument("--writeup", nargs="?", const="__auto__", default=None,
                    help="풀이 라이트업 Markdown 생성(경로 생략 시 writeup_<타겟>.md)")
     return p
@@ -148,6 +151,17 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     if vault.creds:
         print(f"자격증명 볼트: {[c.label() for c in vault.creds]}\n")
 
+    # 6.5) 감사 로그
+    from .audit import AuditLog, NullAudit
+    import os as _os
+    if args.no_audit:
+        audit = NullAudit()
+    else:
+        log_path = args.log_file or _os.path.join(
+            state_dir, f"audit_{StateStore._safe(args.target)}.jsonl")
+        audit = AuditLog(log_path)
+        print(f"감사 로그: {log_path}\n")
+
     # 7) 오케스트레이션 (유한 단계: RECON→PROFILE→ENUM→(LLM)→REPORT)
     approver = auto_approve_in_scope if args.auto else interactive_approver
     orchestrator = Orchestrator(guard, runner or SubprocessRunner(), kb, approver,
@@ -156,7 +170,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 max_rounds=max_rounds,
                                 llm_router=llm_router, vuln_kb=vuln_kb,
                                 vault=vault if vault.creds else None,
-                                state_store=store, resume=args.resume)
+                                state_store=store, resume=args.resume, audit=audit)
     report = orchestrator.run()
     print("\n" + report.summary())
 

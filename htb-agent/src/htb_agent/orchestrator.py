@@ -31,6 +31,7 @@ from .observation.summarize import summarize_tool_output
 from .target_profiler import ProfileResult
 from .knowledge import KnowledgeBase
 from .creds import CredentialVault
+from .audit import NullAudit
 from .llm.router import LLMRouter
 from .vuln import VulnKB, VulnMatch, extract_vuln_ids
 from .state import SessionState, StateStore, host_to_dict, host_from_dict
@@ -124,6 +125,7 @@ class Orchestrator:
                  vault: CredentialVault | None = None,
                  state_store: StateStore | None = None,
                  resume: bool = False,
+                 audit=None,
                  is_tool_available: Callable[[str], bool] | None = None):
         self.guard = guard
         self.runner = runner
@@ -139,6 +141,7 @@ class Orchestrator:
         self.vault = vault
         self.state_store = state_store
         self.resume = resume
+        self.audit = audit or NullAudit()
         # 도구 설치 여부 판단(주입 가능 — 테스트에서 대체)
         self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
 
@@ -147,6 +150,8 @@ class Orchestrator:
             raise ScopeViolation("타겟 미바인딩 — bind_target() 먼저 호출하세요.")
         target = str(self.guard.bound_target)
         report = OrchestrationReport(target=target)
+        self.audit.event("session_start", target=target, resume=self.resume,
+                         ranges=[str(n) for n in self.guard.allowed_target_cidrs])
 
         # 재개: 저장된 상태에 포트가 있으면 RECON 을 건너뛰고 재사용
         prior: SessionState | None = None
@@ -165,15 +170,20 @@ class Orchestrator:
             report.recon = recon
             host = recon.host
         report.host = host
+        self.audit.event("recon", status=(report.recon.status if report.recon else "resumed"),
+                         open_ports=host.open_ports if host else [])
         if host is None or not host.open_ports:
             report.status = "escalate"
             report.message += "열린 포트 미확보 — 다음 단계 불가. 사람 개입 필요."
             self._persist(report, prior)
+            self.audit.event("session_end", status=report.status, message=report.message)
             return report
 
         # ── PHASE 2: PROFILE ──
         prof = profile_from_nmap(host)
         report.profile = prof
+        self.audit.event("profile", os=prof.os_class.value, confidence=prof.confidence,
+                         is_dc=prof.is_domain_controller)
 
         # ── PHASE 3: ENUM/LLM 반복 라운드 (유한: max_rounds × 상한) ──
         # 이전 라운드 관측을 다음 LLM 제안에 재반영(적응). 삼중 상한(라운드·enum·llm)
@@ -199,6 +209,9 @@ class Orchestrator:
                            f"라운드 {rounds_run}, KB enum {len(report.enum_findings)}건, "
                            f"LLM {len(report.llm_findings)}건")
         self._persist(report, prior)
+        self.audit.event("vuln", cve=report.detected_cve, cwe=report.detected_cwe,
+                         matches=[m.name for m in report.vuln_matches])
+        self.audit.event("session_end", status=report.status, message=report.message)
         return report
 
     def _persist(self, report: OrchestrationReport, prior: SessionState | None) -> None:
@@ -318,27 +331,36 @@ class Orchestrator:
     def _attempt(self, findings: list[EnumFinding], cmd: str) -> None:
         finding = EnumFinding(command=cmd)
         findings.append(finding)
+        self.audit.event("proposed", cmd=cmd)
 
         binary = _binary_of(cmd)
         if binary and not self.is_tool_available(binary):
             finding.note = f"건너뜀: '{binary}' 미설치"
+            self.audit.event("skipped", cmd=cmd, reason="tool-missing", binary=binary)
             return
         vrep: ValidationReport = validate(cmd)
         if not vrep.ok:
             finding.note = "검증 실패: " + "; ".join(str(i) for i in vrep.errors)
+            self.audit.event("rejected", cmd=cmd, stage="validate",
+                             errors=[str(i) for i in vrep.errors])
             return
         try:
             sres: CommandScopeResult = self.guard.inspect_command(cmd, hosts_map=self.hosts_map)
         except ScopeViolation as e:
             finding.note = f"범위 오류: {e}"
+            self.audit.event("rejected", cmd=cmd, stage="scope", reason=str(e))
             return
         if not self.approver(cmd, vrep, sres):
             finding.note = "미승인(범위밖/사용자 거부)"
+            self.audit.event("denied", cmd=cmd, in_scope=sres.auto_allowed)
             return
 
         out = self.runner.run(cmd, timeout=180)
         finding.ran = out.launched
         if not out.launched:
             finding.note = f"실행 실패: {out.error}"
+            self.audit.event("executed", cmd=cmd, launched=False, error=out.error)
             return
         finding.output = summarize_tool_output(cmd, out.stdout, out.stderr)
+        self.audit.event("executed", cmd=cmd, launched=True,
+                         returncode=out.returncode, summary=finding.output)
