@@ -53,6 +53,7 @@ LLM 제안
 | 세션 상태 영속화 | `src/htb_agent/state.py` | ✅ 완료 (중단/재개, RECON 재사용) |
 | 설정 로더 | `src/htb_agent/config.py` | ✅ 완료 (JSON/YAML, CLI>config>기본) |
 | 취약점 매핑(CVE/CWE) | `src/htb_agent/vuln.py`, `knowledge/vulns/` | ✅ 완료 (ID 추출 + 버전 매핑) |
+| 라이트업 생성 | `src/htb_agent/writeup.py` | ✅ 완료 (htb-ctf-writeup-v5, 블루팀 지표) |
 
 ---
 

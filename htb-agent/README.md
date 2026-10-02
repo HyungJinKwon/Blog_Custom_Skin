@@ -52,6 +52,9 @@ python3 -m htb_agent.main 10.129.1.5 --range 10.129.0.0/16 --max-attempts 3
 # 설정 파일 사용 / 중단 후 재개(RECON 재사용)
 python3 -m htb_agent.main 10.129.1.5 --config ../config/config.example.json
 python3 -m htb_agent.main 10.129.1.5 --resume
+
+# 풀이 라이트업 자동 생성(§7 구조, 순수 Markdown)
+python3 -m htb_agent.main 10.129.1.5 --writeup
 ```
 
 실행 파이프라인(유한 단계): **RECON → PROFILE → ENUM → (LLM) → VULN → REPORT**.

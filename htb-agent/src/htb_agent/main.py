@@ -54,6 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--resume", action="store_true",
                    help="저장된 상태에서 재개 (RECON 재사용, 재스캔 생략)")
     p.add_argument("--no-save", action="store_true", help="상태 저장 안 함")
+    p.add_argument("--writeup", nargs="?", const="__auto__", default=None,
+                   help="풀이 라이트업 Markdown 생성(경로 생략 시 writeup_<타겟>.md)")
     return p
 
 
@@ -143,6 +145,21 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 state_store=store, resume=args.resume)
     report = orchestrator.run()
     print("\n" + report.summary())
+
+    # 8) 라이트업 생성(선택)
+    if args.writeup is not None:
+        from .writeup import generate_writeup
+        from .state import StateStore
+        md = generate_writeup(report, attacker_ip=(attacker[0] if attacker else None))
+        path = (args.writeup if args.writeup != "__auto__"
+                else f"writeup_{StateStore._safe(args.target)}.md")
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(md)
+            print(f"\n라이트업 생성: {path}")
+        except OSError as e:
+            print(f"\n⚠️ 라이트업 저장 실패: {e}", file=sys.stderr)
+
     return 0 if report.status == "done" else 1
 
 
