@@ -45,7 +45,8 @@ LLM 제안
 | 관측 파서/압축기 | `src/htb_agent/observation/` | ✅ 완료 (nmap XML·텍스트, HTTP, 폴백제안) |
 | 승인 루프 | `src/htb_agent/approval.py` | ⏳ 예정 |
 | 오케스트레이터 | `src/htb_agent/orchestrator.py` | ⏳ 예정 |
-| Recon 도구(nmap) | `src/htb_agent/tools/recon.py` | ⏳ 예정 |
+| 도구 레지스트리/설치 | `tools/registry.py`, `scripts/install_tools.sh` | ✅ 완료 (BloodHound·S3 등) |
+| Recon 실행기(nmap) | `src/htb_agent/tools/recon.py` | ⏳ 다음 |
 
 ---
 
