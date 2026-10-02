@@ -35,19 +35,21 @@ def build_parser() -> argparse.ArgumentParser:
                    help="허용 타겟 CIDR (반복 가능). 생략 시 HTB 기본 대역")
     p.add_argument("--attacker-ip", action="append", dest="attacker_ips",
                    help="공격자 VPN IP (반복 가능). 생략 시 tun0 자동탐지")
+    p.add_argument("--config", help="설정 파일(.json/.yaml). 우선순위: CLI > 설정파일 > 기본값")
     p.add_argument("--auto", action="store_true",
                    help="범위내+검증통과 명령 자동승인 (비대화형)")
-    p.add_argument("--max-attempts", type=int, default=4,
+    # 아래 덮어쓰기 가능 옵션은 기본값 None → 설정파일/내장기본값과 병합
+    p.add_argument("--max-attempts", type=int, default=None,
                    help="포트스캔 폴백 최대 시도 (기본 4, 무한루프 방지)")
-    p.add_argument("--max-enum", type=int, default=6,
+    p.add_argument("--max-enum", type=int, default=None,
                    help="enum 자동실행 최대 개수 (기본 6, 무한확장 방지)")
-    p.add_argument("--knowledge", default="knowledge",
+    p.add_argument("--knowledge", default=None,
                    help="지식베이스 디렉토리 (기본 ./knowledge). 사용자 규칙/노트로 성장")
-    p.add_argument("--llm", choices=["none", "claude", "ollama"], default="none",
+    p.add_argument("--llm", choices=["none", "claude", "ollama"], default=None,
                    help="LLM 두뇌 백엔드 (기본 none=규칙기반). claude=Claude API, ollama=로컬")
-    p.add_argument("--llm-tier", choices=["cheap", "standard", "strong"], default="standard",
+    p.add_argument("--llm-tier", choices=["cheap", "standard", "strong"], default=None,
                    help="LLM 티어 (비용/성능)")
-    p.add_argument("--state-dir", default="state",
+    p.add_argument("--state-dir", default=None,
                    help="세션 상태 저장 디렉토리 (기본 ./state)")
     p.add_argument("--resume", action="store_true",
                    help="저장된 상태에서 재개 (RECON 재사용, 재스캔 생략)")
@@ -76,16 +78,31 @@ def _build_llm_router(kind: str, tier_name: str):
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
+    # 0) 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값)
+    from .config import load_config, pick, Config, ConfigError
+    try:
+        cfg = load_config(args.config) if args.config else Config()
+    except ConfigError as e:
+        print(f"⛔ 설정 오류: {e}", file=sys.stderr)
+        return 2
+    ranges = pick(args.ranges, cfg.allowed_ranges, None)
+    max_attempts = pick(args.max_attempts, cfg.max_attempts, 4)
+    max_enum = pick(args.max_enum, cfg.max_enum, 6)
+    knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, "knowledge")
+    llm_kind = pick(args.llm, cfg.llm_backend, "none")
+    llm_tier = pick(args.llm_tier, cfg.llm_tier, "standard")
+    state_dir = pick(args.state_dir, cfg.state_dir, "state")
+
     # 1) Scope Guard 구성 + 타겟 바인딩
-    guard = ScopeGuard.from_cidr_strings(args.ranges)
+    guard = ScopeGuard.from_cidr_strings(ranges)
     try:
         guard.bind_target(args.target)
     except ScopeViolation as e:
         print(f"⛔ {e}", file=sys.stderr)
         return 2
 
-    # 2) 공격자 VPN IP 등록 (지정 or 자동탐지)
-    attacker = args.attacker_ips or detect_vpn_ips()
+    # 2) 공격자 VPN IP 등록 (지정 or 설정 or 자동탐지)
+    attacker = pick(args.attacker_ips, cfg.attacker_ips, None) or detect_vpn_ips()
     for ip in attacker:
         try:
             guard.add_attacker_ip(ip)
@@ -98,16 +115,16 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\n타겟 바인딩: {guard.bound_target} | 허용대역: {guard.describe()} | 공격자IP: {attacker or '(없음)'}\n")
 
     # 4) 지식베이스 로드 (사용자 학습데이터로 성장)
-    kb = KnowledgeBase.load(base_dir=args.knowledge)
+    kb = KnowledgeBase.load(base_dir=knowledge_dir)
     print(f"지식베이스: 규칙 {len(kb.rules)}개, 노트 {len(kb.notes)}개 로드\n")
 
     # 5) LLM 두뇌 구성(선택)
-    llm_router, llm_status = _build_llm_router(args.llm, args.llm_tier)
+    llm_router, llm_status = _build_llm_router(llm_kind, llm_tier)
     print(f"LLM: {llm_status}\n")
 
     # 6) 상태 저장소 (중단/재개)
     from .state import StateStore
-    store = None if args.no_save else StateStore(args.state_dir)
+    store = None if args.no_save else StateStore(state_dir)
     if args.resume and store and store.exists(args.target):
         prior = store.load(args.target)
         if prior:
@@ -116,8 +133,8 @@ def main(argv: list[str] | None = None) -> int:
     # 7) 오케스트레이션 (유한 단계: RECON→PROFILE→ENUM→(LLM)→REPORT)
     approver = auto_approve_in_scope if args.auto else interactive_approver
     orchestrator = Orchestrator(guard, SubprocessRunner(), kb, approver,
-                                max_enum=args.max_enum,
-                                recon_max_attempts=args.max_attempts,
+                                max_enum=max_enum,
+                                recon_max_attempts=max_attempts,
                                 llm_router=llm_router,
                                 state_store=store, resume=args.resume)
     report = orchestrator.run()
