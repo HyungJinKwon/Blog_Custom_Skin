@@ -18,3 +18,11 @@ htb-agent = "htb_agent.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]   # 라인 길이는 경고만(한국어 주석 고려)

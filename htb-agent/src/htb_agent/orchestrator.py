@@ -18,11 +18,11 @@ Orchestrator — 유한 단계 상태머신 (자동화 + 무한루프 금지)
 
 from __future__ import annotations
 
-import shlex
 import shutil
 from dataclasses import dataclass, field
 from typing import Callable
 
+from .util import binary_of
 from .command_validator import validate, ValidationReport
 from .scope_guard import ScopeGuard, ScopeViolation, CommandScopeResult
 from .observation.parsers import NmapHost
@@ -98,18 +98,6 @@ class OrchestrationReport:
             for s in self.manual_suggestions:
                 lines.append(f"  · {s}")
         return "\n".join(lines)
-
-
-def _binary_of(command: str) -> str:
-    try:
-        toks = shlex.split(command)
-    except ValueError:
-        toks = command.split()
-    for t in toks:
-        if "=" in t and not t.startswith("-"):
-            continue
-        return t
-    return ""
 
 
 class Orchestrator:
@@ -333,7 +321,7 @@ class Orchestrator:
         findings.append(finding)
         self.audit.event("proposed", cmd=cmd)
 
-        binary = _binary_of(cmd)
+        binary = binary_of(cmd)
         if binary and not self.is_tool_available(binary):
             finding.note = f"건너뜀: '{binary}' 미설치"
             self.audit.event("skipped", cmd=cmd, reason="tool-missing", binary=binary)

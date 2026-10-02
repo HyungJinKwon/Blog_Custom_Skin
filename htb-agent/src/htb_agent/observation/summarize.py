@@ -8,25 +8,12 @@ Tool Output Summarizer — 명령 출력을 도구별 파서로 요약
 
 from __future__ import annotations
 
-import shlex
-
+from ..util import binary_of
 from .parsers import parse_http
 from .web import (parse_gobuster, parse_ffuf, parse_feroxbuster,
                   parse_nikto, parse_whatweb)
 from .smb import parse_smbclient_shares, parse_smbmap, parse_nxc_smb
 from .ad import parse_ldapsearch
-
-
-def _binary(cmd: str) -> str:
-    try:
-        toks = shlex.split(cmd)
-    except ValueError:
-        toks = cmd.split()
-    for t in toks:
-        if "=" in t and not t.startswith("-"):
-            continue
-        return t.rsplit("/", 1)[-1]
-    return ""
 
 
 def _truncate(stdout: str, stderr: str, limit: int = 200) -> str:
@@ -36,7 +23,7 @@ def _truncate(stdout: str, stderr: str, limit: int = 200) -> str:
 
 def summarize_tool_output(cmd: str, stdout: str, stderr: str = "") -> str:
     """명령/출력을 도구별로 요약. 실패 시 트렁케이트 폴백."""
-    binary = _binary(cmd)
+    binary = binary_of(cmd, strip_path=True)
     try:
         if binary == "curl" and "http" in cmd:
             h = parse_http(stdout)
