@@ -91,3 +91,7 @@ LLM 제안
 - 감사 로그: 모든 결정·실행을 JSONL 트랜스크립트로 기록.
 - CI 자동화: push/PR 마다 전체 테스트+컴파일(게이트), ruff(비차단).
 - 품질: 바이너리 추출 헬퍼 통합, 취약점 버전 경계 매칭(오탐 방지).
+- 확장 파서: DNS(dig)/SNMP(snmpwalk) + nmap NSE 취약점 스캔 제안.
+- 라이트업: Tistory 13섹션 템플릿(--writeup-format tistory).
+- LLM: 프롬프트 캐싱(ephemeral) + 토큰·비용 집계(pricing).
+- 품질: 3분할 옵션-값 페어링(화이트리스트), mypy CI(비차단).
