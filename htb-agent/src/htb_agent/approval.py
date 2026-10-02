@@ -15,6 +15,15 @@ import shlex
 from .command_validator import ValidationReport
 from .scope_guard import CommandScopeResult
 
+# 값을 받는 옵션(이 목록에 한해서만 다음 토큰을 '값'으로 페어링 — 부울 플래그 뒤
+# 위치 인자(예: 타겟 IP)를 값으로 오인하지 않도록 보수적으로 제한).
+_VALUE_OPTS = {
+    "-u", "-w", "-p", "-P", "-l", "-L", "-H", "-d", "-X", "-o", "-oX", "-oA",
+    "-oN", "-oG", "-mc", "-fs", "-ms", "-fc", "-t", "-b", "-s", "-D", "-i",
+    "-U", "-c", "-e", "-x", "--script", "--user", "--password", "--dc-ip",
+    "--url", "-w", "-request", "-usersfile", "-k",
+}
+
 
 def explain_command(command: str) -> str:
     """명령을 바이너리/옵션/파라미터로 3분할 해설."""
@@ -30,8 +39,22 @@ def explain_command(command: str) -> str:
         env.append(toks[i]); i += 1
     binary = toks[i] if i < len(toks) else ""
     rest = toks[i + 1:]
-    options = [t for t in rest if t.startswith("-")]
-    params = [t for t in rest if not t.startswith("-")]
+    # 값 받는 옵션은 다음 토큰을 값으로 페어링(화이트리스트 한정, 보수적)
+    options: list[str] = []
+    params: list[str] = []
+    j = 0
+    while j < len(rest):
+        t = rest[j]
+        if t.startswith("-"):
+            if "=" not in t and t in _VALUE_OPTS and j + 1 < len(rest) \
+                    and not rest[j + 1].startswith("-"):
+                options.append(f"{t} {rest[j + 1]}")
+                j += 2
+                continue
+            options.append(t)
+        else:
+            params.append(t)
+        j += 1
     lines = ["[명령 3분할 해설]"]
     if env:
         lines.append(f"  환경변수 : {' '.join(env)}")

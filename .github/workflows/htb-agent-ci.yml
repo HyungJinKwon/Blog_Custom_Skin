@@ -37,3 +37,7 @@ jobs:
         run: |
           pip install ruff
           ruff check src/ || true
+      - name: mypy 타입체크 (비차단)
+        run: |
+          pip install mypy
+          mypy src/ --ignore-missing-imports --no-error-summary || true
