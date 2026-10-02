@@ -47,6 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="LLM 두뇌 백엔드 (기본 none=규칙기반). claude=Claude API, ollama=로컬")
     p.add_argument("--llm-tier", choices=["cheap", "standard", "strong"], default="standard",
                    help="LLM 티어 (비용/성능)")
+    p.add_argument("--state-dir", default="state",
+                   help="세션 상태 저장 디렉토리 (기본 ./state)")
+    p.add_argument("--resume", action="store_true",
+                   help="저장된 상태에서 재개 (RECON 재사용, 재스캔 생략)")
+    p.add_argument("--no-save", action="store_true", help="상태 저장 안 함")
     return p
 
 
@@ -100,12 +105,21 @@ def main(argv: list[str] | None = None) -> int:
     llm_router, llm_status = _build_llm_router(args.llm, args.llm_tier)
     print(f"LLM: {llm_status}\n")
 
-    # 6) 오케스트레이션 (유한 단계: RECON→PROFILE→ENUM→(LLM)→REPORT)
+    # 6) 상태 저장소 (중단/재개)
+    from .state import StateStore
+    store = None if args.no_save else StateStore(args.state_dir)
+    if args.resume and store and store.exists(args.target):
+        prior = store.load(args.target)
+        if prior:
+            print("재개할 저장 상태 발견:\n" + prior.summary() + "\n")
+
+    # 7) 오케스트레이션 (유한 단계: RECON→PROFILE→ENUM→(LLM)→REPORT)
     approver = auto_approve_in_scope if args.auto else interactive_approver
     orchestrator = Orchestrator(guard, SubprocessRunner(), kb, approver,
                                 max_enum=args.max_enum,
                                 recon_max_attempts=args.max_attempts,
-                                llm_router=llm_router)
+                                llm_router=llm_router,
+                                state_store=store, resume=args.resume)
     report = orchestrator.run()
     print("\n" + report.summary())
     return 0 if report.status == "done" else 1

@@ -31,6 +31,7 @@ from .observation.summarize import summarize_tool_output
 from .target_profiler import ProfileResult
 from .knowledge import KnowledgeBase
 from .llm.router import LLMRouter
+from .state import SessionState, StateStore, host_to_dict, host_from_dict
 from .tools.runner import Runner
 from .tools.recon import ReconExecutor, ReconReport, auto_approve_in_scope, Approver
 
@@ -48,6 +49,7 @@ class OrchestrationReport:
     target: str
     status: str = "pending"          # done / escalate
     recon: ReconReport | None = None
+    host: NmapHost | None = None
     profile: ProfileResult | None = None
     enum_findings: list[EnumFinding] = field(default_factory=list)
     llm_findings: list[EnumFinding] = field(default_factory=list)
@@ -98,6 +100,8 @@ class Orchestrator:
                  recon_max_attempts: int = 4,
                  llm_router: LLMRouter | None = None,
                  max_llm: int = 5,
+                 state_store: StateStore | None = None,
+                 resume: bool = False,
                  is_tool_available: Callable[[str], bool] | None = None):
         self.guard = guard
         self.runner = runner
@@ -108,6 +112,8 @@ class Orchestrator:
         self.recon_max_attempts = recon_max_attempts
         self.llm_router = llm_router
         self.max_llm = max_llm
+        self.state_store = state_store
+        self.resume = resume
         # 도구 설치 여부 판단(주입 가능 — 테스트에서 대체)
         self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
 
@@ -117,15 +123,27 @@ class Orchestrator:
         target = str(self.guard.bound_target)
         report = OrchestrationReport(target=target)
 
-        # ── PHASE 1: RECON (유한 폴백) ──
-        recon = ReconExecutor(self.guard, self.runner, self.approver,
-                              max_attempts=self.recon_max_attempts,
-                              hosts_map=self.hosts_map).run_portscan()
-        report.recon = recon
-        host = recon.host
+        # 재개: 저장된 상태에 포트가 있으면 RECON 을 건너뛰고 재사용
+        prior: SessionState | None = None
+        host = None
+        if self.resume and self.state_store and self.state_store.exists(target):
+            prior = self.state_store.load(target)
+            if prior and prior.host:
+                host = host_from_dict(prior.host)
+                report.message = "(재개: 저장된 RECON 재사용 — 재스캔 생략) "
+
+        # ── PHASE 1: RECON (유한 폴백) — 재개로 host 확보 시 생략 ──
+        if host is None:
+            recon = ReconExecutor(self.guard, self.runner, self.approver,
+                                  max_attempts=self.recon_max_attempts,
+                                  hosts_map=self.hosts_map).run_portscan()
+            report.recon = recon
+            host = recon.host
+        report.host = host
         if host is None or not host.open_ports:
             report.status = "escalate"
-            report.message = "열린 포트 미확보 — 다음 단계 불가. 사람 개입 필요."
+            report.message += "열린 포트 미확보 — 다음 단계 불가. 사람 개입 필요."
+            self._persist(report, prior)
             return report
 
         # ── PHASE 2: PROFILE ──
@@ -141,10 +159,35 @@ class Orchestrator:
 
         # ── PHASE 4: REPORT ──
         report.status = "done"
-        report.message = (f"OS={prof.os_class.value}({prof.tag}), "
-                          f"KB enum {len(report.enum_findings)}건, "
-                          f"LLM {len(report.llm_findings)}건")
+        report.message += (f"OS={prof.os_class.value}({prof.tag}), "
+                           f"KB enum {len(report.enum_findings)}건, "
+                           f"LLM {len(report.llm_findings)}건")
+        self._persist(report, prior)
         return report
+
+    def _persist(self, report: OrchestrationReport, prior: SessionState | None) -> None:
+        """진행 상태를 저장(중단/재개용). state_store 없으면 no-op."""
+        if self.state_store is None:
+            return
+        st = prior or SessionState(target=report.target)
+        st.allowed_ranges = [str(n) for n in self.guard.allowed_target_cidrs]
+        st.attacker_ips = [str(ip) for ip in self.guard.attacker_ips]
+        st.recon_status = report.recon.status if report.recon else (st.recon_status or "resumed")
+        if report.host is not None:
+            st.host = host_to_dict(report.host)
+        if report.profile is not None:
+            st.profile = {"os_class": report.profile.os_class.value,
+                          "confidence": report.profile.confidence,
+                          "is_dc": report.profile.is_domain_controller}
+        fin = lambda f: {"command": f.command, "ran": f.ran, "note": f.note, "output": f.output}
+        if report.enum_findings:
+            st.enum_findings = [fin(f) for f in report.enum_findings]
+        if report.llm_findings:
+            st.llm_findings = [fin(f) for f in report.llm_findings]
+        if report.manual_suggestions:
+            st.manual_suggestions = report.manual_suggestions
+        st.add_history(report.message.strip() or report.status)
+        self.state_store.save(st)
 
     def _run_enum(self, report: OrchestrationReport, host: NmapHost,
                   prof: ProfileResult, target: str) -> None:
