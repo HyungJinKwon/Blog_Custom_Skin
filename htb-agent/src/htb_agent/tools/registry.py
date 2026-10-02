@@ -76,6 +76,7 @@ TOOLS: list[Tool] = [
          go=["github.com/ropnop/kerbrute@latest"]),
     Tool("certipy", ["certipy", "certipy-ad"], "ad", "AD CS(ESC) 공격", pipx=["certipy-ad"]),
     Tool("evil-winrm", ["evil-winrm"], "ad", "WinRM 셸", apt=["evil-winrm"]),
+    Tool("sshpass", ["sshpass"], "creds", "비대화형 SSH 암호 전달(플래그 획득)", apt=["sshpass"]),
     Tool("ldapsearch", ["ldapsearch"], "ad", "LDAP 질의", apt=["ldap-utils"]),
     Tool("responder", ["responder"], "ad", "LLMNR/NBT-NS 포이즈닝", apt=["responder"]),
     # ── dns / snmp ──

@@ -34,6 +34,7 @@ from .creds import CredentialVault
 from .audit import NullAudit
 from .llm.router import LLMRouter
 from .vuln import VulnKB, VulnMatch, extract_vuln_ids
+from .flag import FlagHit, scan as scan_flags
 from .state import SessionState, StateStore, host_to_dict, host_from_dict
 from .tools.runner import Runner
 from .tools.recon import ReconExecutor, ReconReport, auto_approve_in_scope, Approver
@@ -71,7 +72,16 @@ class OrchestrationReport:
     detected_cve: list[str] = field(default_factory=list)
     detected_cwe: list[str] = field(default_factory=list)
     vuln_matches: list[VulnMatch] = field(default_factory=list)
+    flags: list[FlagHit] = field(default_factory=list)
     message: str = ""
+
+    @property
+    def user_flag(self) -> str | None:
+        return next((f.value for f in self.flags if f.kind == "user"), None)
+
+    @property
+    def root_flag(self) -> str | None:
+        return next((f.value for f in self.flags if f.kind == "root"), None)
 
     def summary(self) -> str:
         lines = [f"# 오케스트레이션 — {self.target} [{self.status}] {self.message}".rstrip()]
@@ -106,6 +116,13 @@ class OrchestrationReport:
                     lines.append(f"       비고: {m.note}")
                 for s in m.suggest:
                     lines.append(f"       제안: {s}")
+        if self.flags:
+            lines.append("\n## 🚩 플래그 (FLAG)")
+            lines.append(f"  user.txt: {self.user_flag or '미획득'}")
+            lines.append(f"  root.txt: {self.root_flag or '미획득'}")
+            for f in self.flags:
+                if f.kind == "unknown":
+                    lines.append(f"  (미분류) {f.value} ← {f.source}")
         if self.manual_suggestions:
             lines.append("\n## 수동 제안 (크리덴셜 등 필요 — 승인/입력 후 실행)")
             for s in self.manual_suggestions:
@@ -218,10 +235,11 @@ class Orchestrator:
 
         # ── PHASE 4: REPORT ──
         report.status = "done"
+        flag_state = f"user={'O' if report.user_flag else 'X'} root={'O' if report.root_flag else 'X'}"
         report.message += (f"OS={prof.os_class.value}({prof.tag}), "
                            f"진행단계 {'→'.join(phases_run) or '없음'}, "
                            f"KB enum {len(report.enum_findings)}건, "
-                           f"LLM {len(report.llm_findings)}건")
+                           f"LLM {len(report.llm_findings)}건, 플래그[{flag_state}]")
         self._persist(report, prior)
         self.audit.event("vuln", cve=report.detected_cve, cwe=report.detected_cwe,
                          matches=[m.name for m in report.vuln_matches])
@@ -255,6 +273,9 @@ class Orchestrator:
             st.detected_cwe = report.detected_cwe
         if self.vault is not None and self.vault.creds:
             st.credentials = self.vault.to_list()
+        if report.flags:
+            st.flags = [{"value": f.value, "kind": f.kind, "source": f.source}
+                        for f in report.flags]
         st.add_history(report.message.strip() or report.status)
         self.state_store.save(st)
 
@@ -280,7 +301,7 @@ class Orchestrator:
                     if attempted >= budget:
                         report.manual_suggestions.append(cmd + "   # (상한 초과 — 수동)")
                         continue
-                    self._attempt(report.enum_findings, cmd, phase)
+                    self._attempt(report, report.enum_findings, cmd, phase)
                     attempted += 1
         return attempted
 
@@ -321,7 +342,7 @@ class Orchestrator:
             seen.add(cmd)
             if attempted >= budget:
                 break
-            self._attempt(report.llm_findings, cmd, phase)
+            self._attempt(report, report.llm_findings, cmd, phase)
             attempted += 1
         return attempted
 
@@ -344,7 +365,8 @@ class Orchestrator:
         if self.vuln_kb is not None:
             report.vuln_matches = self.vuln_kb.match(banners, target)
 
-    def _attempt(self, findings: list[EnumFinding], cmd: str, phase: str = "enum") -> None:
+    def _attempt(self, report: OrchestrationReport, findings: list[EnumFinding],
+                 cmd: str, phase: str = "enum") -> None:
         finding = EnumFinding(command=cmd, phase=phase)
         findings.append(finding)
         self.audit.event("proposed", cmd=cmd, phase=phase)
@@ -380,3 +402,9 @@ class Orchestrator:
         finding.output = summarize_tool_output(cmd, out.stdout, out.stderr)
         self.audit.event("executed", cmd=cmd, launched=True,
                          returncode=out.returncode, summary=finding.output)
+        # 플래그 스캔 — 출력에서 user.txt/root.txt 획득
+        for hit in scan_flags(cmd, out.stdout):
+            if hit.value not in {f.value for f in report.flags}:
+                report.flags.append(hit)
+                finding.note = (finding.note + " " if finding.note else "") + f"🚩 {hit.kind} flag"
+                self.audit.event("flag_found", kind=hit.kind, value=hit.value, cmd=cmd)

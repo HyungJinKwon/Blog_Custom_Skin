@@ -84,6 +84,22 @@ SEED_RULES: list[Rule] = [
          tags=["ad", "shell"], note="크리덴셜 필요(수동)", phase="access"),
     Rule("SSH 접속", ["ssh {user}@{t}"], ports=[22], services=["ssh"], tags=["linux"],
          note="크리덴셜/키 필요(수동)", phase="access"),
+    # ── 플래그 획득 (자격증명 확보 시 볼트로 승격) ──
+    Rule("유저 플래그(Windows/WinRM)",
+         ['netexec winrm {t} -u {user} -p {pass} -x "type C:\\Users\\{user}\\Desktop\\user.txt"'],
+         ports=[5985, 5986], os=["windows", "windows_ad"], phase="access",
+         tags=["flag"], note="user.txt"),
+    Rule("유저 플래그(Linux/SSH)",
+         ['sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} "cat ~/user.txt; id"'],
+         ports=[22], os=["linux"], phase="access", tags=["flag"], note="user.txt"),
+    Rule("루트 플래그(Windows)",
+         ['netexec smb {t} -u {user} -p {pass} -x "type C:\\Users\\Administrator\\Desktop\\root.txt"'],
+         ports=[445], os=["windows", "windows_ad"], phase="privesc",
+         tags=["flag"], note="root.txt (관리자 권한 필요)"),
+    Rule("루트 플래그(Linux)",
+         ['sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} "sudo -n cat /root/root.txt"'],
+         ports=[22], os=["linux"], phase="privesc", tags=["flag"],
+         note="root.txt (sudo/root 권한 필요)"),
 ]
 
 _PLACEHOLDER = re.compile(r"\{[a-zA-Z_]+\}")
