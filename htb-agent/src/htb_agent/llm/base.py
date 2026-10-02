@@ -26,8 +26,10 @@ class Tier(str, Enum):
 class LLMResponse:
     text: str
     model: str
-    prompt_tokens: int = 0
+    prompt_tokens: int = 0          # 비캐시 입력 토큰
     completion_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
 
 
 class LLMProvider(ABC):

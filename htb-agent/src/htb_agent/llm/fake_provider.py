@@ -17,5 +17,7 @@ class FakeProvider(LLMProvider):
 
     def complete(self, system: str, user: str,
                  tier: Tier = Tier.STANDARD, max_tokens: int = 1024) -> LLMResponse:
-        text = self._r(system, user, tier) if callable(self._r) else self._r
-        return LLMResponse(text=text, model=self.model_for(tier))
+        out = self._r(system, user, tier) if callable(self._r) else self._r
+        if isinstance(out, LLMResponse):   # responder 가 usage 포함 응답을 줄 수 있음
+            return out
+        return LLMResponse(text=out, model=self.model_for(tier))

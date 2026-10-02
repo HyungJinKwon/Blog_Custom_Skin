@@ -175,6 +175,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 state_store=store, resume=args.resume, audit=audit)
     report = orchestrator.run()
     print("\n" + report.summary())
+    if llm_router is not None and llm_router.calls:
+        print("\n" + llm_router.cost_summary())
 
     # 8) 라이트업 생성(선택)
     if args.writeup is not None:

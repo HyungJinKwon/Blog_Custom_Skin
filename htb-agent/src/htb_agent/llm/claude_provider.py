@@ -9,7 +9,7 @@ class ClaudeProvider(LLMProvider):
     name = "claude"
     # 티어별 모델 — 비용/성능 균형
     models = {
-        Tier.CHEAP: "claude-haiku-4-5-20251001",
+        Tier.CHEAP: "claude-haiku-4-5",
         Tier.STANDARD: "claude-sonnet-5-5",
         Tier.STRONG: "claude-opus-5-5",
     }
@@ -28,13 +28,20 @@ class ClaudeProvider(LLMProvider):
         import anthropic
         client = anthropic.Anthropic()
         model = self.model_for(tier)
+        # 큰 시스템 프롬프트는 prefix 캐시 대상(ephemeral) — 반복 호출서 토큰 절감.
+        system_blocks = [{"type": "text", "text": system,
+                          "cache_control": {"type": "ephemeral"}}]
         msg = client.messages.create(
-            model=model, max_tokens=max_tokens, system=system,
+            model=model, max_tokens=max_tokens, system=system_blocks,
             messages=[{"role": "user", "content": user}],
         )
         text = "".join(getattr(b, "text", "") for b in msg.content
                        if getattr(b, "type", "") == "text")
         usage = getattr(msg, "usage", None)
-        return LLMResponse(text, model,
-                           getattr(usage, "input_tokens", 0),
-                           getattr(usage, "output_tokens", 0))
+        return LLMResponse(
+            text, model,
+            prompt_tokens=getattr(usage, "input_tokens", 0) or 0,
+            completion_tokens=getattr(usage, "output_tokens", 0) or 0,
+            cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
+            cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+        )

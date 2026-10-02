@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from .base import LLMProvider, Tier
+from .pricing import estimate_cost
 
 
 SYSTEM_PROMPT = """\
@@ -37,6 +38,17 @@ class LLMRouter:
         self.provider = provider
         self.default_tier = default_tier
         self.max_items = max_items
+        # 누적 사용량/비용 집계
+        self.calls = 0
+        self.total_prompt = 0
+        self.total_completion = 0
+        self.total_cache_read = 0
+        self.total_cost = 0.0
+
+    def cost_summary(self) -> str:
+        return (f"LLM 호출 {self.calls}회, 입력 {self.total_prompt} "
+                f"(캐시읽기 {self.total_cache_read}) / 출력 {self.total_completion} 토큰, "
+                f"추정 비용 ${self.total_cost:.4f}")
 
     def suggest_commands(self, context: dict, target: str,
                          tier: Tier | None = None,
@@ -46,6 +58,14 @@ class LLMRouter:
         system = SYSTEM_PROMPT.replace("{max_items}", str(limit))
         user = self._user_prompt(context, target)
         resp = self.provider.complete(system, user, tier or self.default_tier)
+        self.calls += 1
+        self.total_prompt += resp.prompt_tokens
+        self.total_completion += resp.completion_tokens
+        self.total_cache_read += resp.cache_read_tokens
+        self.total_cost += estimate_cost(resp.model, resp.prompt_tokens,
+                                         resp.completion_tokens,
+                                         resp.cache_read_tokens,
+                                         resp.cache_creation_tokens)
         return self._parse(resp.text, target, limit)
 
     @staticmethod
