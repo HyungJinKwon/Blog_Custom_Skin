@@ -64,6 +64,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-audit", action="store_true", help="감사 로그 비활성")
     p.add_argument("--writeup", nargs="?", const="__auto__", default=None,
                    help="풀이 라이트업 Markdown 생성(경로 생략 시 writeup_<타겟>.md)")
+    p.add_argument("--writeup-format", choices=["htb", "tistory"], default="htb",
+                   help="라이트업 형식: htb(기본, htb-ctf-writeup-v5) / tistory(13섹션)")
     return p
 
 
@@ -176,9 +178,10 @@ def main(argv: list[str] | None = None, runner=None) -> int:
 
     # 8) 라이트업 생성(선택)
     if args.writeup is not None:
-        from .writeup import generate_writeup
+        from .writeup import generate_writeup, generate_tistory
         from .state import StateStore
-        md = generate_writeup(report, attacker_ip=(attacker[0] if attacker else None))
+        gen = generate_tistory if args.writeup_format == "tistory" else generate_writeup
+        md = gen(report, attacker_ip=(attacker[0] if attacker else None))
         path = (args.writeup if args.writeup != "__auto__"
                 else f"writeup_{StateStore._safe(args.target)}.md")
         try:

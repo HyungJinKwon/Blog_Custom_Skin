@@ -64,5 +64,17 @@ check("HTML div 없음", "<div" not in md)
 check("HTML table 없음", "<table" not in md.lower())
 check("HTML br 없음", "<br" not in md.lower())
 
-print(f"\n결과: {passed} passed, {failed} failed")
+# ── Tistory 13섹션 템플릿 ──
+from htb_agent.writeup import generate_tistory
+print("\n=== Tistory 13섹션 ===")
+mdt = generate_tistory(rep, attacker_ip="10.10.14.5", machine_name="TestBox")
+for i in range(1, 14):
+    check(f"섹션 {i} 존재", f"## {i}." in mdt)
+check("아키텍처 다이어그램", "HTB VPN" in mdt and "```" in mdt)
+check("내장 셸 매핑(Windows)", "whoami /all" in mdt)   # rep 는 Windows-AD
+check("고급 조합(SMB)", "netexec smb" in mdt)
+check("블루팀 지표", "Snort/Suricata" in mdt)
+check("취약점 CVE", "CVE-2017-0144" in mdt)
+check("순수 MD(HTML div 없음)", "<div" not in mdt)
+print(f"\n(tistory) 누적 결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
