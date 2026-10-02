@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+state/*
+!state/.gitkeep
+config/config.yaml
+.venv/
+writeup_*.md
+audit_*.jsonl

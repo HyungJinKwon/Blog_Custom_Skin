@@ -1,0 +1,43 @@
+name: htb-agent CI
+
+on:
+  push:
+    paths: ["htb-agent/**"]
+  pull_request:
+    paths: ["htb-agent/**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: htb-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 전체 테스트 (표준 라이브러리만, 외부 의존성 없음)
+        run: python3 tests/run_all.py
+      - name: 컴파일 체크
+        run: python3 -m py_compile src/htb_agent/*.py src/htb_agent/*/*.py
+
+  lint:
+    runs-on: ubuntu-latest
+    continue-on-error: true   # 정보용 — 테스트 잡이 게이트
+    defaults:
+      run:
+        working-directory: htb-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: ruff lint (비차단)
+        run: |
+          pip install ruff
+          ruff check src/ || true
+      - name: mypy 타입체크 (비차단)
+        run: |
+          pip install mypy
+          mypy src/ --ignore-missing-imports --no-error-summary || true
