@@ -38,9 +38,9 @@ LLM 제안
 
 | 모듈 | 파일 | 상태 |
 |---|---|---|
-| Scope Guard (초안) | `src/htb_agent/scope_guard.py` | ⚠️ WIP — Target-Binding 재작성 예정 |
-| Command Validator | `src/htb_agent/command_validator.py` | 🔨 작성 중 |
-| Target Profiler | `src/htb_agent/target_profiler.py` | 🔨 작성 중 |
+| Scope Guard | `src/htb_agent/scope_guard.py` | ✅ Target-Binding 완료 (17 테스트) |
+| Command Validator | `src/htb_agent/command_validator.py` | ✅ 완료 (감사 반영) |
+| Target Profiler | `src/htb_agent/target_profiler.py` | ✅ 완료 (감사 반영) |
 | LLM 추상화 + 티어링 | `src/htb_agent/llm/` | ⏳ 예정 |
 | 관측 압축기 | `src/htb_agent/observation/compressor.py` | ⏳ 예정 |
 | 승인 루프 | `src/htb_agent/approval.py` | ⏳ 예정 |
