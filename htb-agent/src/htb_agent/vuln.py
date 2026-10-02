@@ -23,6 +23,12 @@ _CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}", re.I)
 _CWE_RE = re.compile(r"CWE-\d+", re.I)
 
 
+def _version_in(version: str, text: str) -> bool:
+    """버전 경계 매칭 — '2.3.4' 가 '12.3.4'/'2.3.40' 에 오매칭되지 않도록."""
+    pat = r"(?<![\d.])" + re.escape(version) + r"(?![\d])"
+    return re.search(pat, text) is not None
+
+
 @dataclass
 class VulnHits:
     cves: list[str] = field(default_factory=list)
@@ -108,7 +114,8 @@ class VulnKB:
                 bl = banner.lower()
                 if svc not in bl:
                     continue
-                if rule.version_contains and not any(v.lower() in bl for v in rule.version_contains):
+                if rule.version_contains and not any(_version_in(v.lower(), bl)
+                                                     for v in rule.version_contains):
                     continue
                 if rule.name in seen:
                     break

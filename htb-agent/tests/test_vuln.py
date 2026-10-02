@@ -28,6 +28,8 @@ check("vsftpd 2.3.4 → CVE-2011-2523", m and "CVE-2011-2523" in m[0].cve)
 check("severity critical 정렬", m[0].severity == "critical")
 check("버전 불일치는 매칭 안 함", kb.match(["vsftpd 3.0.3"]) == [])
 check("서비스 불일치 매칭 안 함", kb.match(["nginx 1.18.0"]) == [])
+check("버전 경계 오매칭 방지(12.3.4)", kb.match(["vsftpd 12.3.4"]) == [])
+check("버전 경계 오매칭 방지(2.3.40)", kb.match(["vsftpd 2.3.40"]) == [])
 m2 = kb.match(["Apache httpd 2.4.49"])
 check("Apache 2.4.49 → path traversal", m2 and "CVE-2021-41773" in m2[0].cve)
 
