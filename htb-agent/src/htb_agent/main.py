@@ -114,9 +114,12 @@ def main(argv: list[str] | None = None) -> int:
     print(pf.render())
     print(f"\n타겟 바인딩: {guard.bound_target} | 허용대역: {guard.describe()} | 공격자IP: {attacker or '(없음)'}\n")
 
-    # 4) 지식베이스 로드 (사용자 학습데이터로 성장)
+    # 4) 지식베이스 + 취약점 KB 로드 (사용자 학습데이터로 성장)
     kb = KnowledgeBase.load(base_dir=knowledge_dir)
-    print(f"지식베이스: 규칙 {len(kb.rules)}개, 노트 {len(kb.notes)}개 로드\n")
+    from .vuln import VulnKB
+    vuln_kb = VulnKB.load(base_dir=knowledge_dir)
+    print(f"지식베이스: 규칙 {len(kb.rules)}개, 노트 {len(kb.notes)}개, "
+          f"취약점 규칙 {len(vuln_kb.rules)}개 로드\n")
 
     # 5) LLM 두뇌 구성(선택)
     llm_router, llm_status = _build_llm_router(llm_kind, llm_tier)
@@ -135,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     orchestrator = Orchestrator(guard, SubprocessRunner(), kb, approver,
                                 max_enum=max_enum,
                                 recon_max_attempts=max_attempts,
-                                llm_router=llm_router,
+                                llm_router=llm_router, vuln_kb=vuln_kb,
                                 state_store=store, resume=args.resume)
     report = orchestrator.run()
     print("\n" + report.summary())

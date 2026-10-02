@@ -66,6 +66,8 @@ class SessionState:
     enum_findings: list[dict] = field(default_factory=list)
     llm_findings: list[dict] = field(default_factory=list)
     manual_suggestions: list[str] = field(default_factory=list)
+    detected_cve: list[str] = field(default_factory=list)
+    detected_cwe: list[str] = field(default_factory=list)
     history: list[dict] = field(default_factory=list)
 
     def to_json(self) -> str:

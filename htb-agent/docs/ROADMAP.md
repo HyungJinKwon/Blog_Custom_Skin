@@ -53,6 +53,7 @@ LLM 제안
 | CLI 진입점 | `src/htb_agent/main.py` | ✅ 완료 (Kali 실행) |
 | 세션 상태 영속화 | `src/htb_agent/state.py` | ✅ 완료 (중단/재개, RECON 재사용) |
 | 설정 로더 | `src/htb_agent/config.py` | ✅ 완료 (JSON/YAML, CLI>config>기본) |
+| 취약점 매핑(CVE/CWE) | `src/htb_agent/vuln.py`, `knowledge/vulns/` | ✅ 완료 (ID 추출 + 버전 매핑) |
 
 ---
 

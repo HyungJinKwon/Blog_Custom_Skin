@@ -31,6 +31,7 @@ from .observation.summarize import summarize_tool_output
 from .target_profiler import ProfileResult
 from .knowledge import KnowledgeBase
 from .llm.router import LLMRouter
+from .vuln import VulnKB, VulnMatch, extract_vuln_ids
 from .state import SessionState, StateStore, host_to_dict, host_from_dict
 from .tools.runner import Runner
 from .tools.recon import ReconExecutor, ReconReport, auto_approve_in_scope, Approver
@@ -54,6 +55,9 @@ class OrchestrationReport:
     enum_findings: list[EnumFinding] = field(default_factory=list)
     llm_findings: list[EnumFinding] = field(default_factory=list)
     manual_suggestions: list[str] = field(default_factory=list)
+    detected_cve: list[str] = field(default_factory=list)
+    detected_cwe: list[str] = field(default_factory=list)
+    vuln_matches: list[VulnMatch] = field(default_factory=list)
     message: str = ""
 
     def summary(self) -> str:
@@ -73,6 +77,20 @@ class OrchestrationReport:
                     lines.append(f"  {mark} {f.command}" + (f"  — {f.note}" if f.note else ""))
                     if f.output:
                         lines.append(f"      {f.output}")
+        if self.detected_cve or self.detected_cwe or self.vuln_matches:
+            lines.append("\n## VULN (탐지된 취약점 — 수동 검증/익스플로잇 필요)")
+            if self.detected_cve:
+                lines.append(f"  탐지 CVE: {', '.join(self.detected_cve)}")
+            if self.detected_cwe:
+                lines.append(f"  탐지 CWE: {', '.join(self.detected_cwe)}")
+            for m in self.vuln_matches:
+                sev = f"[{m.severity}] " if m.severity else ""
+                ids = " ".join(m.cve + m.cwe)
+                lines.append(f"  ⚠️ {sev}{m.name} ({ids}) — 매칭:{m.matched_on}")
+                if m.note:
+                    lines.append(f"       비고: {m.note}")
+                for s in m.suggest:
+                    lines.append(f"       제안: {s}")
         if self.manual_suggestions:
             lines.append("\n## 수동 제안 (크리덴셜 등 필요 — 승인/입력 후 실행)")
             for s in self.manual_suggestions:
@@ -100,6 +118,7 @@ class Orchestrator:
                  recon_max_attempts: int = 4,
                  llm_router: LLMRouter | None = None,
                  max_llm: int = 5,
+                 vuln_kb: VulnKB | None = None,
                  state_store: StateStore | None = None,
                  resume: bool = False,
                  is_tool_available: Callable[[str], bool] | None = None):
@@ -112,6 +131,7 @@ class Orchestrator:
         self.recon_max_attempts = recon_max_attempts
         self.llm_router = llm_router
         self.max_llm = max_llm
+        self.vuln_kb = vuln_kb
         self.state_store = state_store
         self.resume = resume
         # 도구 설치 여부 판단(주입 가능 — 테스트에서 대체)
@@ -157,6 +177,9 @@ class Orchestrator:
         if self.llm_router is not None:
             self._run_llm(report, host, prof, target)
 
+        # ── PHASE 3.7: VULN (CVE/CWE 탐지 + 매핑) ──
+        self._run_vuln(report, host, target)
+
         # ── PHASE 4: REPORT ──
         report.status = "done"
         report.message += (f"OS={prof.os_class.value}({prof.tag}), "
@@ -186,6 +209,10 @@ class Orchestrator:
             st.llm_findings = [fin(f) for f in report.llm_findings]
         if report.manual_suggestions:
             st.manual_suggestions = report.manual_suggestions
+        if report.detected_cve:
+            st.detected_cve = report.detected_cve
+        if report.detected_cwe:
+            st.detected_cwe = report.detected_cwe
         st.add_history(report.message.strip() or report.status)
         self.state_store.save(st)
 
@@ -232,6 +259,25 @@ class Orchestrator:
                 continue
             seen.add(cmd)
             self._attempt(report.llm_findings, cmd)
+
+    def _run_vuln(self, report: OrchestrationReport, host: NmapHost, target: str) -> None:
+        # 관측 코퍼스: 배너 + 스크립트 + enum/LLM 출력
+        corpus_parts = list(host.hostscripts.values())
+        banners: list[str] = []
+        for p in host.ports:
+            if p.state == "open":
+                if p.banner:
+                    banners.append(p.banner)
+                    corpus_parts.append(p.banner)
+                corpus_parts.extend(p.scripts.values())
+        for f in report.enum_findings + report.llm_findings:
+            if f.output:
+                corpus_parts.append(f.output)
+        hits = extract_vuln_ids("\n".join(corpus_parts))
+        report.detected_cve = hits.cves
+        report.detected_cwe = hits.cwes
+        if self.vuln_kb is not None:
+            report.vuln_matches = self.vuln_kb.match(banners, target)
 
     def _attempt(self, findings: list[EnumFinding], cmd: str) -> None:
         finding = EnumFinding(command=cmd)
