@@ -17,6 +17,14 @@ from __future__ import annotations
 from .approval import explain_command
 
 
+def _flag_line(report, kind: str, fallback: str) -> str:
+    """캡처된 플래그가 있으면 값, 없으면 안내 문구."""
+    val = report.user_flag if kind == "user" else report.root_flag
+    if val:
+        return f"`{val}`  ✅ 획득"
+    return f"미획득 ({fallback})"
+
+
 # 포트별 블루팀 탐지 지표 (관측된 포트에만 출력)
 _BLUE: dict[int, dict] = {
     21: {"svc": "FTP", "siem": "FTP 로그인 성공/실패 로그",
@@ -184,12 +192,12 @@ def generate_writeup(report, machine_name: str = "<머신명>",
 
 {foothold_block}
 
-- user.txt: `{username}` 홈 디렉토리에서 확인 (플래그는 수동 획득)
+- user.txt: {_flag_line(report, "user", username)}
 
 ## 6. 권한 상승 (Privilege Escalation)
 
 - _(수동 분석: SUID/sudo, 커널, 서비스 오구성, AD 공격경로 등)_
-- root.txt: 관리자 권한 획득 후 확인
+- root.txt: {_flag_line(report, "root", "관리자 권한 획득 후")}
 
 ## 7. 블루팀 탐지 지표 (Blue Team)
 

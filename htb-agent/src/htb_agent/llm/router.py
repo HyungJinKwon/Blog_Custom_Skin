@@ -71,6 +71,8 @@ class LLMRouter:
     @staticmethod
     def _user_prompt(context: dict, target: str) -> str:
         lines = [f"타겟: {target}"]
+        if context.get("phase"):
+            lines.append(f"현재 모의해킹 단계: {context['phase']} — 이 단계에 맞는 명령만 제안하라.")
         if context.get("profile"):
             lines.append(f"OS 판정:\n{context['profile']}")
         if context.get("open_ports"):

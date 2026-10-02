@@ -95,3 +95,7 @@ LLM 제안
 - 라이트업: Tistory 13섹션 템플릿(--writeup-format tistory).
 - LLM: 프롬프트 캐싱(ephemeral) + 토큰·비용 집계(pricing).
 - 품질: 3분할 옵션-값 페어링(화이트리스트), mypy CI(비차단).
+
+- 모의해킹 단계 파이프라인: enum→access→privesc→lateral 순서 진행 + 단계별 KB/LLM, 결과 단계 그룹화.
+
+- 플래그 캡처: user.txt/root.txt 탐지·분류(출력 스캔 + 자격증명 기반 획득 명령), 리포트·라이트업·상태 반영.

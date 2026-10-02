@@ -34,9 +34,20 @@ from .creds import CredentialVault
 from .audit import NullAudit
 from .llm.router import LLMRouter
 from .vuln import VulnKB, VulnMatch, extract_vuln_ids
+from .flag import FlagHit, scan as scan_flags
 from .state import SessionState, StateStore, host_to_dict, host_from_dict
 from .tools.runner import Runner
 from .tools.recon import ReconExecutor, ReconReport, auto_approve_in_scope, Approver
+
+
+# 모의해킹 진행 단계(순서대로). (key, 표시라벨)
+PENTEST_PHASES: list[tuple[str, str]] = [
+    ("enum", "열거 (Enumeration)"),
+    ("access", "초기 침투 (Initial Access)"),
+    ("privesc", "권한 상승 (Privilege Escalation)"),
+    ("lateral", "측면 이동 (Lateral Movement)"),
+]
+_PHASE_LABEL = dict(PENTEST_PHASES)
 
 
 @dataclass
@@ -45,6 +56,7 @@ class EnumFinding:
     ran: bool = False
     note: str = ""
     output: str = ""
+    phase: str = "enum"
 
 
 @dataclass
@@ -60,7 +72,16 @@ class OrchestrationReport:
     detected_cve: list[str] = field(default_factory=list)
     detected_cwe: list[str] = field(default_factory=list)
     vuln_matches: list[VulnMatch] = field(default_factory=list)
+    flags: list[FlagHit] = field(default_factory=list)
     message: str = ""
+
+    @property
+    def user_flag(self) -> str | None:
+        return next((f.value for f in self.flags if f.kind == "user"), None)
+
+    @property
+    def root_flag(self) -> str | None:
+        return next((f.value for f in self.flags if f.kind == "root"), None)
 
     def summary(self) -> str:
         lines = [f"# 오케스트레이션 — {self.target} [{self.status}] {self.message}".rstrip()]
@@ -70,11 +91,13 @@ class OrchestrationReport:
         if self.profile:
             lines.append("\n## PROFILE")
             lines.append(self.profile.summary())
-        for title, findings in (("ENUM (KB 자동실행)", self.enum_findings),
-                                ("LLM 제안 (자동실행)", self.llm_findings)):
-            if findings:
-                lines.append(f"\n## {title}")
-                for f in findings:
+        # 모의해킹 단계 순서대로 그룹화 출력
+        all_findings = self.enum_findings + self.llm_findings
+        for key, label in PENTEST_PHASES:
+            group = [f for f in all_findings if f.phase == key]
+            if group:
+                lines.append(f"\n## 단계: {label}")
+                for f in group:
                     mark = "▶" if f.ran else "·"
                     lines.append(f"  {mark} {f.command}" + (f"  — {f.note}" if f.note else ""))
                     if f.output:
@@ -93,6 +116,13 @@ class OrchestrationReport:
                     lines.append(f"       비고: {m.note}")
                 for s in m.suggest:
                     lines.append(f"       제안: {s}")
+        if self.flags:
+            lines.append("\n## 🚩 플래그 (FLAG)")
+            lines.append(f"  user.txt: {self.user_flag or '미획득'}")
+            lines.append(f"  root.txt: {self.root_flag or '미획득'}")
+            for f in self.flags:
+                if f.kind == "unknown":
+                    lines.append(f"  (미분류) {f.value} ← {f.source}")
         if self.manual_suggestions:
             lines.append("\n## 수동 제안 (크리덴셜 등 필요 — 승인/입력 후 실행)")
             for s in self.manual_suggestions:
@@ -114,6 +144,7 @@ class Orchestrator:
                  state_store: StateStore | None = None,
                  resume: bool = False,
                  audit=None,
+                 phases: list[tuple[str, str]] | None = None,
                  is_tool_available: Callable[[str], bool] | None = None):
         self.guard = guard
         self.runner = runner
@@ -130,6 +161,7 @@ class Orchestrator:
         self.state_store = state_store
         self.resume = resume
         self.audit = audit or NullAudit()
+        self.phases = phases or PENTEST_PHASES
         # 도구 설치 여부 판단(주입 가능 — 테스트에서 대체)
         self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
 
@@ -173,20 +205,24 @@ class Orchestrator:
         self.audit.event("profile", os=prof.os_class.value, confidence=prof.confidence,
                          is_dc=prof.is_domain_controller)
 
-        # ── PHASE 3: ENUM/LLM 반복 라운드 (유한: max_rounds × 상한) ──
-        # 이전 라운드 관측을 다음 LLM 제안에 재반영(적응). 삼중 상한(라운드·enum·llm)
-        # + '새 명령 없으면 조기 종료'로 무한루프를 원천 차단.
+        # ── PHASE 3: 모의해킹 단계 '순서대로' 진행 ──
+        # enum → access → privesc → lateral 순. 각 단계는 KB(해당 phase)+LLM 적응
+        # 라운드를 돌리되, 전역 상한(max_enum·max_llm)·라운드 상한·조기종료로 유한.
         seen_cmds: set[str] = set()
-        rounds_run = 0
-        for _rnd in range(self.max_rounds):
-            rounds_run += 1
-            added = self._enum_round(report, host, prof, target, seen_cmds,
-                                     self.max_enum - len(report.enum_findings))
-            if self.llm_router is not None:
-                added += self._llm_round(report, host, prof, target, seen_cmds,
-                                         self.max_llm - len(report.llm_findings))
-            if added == 0:
-                break
+        phases_run: list[str] = []
+        for key, label in self.phases:
+            phase_before = len(report.enum_findings) + len(report.llm_findings)
+            for _rnd in range(self.max_rounds):
+                added = self._enum_round(report, host, prof, target, seen_cmds,
+                                         self.max_enum - len(report.enum_findings), key)
+                if self.llm_router is not None:
+                    added += self._llm_round(report, host, prof, target, seen_cmds,
+                                             self.max_llm - len(report.llm_findings), key)
+                if added == 0:
+                    break
+            if len(report.enum_findings) + len(report.llm_findings) > phase_before:
+                phases_run.append(key)
+        rounds_run = len(phases_run)
 
         # ── PHASE 3.7: VULN (CVE/CWE 탐지 + 매핑) ──
         self._run_vuln(report, host, target)
@@ -199,9 +235,11 @@ class Orchestrator:
 
         # ── PHASE 4: REPORT ──
         report.status = "done"
+        flag_state = f"user={'O' if report.user_flag else 'X'} root={'O' if report.root_flag else 'X'}"
         report.message += (f"OS={prof.os_class.value}({prof.tag}), "
-                           f"라운드 {rounds_run}, KB enum {len(report.enum_findings)}건, "
-                           f"LLM {len(report.llm_findings)}건")
+                           f"진행단계 {'→'.join(phases_run) or '없음'}, "
+                           f"KB enum {len(report.enum_findings)}건, "
+                           f"LLM {len(report.llm_findings)}건, 플래그[{flag_state}]")
         self._persist(report, prior)
         self.audit.event("vuln", cve=report.detected_cve, cwe=report.detected_cwe,
                          matches=[m.name for m in report.vuln_matches])
@@ -235,17 +273,20 @@ class Orchestrator:
             st.detected_cwe = report.detected_cwe
         if self.vault is not None and self.vault.creds:
             st.credentials = self.vault.to_list()
+        if report.flags:
+            st.flags = [{"value": f.value, "kind": f.kind, "source": f.source}
+                        for f in report.flags]
         st.add_history(report.message.strip() or report.status)
         self.state_store.save(st)
 
     def _enum_round(self, report: OrchestrationReport, host: NmapHost,
                     prof: ProfileResult, target: str,
-                    seen: set[str], budget: int) -> int:
-        """KB 기반 enum 한 라운드. 새로 시도한 명령 수 반환(전역 seen·budget 존중)."""
+                    seen: set[str], budget: int, phase: str = "enum") -> int:
+        """해당 단계(phase)의 KB 제안 한 라운드. 새로 시도한 명령 수 반환."""
         if budget <= 0:
             return 0
         services = [p.service for p in host.ports if p.state == "open" and p.service]
-        recs = self.kb.query(prof.os_class.value, host.open_ports, services)
+        recs = self.kb.query(prof.os_class.value, host.open_ports, services, phase=phase)
         attempted = 0
         for rec in recs:
             for tmpl in rec.suggestions:
@@ -254,12 +295,13 @@ class Orchestrator:
                         continue
                     seen.add(cmd)
                     if not runnable:
-                        report.manual_suggestions.append(cmd + f"   # [{rec.rule_name}]")
+                        report.manual_suggestions.append(
+                            cmd + f"   # [{_PHASE_LABEL.get(phase, phase)}] {rec.rule_name}")
                         continue
                     if attempted >= budget:
-                        report.manual_suggestions.append(cmd + "   # (enum 상한 초과 — 수동)")
+                        report.manual_suggestions.append(cmd + "   # (상한 초과 — 수동)")
                         continue
-                    self._attempt(report.enum_findings, cmd)
+                    self._attempt(report, report.enum_findings, cmd, phase)
                     attempted += 1
         return attempted
 
@@ -272,15 +314,16 @@ class Orchestrator:
 
     def _llm_round(self, report: OrchestrationReport, host: NmapHost,
                    prof: ProfileResult, target: str,
-                   seen: set[str], budget: int) -> int:
-        """LLM 제안 한 라운드. 이전 관측을 컨텍스트에 반영(적응). 새 시도 수 반환."""
+                   seen: set[str], budget: int, phase: str = "enum") -> int:
+        """해당 단계의 LLM 제안 한 라운드. 이전 관측을 컨텍스트에 반영(적응)."""
         if budget <= 0:
             return 0
         services = [p.service for p in host.ports if p.state == "open" and p.service]
-        recs = self.kb.query(prof.os_class.value, host.open_ports, services)
+        recs = self.kb.query(prof.os_class.value, host.open_ports, services, phase=phase)
         prior = [f"{f.command} => {f.output}"
                  for f in (report.enum_findings + report.llm_findings) if f.output]
         context = {
+            "phase": _PHASE_LABEL.get(phase, phase),
             "profile": prof.summary(),
             "open_ports": [str(p) for p in host.ports if p.state == "open"],
             "kb": [f"{r.rule_name}: {', '.join(r.suggestions)}" for r in recs[:5]],
@@ -299,7 +342,7 @@ class Orchestrator:
             seen.add(cmd)
             if attempted >= budget:
                 break
-            self._attempt(report.llm_findings, cmd)
+            self._attempt(report, report.llm_findings, cmd, phase)
             attempted += 1
         return attempted
 
@@ -322,10 +365,11 @@ class Orchestrator:
         if self.vuln_kb is not None:
             report.vuln_matches = self.vuln_kb.match(banners, target)
 
-    def _attempt(self, findings: list[EnumFinding], cmd: str) -> None:
-        finding = EnumFinding(command=cmd)
+    def _attempt(self, report: OrchestrationReport, findings: list[EnumFinding],
+                 cmd: str, phase: str = "enum") -> None:
+        finding = EnumFinding(command=cmd, phase=phase)
         findings.append(finding)
-        self.audit.event("proposed", cmd=cmd)
+        self.audit.event("proposed", cmd=cmd, phase=phase)
 
         binary = binary_of(cmd)
         if binary and not self.is_tool_available(binary):
@@ -358,3 +402,9 @@ class Orchestrator:
         finding.output = summarize_tool_output(cmd, out.stdout, out.stderr)
         self.audit.event("executed", cmd=cmd, launched=True,
                          returncode=out.returncode, summary=finding.output)
+        # 플래그 스캔 — 출력에서 user.txt/root.txt 획득
+        for hit in scan_flags(cmd, out.stdout):
+            if hit.value not in {f.value for f in report.flags}:
+                report.flags.append(hit)
+                finding.note = (finding.note + " " if finding.note else "") + f"🚩 {hit.kind} flag"
+                self.audit.event("flag_found", kind=hit.kind, value=hit.value, cmd=cmd)

@@ -47,11 +47,11 @@ check("라운드1 gobuster 실행", any("gobuster" in c for c in cmds))
 check("라운드2 적응해 nuclei 제안(새 명령)", any("nuclei" in c for c in cmds))
 check("중복 명령 재실행 안 함", len(cmds) == len(set(cmds)))
 
-print("\n=== max_rounds=1 → 1라운드만 ===")
-# round1 gobuster 만, round2 진입 안 함
+print("\n=== max_rounds=1 → 단일 단계 1라운드만 ===")
+# 단일 단계(enum)로 제한 + max_rounds=1 → round1 gobuster 만, 적응 라운드 없음
 orc = Orchestrator(guard(), runner(), EMPTY_KB, auto_approve_in_scope,
                    llm_router=LLMRouter(FakeProvider(adaptive)), max_rounds=1,
-                   is_tool_available=lambda b: True)
+                   phases=[("enum", "열거")], is_tool_available=lambda b: True)
 rep = orc.run()
 cmds = [f.command for f in rep.llm_findings]
 check("1라운드: gobuster만", any("gobuster" in c for c in cmds) and not any("nuclei" in c for c in cmds))

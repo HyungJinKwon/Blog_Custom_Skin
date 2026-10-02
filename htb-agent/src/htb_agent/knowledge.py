@@ -43,6 +43,7 @@ class Rule:
     note: str = ""
     source: str = "builtin"
     tags: list[str] = field(default_factory=list)
+    phase: str = "enum"   # 모의해킹 단계: enum / access / privesc / lateral
 
 
 @dataclass
@@ -53,6 +54,7 @@ class Recommendation:
     note: str
     score: int
     tags: list[str] = field(default_factory=list)
+    phase: str = "enum"
 
 
 # 표준 도구 사용 템플릿(일반 지식 — 특정 머신 라이트업 아님)
@@ -76,12 +78,28 @@ SEED_RULES: list[Rule] = [
     Rule("AD BloodHound 수집",
          ["bloodhound-python -d {domain} -u {user} -p {pass} -ns {t} -c all"],
          ports=[389, 88], os=["windows_ad"], tags=["ad", "bloodhound"],
-         note="도메인 크리덴셜 확보 후(수동)"),
+         note="도메인 크리덴셜 확보 후(수동)", phase="access"),
     Rule("WinRM 셸", ["evil-winrm -i {t} -u {user} -p {pass}"],
          ports=[5985, 5986], services=["winrm"], os=["windows", "windows_ad"],
-         tags=["ad", "shell"], note="크리덴셜 필요(수동)"),
+         tags=["ad", "shell"], note="크리덴셜 필요(수동)", phase="access"),
     Rule("SSH 접속", ["ssh {user}@{t}"], ports=[22], services=["ssh"], tags=["linux"],
-         note="크리덴셜/키 필요(수동)"),
+         note="크리덴셜/키 필요(수동)", phase="access"),
+    # ── 플래그 획득 (자격증명 확보 시 볼트로 승격) ──
+    Rule("유저 플래그(Windows/WinRM)",
+         ['netexec winrm {t} -u {user} -p {pass} -x "type C:\\Users\\{user}\\Desktop\\user.txt"'],
+         ports=[5985, 5986], os=["windows", "windows_ad"], phase="access",
+         tags=["flag"], note="user.txt"),
+    Rule("유저 플래그(Linux/SSH)",
+         ['sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} "cat ~/user.txt; id"'],
+         ports=[22], os=["linux"], phase="access", tags=["flag"], note="user.txt"),
+    Rule("루트 플래그(Windows)",
+         ['netexec smb {t} -u {user} -p {pass} -x "type C:\\Users\\Administrator\\Desktop\\root.txt"'],
+         ports=[445], os=["windows", "windows_ad"], phase="privesc",
+         tags=["flag"], note="root.txt (관리자 권한 필요)"),
+    Rule("루트 플래그(Linux)",
+         ['sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} "sudo -n cat /root/root.txt"'],
+         ports=[22], os=["linux"], phase="privesc", tags=["flag"],
+         note="root.txt (sudo/root 권한 필요)"),
 ]
 
 _PLACEHOLDER = re.compile(r"\{[a-zA-Z_]+\}")
@@ -102,11 +120,15 @@ class KnowledgeBase:
         return cls(rules, notes)
 
     def query(self, os_class: str, open_ports: list[int],
-              services: list[str] | None = None) -> list[Recommendation]:
+              services: list[str] | None = None,
+              phase: str | None = None) -> list[Recommendation]:
         services = [s.lower() for s in (services or [])]
         ports = set(open_ports)
         recs: list[Recommendation] = []
         for r in self.rules:
+            # 단계 필터: 지정됐는데 불일치면 제외
+            if phase is not None and r.phase != phase:
+                continue
             # OS 제약: 지정됐는데 불일치면 제외
             if r.os and os_class not in r.os:
                 continue
@@ -128,7 +150,7 @@ class KnowledgeBase:
                 + (2 if (port_spec and port_match) else 0) \
                 + (1 if (svc_spec and svc_match) else 0)
             recs.append(Recommendation(r.name, r.source, list(r.suggest),
-                                       r.note, score, list(r.tags)))
+                                       r.note, score, list(r.tags), r.phase))
         recs.sort(key=lambda x: x.score, reverse=True)
         return recs
 
@@ -166,6 +188,7 @@ def _load_rule_dir(path: str) -> list[Rule]:
                 note=str(it.get("note", "")),
                 source=f"user:{fn}",
                 tags=list(it.get("tags", [])),
+                phase=str(it.get("phase", "enum")),
             ))
     return out
 
