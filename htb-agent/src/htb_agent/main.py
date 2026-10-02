@@ -19,9 +19,10 @@ import sys
 from .scope_guard import ScopeGuard, ScopeViolation
 from .environment import preflight, detect_vpn_ips
 from .tools.runner import SubprocessRunner
-from .tools.recon import ReconExecutor, auto_approve_in_scope
+from .tools.recon import auto_approve_in_scope
 from .approval import interactive_approver
-from .observation.compressor import render_observation, recommend_followup
+from .knowledge import KnowledgeBase
+from .orchestrator import Orchestrator
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,6 +39,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="범위내+검증통과 명령 자동승인 (비대화형)")
     p.add_argument("--max-attempts", type=int, default=4,
                    help="포트스캔 폴백 최대 시도 (기본 4, 무한루프 방지)")
+    p.add_argument("--max-enum", type=int, default=6,
+                   help="enum 자동실행 최대 개수 (기본 6, 무한확장 방지)")
+    p.add_argument("--knowledge", default="knowledge",
+                   help="지식베이스 디렉토리 (기본 ./knowledge). 사용자 규칙/노트로 성장")
     return p
 
 
@@ -65,26 +70,18 @@ def main(argv: list[str] | None = None) -> int:
     print(pf.render())
     print(f"\n타겟 바인딩: {guard.bound_target} | 허용대역: {guard.describe()} | 공격자IP: {attacker or '(없음)'}\n")
 
-    # 4) Recon 실행 (승인제)
-    approver = auto_approve_in_scope if args.auto else interactive_approver
-    executor = ReconExecutor(guard, SubprocessRunner(), approver,
-                             max_attempts=args.max_attempts)
-    report = executor.run_portscan()
-    print("\n" + report.summary())
+    # 4) 지식베이스 로드 (사용자 학습데이터로 성장)
+    kb = KnowledgeBase.load(base_dir=args.knowledge)
+    print(f"지식베이스: 규칙 {len(kb.rules)}개, 노트 {len(kb.notes)}개 로드\n")
 
-    # 5) 관측 요약 + 다음 '경우의 수' 제안
-    if report.host is not None:
-        print("\n" + render_observation(report.host))
-    if report.status != "success":
-        # 폴백 제안(실행은 안 함 — 사람이 판단)
-        last = next((a.result for a in reversed(report.attempts) if a.result), None)
-        if last is not None:
-            sugg = recommend_followup(last)
-            if sugg:
-                print("\n[다음 경우의 수 제안]")
-                for s in sugg:
-                    print(f"  · {s}")
-    return 0 if report.status == "success" else 1
+    # 5) 오케스트레이션 (유한 단계: RECON→PROFILE→ENUM→REPORT)
+    approver = auto_approve_in_scope if args.auto else interactive_approver
+    orchestrator = Orchestrator(guard, SubprocessRunner(), kb, approver,
+                                max_enum=args.max_enum,
+                                recon_max_attempts=args.max_attempts)
+    report = orchestrator.run()
+    print("\n" + report.summary())
+    return 0 if report.status == "done" else 1
 
 
 if __name__ == "__main__":

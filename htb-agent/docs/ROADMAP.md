@@ -41,10 +41,12 @@ LLM 제안
 | Scope Guard | `src/htb_agent/scope_guard.py` | ✅ Target-Binding 완료 (17 테스트) |
 | Command Validator | `src/htb_agent/command_validator.py` | ✅ 완료 (감사 반영) |
 | Target Profiler | `src/htb_agent/target_profiler.py` | ✅ 완료 (감사 반영) |
+| 지식베이스(학습데이터) | `src/htb_agent/knowledge.py`, `knowledge/` | ✅ 완료 (사용자 규칙/노트로 성장) |
+| 오케스트레이터 | `src/htb_agent/orchestrator.py` | ✅ 완료 (유한 단계 상태머신) |
 | LLM 추상화 + 티어링 | `src/htb_agent/llm/` | ⏳ 예정 |
 | 관측 파서/압축기 | `src/htb_agent/observation/` | ✅ 완료 (nmap XML·텍스트, HTTP, 폴백제안) |
 | 승인 루프 | `src/htb_agent/approval.py` | ✅ 완료 (3분할 해설) |
-| 오케스트레이터 | `src/htb_agent/orchestrator.py` | ⏳ 예정 |
+
 | 도구 레지스트리/설치 | `tools/registry.py`, `scripts/install_tools.sh` | ✅ 완료 (BloodHound·S3 등) |
 | Recon 실행기(nmap) | `src/htb_agent/tools/recon.py` | ✅ 완료 (유한 폴백) |
 | 환경 프리플라이트 | `src/htb_agent/environment.py` | ✅ 완료 (Kali) |
