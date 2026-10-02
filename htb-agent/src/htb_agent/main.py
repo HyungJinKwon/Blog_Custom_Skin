@@ -43,6 +43,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="포트스캔 폴백 최대 시도 (기본 4, 무한루프 방지)")
     p.add_argument("--max-enum", type=int, default=None,
                    help="enum 자동실행 최대 개수 (기본 6, 무한확장 방지)")
+    p.add_argument("--max-rounds", type=int, default=None,
+                   help="ENUM/LLM 반복 라운드 수 (기본 2, 무한루프 방지)")
     p.add_argument("--knowledge", default=None,
                    help="지식베이스 디렉토리 (기본 ./knowledge). 사용자 규칙/노트로 성장")
     p.add_argument("--llm", choices=["none", "claude", "ollama"], default=None,
@@ -91,6 +93,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     ranges = pick(args.ranges, cfg.allowed_ranges, None)
     max_attempts = pick(args.max_attempts, cfg.max_attempts, 4)
     max_enum = pick(args.max_enum, cfg.max_enum, 6)
+    max_rounds = pick(args.max_rounds, cfg.max_rounds, 2)
     knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, "knowledge")
     llm_kind = pick(args.llm, cfg.llm_backend, "none")
     llm_tier = pick(args.llm_tier, cfg.llm_tier, "standard")
@@ -141,6 +144,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     orchestrator = Orchestrator(guard, runner or SubprocessRunner(), kb, approver,
                                 max_enum=max_enum,
                                 recon_max_attempts=max_attempts,
+                                max_rounds=max_rounds,
                                 llm_router=llm_router, vuln_kb=vuln_kb,
                                 state_store=store, resume=args.resume)
     report = orchestrator.run()

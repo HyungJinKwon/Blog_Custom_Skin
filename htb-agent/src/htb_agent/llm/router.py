@@ -55,6 +55,8 @@ class LLMRouter:
             lines.append(f"OS 판정:\n{context['profile']}")
         if context.get("open_ports"):
             lines.append("열린 포트/서비스:\n  " + "\n  ".join(context["open_ports"]))
+        if context.get("findings"):
+            lines.append("지금까지 관측(명령 → 결과):\n  " + "\n  ".join(context["findings"]))
         if context.get("kb"):
             lines.append("참고(지식베이스 제안):\n  " + "\n  ".join(context["kb"]))
         if context.get("notes"):

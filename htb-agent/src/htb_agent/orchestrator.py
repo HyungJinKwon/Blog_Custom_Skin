@@ -116,6 +116,7 @@ class Orchestrator:
                  hosts_map: dict[str, str] | None = None,
                  max_enum: int = 6,
                  recon_max_attempts: int = 4,
+                 max_rounds: int = 2,
                  llm_router: LLMRouter | None = None,
                  max_llm: int = 5,
                  vuln_kb: VulnKB | None = None,
@@ -129,6 +130,7 @@ class Orchestrator:
         self.hosts_map = hosts_map
         self.max_enum = max_enum
         self.recon_max_attempts = recon_max_attempts
+        self.max_rounds = max(1, max_rounds)
         self.llm_router = llm_router
         self.max_llm = max_llm
         self.vuln_kb = vuln_kb
@@ -170,12 +172,20 @@ class Orchestrator:
         prof = profile_from_nmap(host)
         report.profile = prof
 
-        # ── PHASE 3: ENUM (KB 기반, 유한 상한) ──
-        self._run_enum(report, host, prof, target)
-
-        # ── PHASE 3.5: LLM 제안 (선택, 유한 상한) ──
-        if self.llm_router is not None:
-            self._run_llm(report, host, prof, target)
+        # ── PHASE 3: ENUM/LLM 반복 라운드 (유한: max_rounds × 상한) ──
+        # 이전 라운드 관측을 다음 LLM 제안에 재반영(적응). 삼중 상한(라운드·enum·llm)
+        # + '새 명령 없으면 조기 종료'로 무한루프를 원천 차단.
+        seen_cmds: set[str] = set()
+        rounds_run = 0
+        for _rnd in range(self.max_rounds):
+            rounds_run += 1
+            added = self._enum_round(report, host, prof, target, seen_cmds,
+                                     self.max_enum - len(report.enum_findings))
+            if self.llm_router is not None:
+                added += self._llm_round(report, host, prof, target, seen_cmds,
+                                         self.max_llm - len(report.llm_findings))
+            if added == 0:
+                break
 
         # ── PHASE 3.7: VULN (CVE/CWE 탐지 + 매핑) ──
         self._run_vuln(report, host, target)
@@ -183,7 +193,7 @@ class Orchestrator:
         # ── PHASE 4: REPORT ──
         report.status = "done"
         report.message += (f"OS={prof.os_class.value}({prof.tag}), "
-                           f"KB enum {len(report.enum_findings)}건, "
+                           f"라운드 {rounds_run}, KB enum {len(report.enum_findings)}건, "
                            f"LLM {len(report.llm_findings)}건")
         self._persist(report, prior)
         return report
@@ -216,13 +226,15 @@ class Orchestrator:
         st.add_history(report.message.strip() or report.status)
         self.state_store.save(st)
 
-    def _run_enum(self, report: OrchestrationReport, host: NmapHost,
-                  prof: ProfileResult, target: str) -> None:
+    def _enum_round(self, report: OrchestrationReport, host: NmapHost,
+                    prof: ProfileResult, target: str,
+                    seen: set[str], budget: int) -> int:
+        """KB 기반 enum 한 라운드. 새로 시도한 명령 수 반환(전역 seen·budget 존중)."""
+        if budget <= 0:
+            return 0
         services = [p.service for p in host.ports if p.state == "open" and p.service]
         recs = self.kb.query(prof.os_class.value, host.open_ports, services)
-
-        seen: set[str] = set()
-        ran_count = 0
+        attempted = 0
         for rec in recs:
             for tmpl in rec.suggestions:
                 cmd, auto_runnable = self.kb.format_suggestion(tmpl, target)
@@ -232,33 +244,45 @@ class Orchestrator:
                 if not auto_runnable:
                     report.manual_suggestions.append(cmd + f"   # [{rec.rule_name}]")
                     continue
-                if ran_count >= self.max_enum:     # 유한 상한 — 무한 확장 방지
+                if attempted >= budget:
                     report.manual_suggestions.append(cmd + "   # (enum 상한 초과 — 수동)")
                     continue
                 self._attempt(report.enum_findings, cmd)
-                ran_count += 1
+                attempted += 1
+        return attempted
 
-    def _run_llm(self, report: OrchestrationReport, host: NmapHost,
-                 prof: ProfileResult, target: str) -> None:
+    def _llm_round(self, report: OrchestrationReport, host: NmapHost,
+                   prof: ProfileResult, target: str,
+                   seen: set[str], budget: int) -> int:
+        """LLM 제안 한 라운드. 이전 관측을 컨텍스트에 반영(적응). 새 시도 수 반환."""
+        if budget <= 0:
+            return 0
         services = [p.service for p in host.ports if p.state == "open" and p.service]
         recs = self.kb.query(prof.os_class.value, host.open_ports, services)
+        prior = [f"{f.command} => {f.output}"
+                 for f in (report.enum_findings + report.llm_findings) if f.output]
         context = {
             "profile": prof.summary(),
             "open_ports": [str(p) for p in host.ports if p.state == "open"],
             "kb": [f"{r.rule_name}: {', '.join(r.suggestions)}" for r in recs[:5]],
             "notes": self.kb.notes[:3],
+            "findings": prior[-10:],
         }
         try:
-            cmds = self.llm_router.suggest_commands(context, target, max_items=self.max_llm)
+            cmds = self.llm_router.suggest_commands(context, target, max_items=budget)
         except Exception as e:  # LLM 백엔드 오류는 전체를 깨지 않는다
             report.manual_suggestions.append(f"(LLM 제안 실패: {e})")
-            return
-        seen = {f.command for f in report.enum_findings}
-        for cmd in cmds[:self.max_llm]:     # 유한 상한
+            return 0
+        attempted = 0
+        for cmd in cmds:
             if cmd in seen:
                 continue
             seen.add(cmd)
+            if attempted >= budget:
+                break
             self._attempt(report.llm_findings, cmd)
+            attempted += 1
+        return attempted
 
     def _run_vuln(self, report: OrchestrationReport, host: NmapHost, target: str) -> None:
         # 관측 코퍼스: 배너 + 스크립트 + enum/LLM 출력

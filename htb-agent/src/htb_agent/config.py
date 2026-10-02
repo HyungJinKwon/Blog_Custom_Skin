@@ -26,6 +26,7 @@ class Config:
     max_attempts: int | None = None
     max_enum: int | None = None
     max_llm: int | None = None
+    max_rounds: int | None = None
     knowledge_dir: str | None = None
     state_dir: str | None = None
 
@@ -41,6 +42,7 @@ class Config:
             max_attempts=d.get("max_attempts"),
             max_enum=d.get("max_enum"),
             max_llm=d.get("max_llm"),
+            max_rounds=d.get("max_rounds"),
             knowledge_dir=d.get("knowledge_dir", d.get("knowledge")),
             state_dir=d.get("state_dir"),
         )
