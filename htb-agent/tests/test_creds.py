@@ -1,5 +1,5 @@
 # 실행: htb-agent 디렉토리에서  python3 tests/test_creds.py
-import sys, tempfile, os, json
+import sys
 sys.path.insert(0, "src")
 from htb_agent.creds import Credential, CredentialVault, fill
 from htb_agent.scope_guard import ScopeGuard

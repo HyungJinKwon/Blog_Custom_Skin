@@ -26,28 +26,33 @@
 
 ```bash
 cd htb-agent
-sudo ./scripts/install_tools.sh          # 전체(BloodHound·S3 등) / 또는: ... recon web smb ad
-sudo openvpn your-htb.ovpn                # tun0 → 공격자 IP 자동탐지
+sudo ./scripts/install_tools.sh          # 보안 도구 전체(BloodHound·S3 등) / 또는: ... recon web smb ad
+pip install -e .                         # 에이전트 설치 → 'htb-agent' 명령 생성
+sudo openvpn your-htb.ovpn               # tun0 → 공격자 IP 자동탐지
 ```
 
-Python 3.10+ (코어는 표준 라이브러리만). LLM 사용 시 `pip install anthropic`(Claude) 또는 Ollama.
+Python 3.10+ (코어는 표준 라이브러리만, 외부 의존성 없음). LLM 사용 시 `pip install anthropic`(Claude) 또는 Ollama.
+
+> 설치 없이 쓰려면 `cd htb-agent` 에서 `PYTHONPATH=src python3 -m htb_agent ...` 로 실행.
 
 ## 실행
 
+설치(`pip install -e .`) 후에는 어디서나 `htb-agent` 명령을 쓸 수 있습니다.
+
 ```bash
 # 승인제 포트스캔+열거 (명령마다 3분할 해설 + 승인)
-python3 -m htb_agent 10.129.1.5
+htb-agent 10.129.1.5
 
 # 범위내 자동승인 + 자격증명(→ 초기 침투·플래그 승격) + 라이트업 생성
-python3 -m htb_agent 10.129.1.5 --auto --cred administrator:Passw0rd --writeup
+htb-agent 10.129.1.5 --auto --cred administrator:Passw0rd --writeup
 
 # LLM 두뇌 / 중단 후 재개 / 설정 파일
-python3 -m htb_agent 10.129.1.5 --llm claude --llm-tier standard
-python3 -m htb_agent 10.129.1.5 --resume
-python3 -m htb_agent 10.129.1.5 --config ../config/config.example.json
+htb-agent 10.129.1.5 --llm claude --llm-tier standard
+htb-agent 10.129.1.5 --resume
+htb-agent 10.129.1.5 --config config/config.example.json
 ```
 
-전체 옵션: `python3 -m htb_agent --help`.
+전체 옵션: `htb-agent --help` (설치 전: `PYTHONPATH=src python3 -m htb_agent --help`).
 
 ---
 

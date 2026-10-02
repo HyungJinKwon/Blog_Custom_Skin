@@ -163,10 +163,8 @@ def classify(
     # 승자 및 확신도
     if win > lin:
         winner = OSClass.WINDOWS
-        win_conf = win / total
     elif lin > win:
         winner = OSClass.LINUX
-        win_conf = lin / total
     else:
         # 동점 — 결정 불가, 보수적으로 UNKNOWN
         return ProfileResult(

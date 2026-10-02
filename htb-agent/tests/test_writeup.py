@@ -1,5 +1,5 @@
 # 실행: htb-agent 디렉토리에서  python3 tests/test_writeup.py
-import sys, re
+import sys
 sys.path.insert(0, "src")
 from htb_agent.scope_guard import ScopeGuard
 from htb_agent.tools.runner import FakeRunner, RunOutput

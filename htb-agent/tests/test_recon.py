@@ -2,7 +2,7 @@
 import sys
 sys.path.insert(0, "src")
 from htb_agent.scope_guard import ScopeGuard
-from htb_agent.tools.runner import FakeRunner, RunOutput
+from htb_agent.tools.runner import FakeRunner
 from htb_agent.tools.recon import ReconExecutor, auto_approve_in_scope, PORTSCAN_PLAN
 from htb_agent.approval import explain_command
 
