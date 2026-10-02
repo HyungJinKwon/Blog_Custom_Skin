@@ -25,8 +25,9 @@ from typing import Callable
 
 from .command_validator import validate, ValidationReport
 from .scope_guard import ScopeGuard, ScopeViolation, CommandScopeResult
-from .observation.parsers import NmapHost, parse_http
+from .observation.parsers import NmapHost
 from .observation.compressor import profile_from_nmap
+from .observation.summarize import summarize_tool_output
 from .target_profiler import ProfileResult
 from .knowledge import KnowledgeBase
 from .llm.router import LLMRouter
@@ -215,14 +216,4 @@ class Orchestrator:
         if not out.launched:
             finding.note = f"실행 실패: {out.error}"
             return
-        finding.output = self._summarize_output(cmd, out.stdout, out.stderr)
-
-    @staticmethod
-    def _summarize_output(cmd: str, stdout: str, stderr: str) -> str:
-        if cmd.strip().startswith("curl") and "http" in cmd:
-            h = parse_http(stdout)
-            if h.status is not None:
-                return h.summary()
-        text = (stdout or stderr or "").strip()
-        text = " ".join(text.split())
-        return (text[:200] + "…") if len(text) > 200 else text
+        finding.output = summarize_tool_output(cmd, out.stdout, out.stderr)

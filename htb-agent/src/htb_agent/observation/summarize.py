@@ -1,0 +1,69 @@
+"""
+Tool Output Summarizer — 명령 출력을 도구별 파서로 요약
+=========================================================
+
+오케스트레이터의 enum 결과를 '통째 트렁케이트'가 아니라 도구별 구조화 파서로
+요약한다. 매칭되는 파서가 없거나 결과가 비면 기존 트렁케이트로 폴백한다.
+"""
+
+from __future__ import annotations
+
+import shlex
+
+from .parsers import parse_http
+from .web import parse_gobuster, parse_ffuf, parse_feroxbuster
+from .smb import parse_smbclient_shares, parse_smbmap, parse_nxc_smb
+
+
+def _binary(cmd: str) -> str:
+    try:
+        toks = shlex.split(cmd)
+    except ValueError:
+        toks = cmd.split()
+    for t in toks:
+        if "=" in t and not t.startswith("-"):
+            continue
+        return t.rsplit("/", 1)[-1]
+    return ""
+
+
+def _truncate(stdout: str, stderr: str, limit: int = 200) -> str:
+    text = " ".join((stdout or stderr or "").split())
+    return (text[:limit] + "…") if len(text) > limit else text
+
+
+def summarize_tool_output(cmd: str, stdout: str, stderr: str = "") -> str:
+    """명령/출력을 도구별로 요약. 실패 시 트렁케이트 폴백."""
+    binary = _binary(cmd)
+    try:
+        if binary == "curl" and "http" in cmd:
+            h = parse_http(stdout)
+            if h.status is not None:
+                return h.summary()
+        elif binary == "gobuster":
+            r = parse_gobuster(stdout)
+            if r.entries:
+                return r.summary()
+        elif binary == "ffuf":
+            r = parse_ffuf(stdout)
+            if r.entries:
+                return r.summary()
+        elif binary == "feroxbuster":
+            r = parse_feroxbuster(stdout)
+            if r.entries:
+                return r.summary()
+        elif binary == "smbclient" and "-L" in cmd:
+            r = parse_smbclient_shares(stdout)
+            if r.shares:
+                return r.summary()
+        elif binary == "smbmap":
+            r = parse_smbmap(stdout)
+            if r.shares or r.info:
+                return r.summary()
+        elif binary in ("nxc", "netexec", "crackmapexec", "cme"):
+            r = parse_nxc_smb(stdout)
+            if r.info:
+                return r.summary()
+    except Exception:
+        pass  # 파서 예외는 폴백으로 흡수(출력을 숨기지 않음)
+    return _truncate(stdout, stderr)
