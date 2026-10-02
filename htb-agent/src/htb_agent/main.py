@@ -35,6 +35,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="허용 타겟 CIDR (반복 가능). 생략 시 HTB 기본 대역")
     p.add_argument("--attacker-ip", action="append", dest="attacker_ips",
                    help="공격자 VPN IP (반복 가능). 생략 시 tun0 자동탐지")
+    p.add_argument("--cred", action="append", dest="creds",
+                   help="자격증명 'user:pass' 또는 'user:pass:domain' (반복 가능). "
+                        "{user}/{pass}/{domain} 제안을 실행 후보로 승격")
     p.add_argument("--config", help="설정 파일(.json/.yaml). 우선순위: CLI > 설정파일 > 기본값")
     p.add_argument("--auto", action="store_true",
                    help="범위내+검증통과 명령 자동승인 (비대화형)")
@@ -131,13 +134,19 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     llm_router, llm_status = _build_llm_router(llm_kind, llm_tier)
     print(f"LLM: {llm_status}\n")
 
-    # 6) 상태 저장소 (중단/재개)
+    # 6) 상태 저장소 (중단/재개) + 자격증명 볼트
     from .state import StateStore
+    from .creds import CredentialVault, Credential
     store = None if args.no_save else StateStore(state_dir)
+    vault = CredentialVault.from_cli(args.creds)
     if args.resume and store and store.exists(args.target):
         prior = store.load(args.target)
         if prior:
             print("재개할 저장 상태 발견:\n" + prior.summary() + "\n")
+            for d in prior.credentials:   # 저장된 자격증명 재사용
+                vault.add(Credential.from_dict(d))
+    if vault.creds:
+        print(f"자격증명 볼트: {[c.label() for c in vault.creds]}\n")
 
     # 7) 오케스트레이션 (유한 단계: RECON→PROFILE→ENUM→(LLM)→REPORT)
     approver = auto_approve_in_scope if args.auto else interactive_approver
@@ -146,6 +155,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 recon_max_attempts=max_attempts,
                                 max_rounds=max_rounds,
                                 llm_router=llm_router, vuln_kb=vuln_kb,
+                                vault=vault if vault.creds else None,
                                 state_store=store, resume=args.resume)
     report = orchestrator.run()
     print("\n" + report.summary())

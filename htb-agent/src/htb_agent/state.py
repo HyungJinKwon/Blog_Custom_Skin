@@ -68,6 +68,7 @@ class SessionState:
     manual_suggestions: list[str] = field(default_factory=list)
     detected_cve: list[str] = field(default_factory=list)
     detected_cwe: list[str] = field(default_factory=list)
+    credentials: list[dict] = field(default_factory=list)
     history: list[dict] = field(default_factory=list)
 
     def to_json(self) -> str:

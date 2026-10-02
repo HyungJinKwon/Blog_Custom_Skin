@@ -30,6 +30,7 @@ from .observation.compressor import profile_from_nmap
 from .observation.summarize import summarize_tool_output
 from .target_profiler import ProfileResult
 from .knowledge import KnowledgeBase
+from .creds import CredentialVault
 from .llm.router import LLMRouter
 from .vuln import VulnKB, VulnMatch, extract_vuln_ids
 from .state import SessionState, StateStore, host_to_dict, host_from_dict
@@ -120,6 +121,7 @@ class Orchestrator:
                  llm_router: LLMRouter | None = None,
                  max_llm: int = 5,
                  vuln_kb: VulnKB | None = None,
+                 vault: CredentialVault | None = None,
                  state_store: StateStore | None = None,
                  resume: bool = False,
                  is_tool_available: Callable[[str], bool] | None = None):
@@ -134,6 +136,7 @@ class Orchestrator:
         self.llm_router = llm_router
         self.max_llm = max_llm
         self.vuln_kb = vuln_kb
+        self.vault = vault
         self.state_store = state_store
         self.resume = resume
         # 도구 설치 여부 판단(주입 가능 — 테스트에서 대체)
@@ -223,6 +226,8 @@ class Orchestrator:
             st.detected_cve = report.detected_cve
         if report.detected_cwe:
             st.detected_cwe = report.detected_cwe
+        if self.vault is not None and self.vault.creds:
+            st.credentials = self.vault.to_list()
         st.add_history(report.message.strip() or report.status)
         self.state_store.save(st)
 
@@ -237,19 +242,26 @@ class Orchestrator:
         attempted = 0
         for rec in recs:
             for tmpl in rec.suggestions:
-                cmd, auto_runnable = self.kb.format_suggestion(tmpl, target)
-                if cmd in seen:
-                    continue
-                seen.add(cmd)
-                if not auto_runnable:
-                    report.manual_suggestions.append(cmd + f"   # [{rec.rule_name}]")
-                    continue
-                if attempted >= budget:
-                    report.manual_suggestions.append(cmd + "   # (enum 상한 초과 — 수동)")
-                    continue
-                self._attempt(report.enum_findings, cmd)
-                attempted += 1
+                for cmd, runnable in self._expand(tmpl, target):
+                    if cmd in seen:
+                        continue
+                    seen.add(cmd)
+                    if not runnable:
+                        report.manual_suggestions.append(cmd + f"   # [{rec.rule_name}]")
+                        continue
+                    if attempted >= budget:
+                        report.manual_suggestions.append(cmd + "   # (enum 상한 초과 — 수동)")
+                        continue
+                    self._attempt(report.enum_findings, cmd)
+                    attempted += 1
         return attempted
+
+    def _expand(self, tmpl: str, target: str) -> list[tuple[str, bool]]:
+        """볼트가 있으면 자격증명으로 플레이스홀더를 채워 확장, 없으면 {t}만 치환."""
+        if self.vault is not None:
+            return self.vault.expand(tmpl, target)
+        cmd, auto = self.kb.format_suggestion(tmpl, target)
+        return [(cmd, auto)]
 
     def _llm_round(self, report: OrchestrationReport, host: NmapHost,
                    prof: ProfileResult, target: str,
