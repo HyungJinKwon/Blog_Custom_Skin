@@ -48,7 +48,25 @@ python3 -m htb_agent.main 10.129.1.5 --auto --attacker-ip 10.10.14.5
 
 # 허용 대역 커스텀 / 폴백 상한 조정
 python3 -m htb_agent.main 10.129.1.5 --range 10.129.0.0/16 --max-attempts 3
+
+# 설정 파일 사용 / 중단 후 재개(RECON 재사용)
+python3 -m htb_agent.main 10.129.1.5 --config ../config/config.example.json
+python3 -m htb_agent.main 10.129.1.5 --resume
 ```
+
+실행 파이프라인(유한 단계): **RECON → PROFILE → ENUM → (LLM) → VULN → REPORT**.
+각 명령은 `검증 → 범위 → 승인` 3관문을 통과해야 실행됩니다.
+
+### 학습데이터로 '성장' & 취약점 매핑
+
+사용자 자료만 참조합니다(외부 라이트업 검색 없음). 파일을 추가할수록 똑똑해집니다.
+
+- `knowledge/rules/*.json` : 관측(OS·포트·서비스)→다음 액션 규칙
+- `knowledge/notes/*.md`   : 자유 노트(맥락)
+- `knowledge/vulns/*.json` : 서비스+버전 → CVE/CWE 매핑
+
+CVE/CWE 는 ① 도구 출력(nmap vuln·nikto 등)의 ID 추출 ② 버전 규칙 매핑으로 탐지되며,
+익스플로잇은 자동실행하지 않고 **수동 제안**(searchsploit 등)으로 제시합니다.
 
 
 ### LLM 두뇌 (선택)
@@ -78,8 +96,14 @@ python3 -m htb_agent.main 10.129.1.5 --llm ollama
 | 실행 전 검증 | `command_validator.py` — 문법·base64·해시·포트·파괴명령 |
 | 정확한 관측 | `observation/` — nmap·HTTP 파싱(통째로 안 긁음) |
 | OS 정확 식별 | `target_profiler.py` — Linux vs Windows-AD, 증거기반 확신도 |
-| 무한루프 금지 | `tools/recon.py` — 유한 폴백 체인 + max_attempts + 에스컬레이션 |
+| 무한루프 금지 | `tools/recon.py`·`orchestrator.py` — 유한 폴백/상한 + 에스컬레이션 |
 | 라이트업 미참조 | 외부 walkthrough 검색 안 함. 사용자 제공 자료만 |
+| 자동화 + 승인 | `orchestrator.py` — 단계 자동진행, 실행은 승인 게이트 |
+| LLM 두뇌 | `llm/` — Claude/Ollama 교체 + 티어링, 출력은 3관문 통과 |
+| 취약점 매핑 | `vuln.py` — CVE/CWE 추출 + 버전 규칙 매핑 |
+| 성장(학습데이터) | `knowledge.py`·`knowledge/` — 사용자 규칙/노트 누적 |
+| 중단/재개 | `state.py` — 상태 영속화, RECON 재사용 |
+| 설정 | `config.py` — JSON/YAML, CLI>config>기본 |
 
 세부 추적은 [`docs/ROADMAP.md`](docs/ROADMAP.md) 참고.
 
@@ -89,10 +113,12 @@ python3 -m htb_agent.main 10.129.1.5 --llm ollama
 
 ```bash
 cd htb-agent
-for t in core scope observation tools recon; do python3 tests/test_$t.py; done
+python3 tests/run_all.py          # 전체 스위트 일괄 실행·집계
+# 개별:  python3 tests/test_<name>.py
 ```
 
-현재 **101 테스트** 통과 (단위·회귀). 네트워크/도구 없이도 러너 주입으로 전 로직 검증.
+현재 **13 스위트 228 테스트** 통과 (단위·회귀·통합). 네트워크/도구 없이도 러너
+주입으로 전 로직 검증하며, 통합 테스트는 `main()` 을 엔드투엔드 구동합니다.
 
 ---
 

@@ -46,7 +46,6 @@ LLM 제안
 | LLM 추상화 + 티어링 | `src/htb_agent/llm/` | ✅ 완료 (Claude/Ollama + Fake, 3관문 연동) |
 | 관측 파서/압축기 | `src/htb_agent/observation/` | ✅ 완료 (nmap·HTTP·웹/SMB enum·압축·폴백) |
 | 승인 루프 | `src/htb_agent/approval.py` | ✅ 완료 (3분할 해설) |
-
 | 도구 레지스트리/설치 | `tools/registry.py`, `scripts/install_tools.sh` | ✅ 완료 (BloodHound·S3 등) |
 | Recon 실행기(nmap) | `src/htb_agent/tools/recon.py` | ✅ 완료 (유한 폴백) |
 | 환경 프리플라이트 | `src/htb_agent/environment.py` | ✅ 완료 (Kali) |
@@ -69,3 +68,14 @@ LLM 제안
 
 - CommandValidator는 **형식적 무오류 + 실행 가능 형태**까지 보장. 도구별 옵션 의미, 해시의 "정답 여부"(평문 없이 불가)는 미보장 → 도구별 스펙 레이어로 확장.
 - TargetProfiler는 **증거 기반 확신도**를 제공. 증거가 약하면 `〔추정〕`으로 표기하고 단정하지 않음.
+
+
+---
+
+## 5. 최종 점검 (전체 감사) 〔확인〕
+
+- 전체 재점검 완료: 추적된 pyc/민감파일 없음, TODO/bare-except 없음, 순환 임포트 없음.
+- `main()` 러너 주입 추가 → 통합 테스트로 엔드투엔드 구동 가능(테스트성 공백 해소).
+- 일괄 러너 `tests/run_all.py`, 통합 테스트 `tests/test_integration.py` 추가.
+- 패키지 메타 `pyproject.toml`(+ `python -m htb_agent` 진입점).
+- **13 스위트 228 테스트 전부 통과**, py_compile OK.

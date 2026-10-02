@@ -75,7 +75,8 @@ def _build_llm_router(kind: str, tier_name: str):
     return LLMRouter(provider, default_tier=Tier(tier_name)), f"{kind}({tier_name})"
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, runner=None) -> int:
+    # runner 주입 가능(테스트). 기본은 실제 Kali 용 SubprocessRunner.
     args = build_parser().parse_args(argv)
 
     # 0) 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값)
@@ -135,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # 7) 오케스트레이션 (유한 단계: RECON→PROFILE→ENUM→(LLM)→REPORT)
     approver = auto_approve_in_scope if args.auto else interactive_approver
-    orchestrator = Orchestrator(guard, SubprocessRunner(), kb, approver,
+    orchestrator = Orchestrator(guard, runner or SubprocessRunner(), kb, approver,
                                 max_enum=max_enum,
                                 recon_max_attempts=max_attempts,
                                 llm_router=llm_router, vuln_kb=vuln_kb,
