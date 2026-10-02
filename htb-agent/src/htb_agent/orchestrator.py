@@ -29,6 +29,7 @@ from .observation.parsers import NmapHost, parse_http
 from .observation.compressor import profile_from_nmap
 from .target_profiler import ProfileResult
 from .knowledge import KnowledgeBase
+from .llm.router import LLMRouter
 from .tools.runner import Runner
 from .tools.recon import ReconExecutor, ReconReport, auto_approve_in_scope, Approver
 
@@ -48,6 +49,7 @@ class OrchestrationReport:
     recon: ReconReport | None = None
     profile: ProfileResult | None = None
     enum_findings: list[EnumFinding] = field(default_factory=list)
+    llm_findings: list[EnumFinding] = field(default_factory=list)
     manual_suggestions: list[str] = field(default_factory=list)
     message: str = ""
 
@@ -59,13 +61,15 @@ class OrchestrationReport:
         if self.profile:
             lines.append("\n## PROFILE")
             lines.append(self.profile.summary())
-        if self.enum_findings:
-            lines.append("\n## ENUM (자동실행)")
-            for f in self.enum_findings:
-                mark = "▶" if f.ran else "·"
-                lines.append(f"  {mark} {f.command}" + (f"  — {f.note}" if f.note else ""))
-                if f.output:
-                    lines.append(f"      {f.output}")
+        for title, findings in (("ENUM (KB 자동실행)", self.enum_findings),
+                                ("LLM 제안 (자동실행)", self.llm_findings)):
+            if findings:
+                lines.append(f"\n## {title}")
+                for f in findings:
+                    mark = "▶" if f.ran else "·"
+                    lines.append(f"  {mark} {f.command}" + (f"  — {f.note}" if f.note else ""))
+                    if f.output:
+                        lines.append(f"      {f.output}")
         if self.manual_suggestions:
             lines.append("\n## 수동 제안 (크리덴셜 등 필요 — 승인/입력 후 실행)")
             for s in self.manual_suggestions:
@@ -91,6 +95,8 @@ class Orchestrator:
                  hosts_map: dict[str, str] | None = None,
                  max_enum: int = 6,
                  recon_max_attempts: int = 4,
+                 llm_router: LLMRouter | None = None,
+                 max_llm: int = 5,
                  is_tool_available: Callable[[str], bool] | None = None):
         self.guard = guard
         self.runner = runner
@@ -99,6 +105,8 @@ class Orchestrator:
         self.hosts_map = hosts_map
         self.max_enum = max_enum
         self.recon_max_attempts = recon_max_attempts
+        self.llm_router = llm_router
+        self.max_llm = max_llm
         # 도구 설치 여부 판단(주입 가능 — 테스트에서 대체)
         self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
 
@@ -126,9 +134,15 @@ class Orchestrator:
         # ── PHASE 3: ENUM (KB 기반, 유한 상한) ──
         self._run_enum(report, host, prof, target)
 
+        # ── PHASE 3.5: LLM 제안 (선택, 유한 상한) ──
+        if self.llm_router is not None:
+            self._run_llm(report, host, prof, target)
+
         # ── PHASE 4: REPORT ──
         report.status = "done"
-        report.message = f"OS={prof.os_class.value}({prof.tag}), enum {len(report.enum_findings)}건"
+        report.message = (f"OS={prof.os_class.value}({prof.tag}), "
+                          f"KB enum {len(report.enum_findings)}건, "
+                          f"LLM {len(report.llm_findings)}건")
         return report
 
     def _run_enum(self, report: OrchestrationReport, host: NmapHost,
@@ -150,12 +164,34 @@ class Orchestrator:
                 if ran_count >= self.max_enum:     # 유한 상한 — 무한 확장 방지
                     report.manual_suggestions.append(cmd + "   # (enum 상한 초과 — 수동)")
                     continue
-                self._attempt_enum(report, cmd)
+                self._attempt(report.enum_findings, cmd)
                 ran_count += 1
 
-    def _attempt_enum(self, report: OrchestrationReport, cmd: str) -> None:
+    def _run_llm(self, report: OrchestrationReport, host: NmapHost,
+                 prof: ProfileResult, target: str) -> None:
+        services = [p.service for p in host.ports if p.state == "open" and p.service]
+        recs = self.kb.query(prof.os_class.value, host.open_ports, services)
+        context = {
+            "profile": prof.summary(),
+            "open_ports": [str(p) for p in host.ports if p.state == "open"],
+            "kb": [f"{r.rule_name}: {', '.join(r.suggestions)}" for r in recs[:5]],
+            "notes": self.kb.notes[:3],
+        }
+        try:
+            cmds = self.llm_router.suggest_commands(context, target, max_items=self.max_llm)
+        except Exception as e:  # LLM 백엔드 오류는 전체를 깨지 않는다
+            report.manual_suggestions.append(f"(LLM 제안 실패: {e})")
+            return
+        seen = {f.command for f in report.enum_findings}
+        for cmd in cmds[:self.max_llm]:     # 유한 상한
+            if cmd in seen:
+                continue
+            seen.add(cmd)
+            self._attempt(report.llm_findings, cmd)
+
+    def _attempt(self, findings: list[EnumFinding], cmd: str) -> None:
         finding = EnumFinding(command=cmd)
-        report.enum_findings.append(finding)
+        findings.append(finding)
 
         binary = _binary_of(cmd)
         if binary and not self.is_tool_available(binary):

@@ -43,7 +43,29 @@ def build_parser() -> argparse.ArgumentParser:
                    help="enum 자동실행 최대 개수 (기본 6, 무한확장 방지)")
     p.add_argument("--knowledge", default="knowledge",
                    help="지식베이스 디렉토리 (기본 ./knowledge). 사용자 규칙/노트로 성장")
+    p.add_argument("--llm", choices=["none", "claude", "ollama"], default="none",
+                   help="LLM 두뇌 백엔드 (기본 none=규칙기반). claude=Claude API, ollama=로컬")
+    p.add_argument("--llm-tier", choices=["cheap", "standard", "strong"], default="standard",
+                   help="LLM 티어 (비용/성능)")
     return p
+
+
+def _build_llm_router(kind: str, tier_name: str):
+    """LLM 백엔드 구성. 사용 불가면 (None, 사유) 반환."""
+    if kind == "none":
+        return None, "LLM 미사용(규칙기반)"
+    from .llm.base import Tier
+    from .llm.router import LLMRouter
+    if kind == "claude":
+        from .llm.claude_provider import ClaudeProvider
+        provider = ClaudeProvider()
+    else:
+        from .llm.ollama_provider import OllamaProvider
+        provider = OllamaProvider()
+    ok, reason = provider.available()
+    if not ok:
+        return None, f"{kind} 사용 불가: {reason}"
+    return LLMRouter(provider, default_tier=Tier(tier_name)), f"{kind}({tier_name})"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -74,11 +96,16 @@ def main(argv: list[str] | None = None) -> int:
     kb = KnowledgeBase.load(base_dir=args.knowledge)
     print(f"지식베이스: 규칙 {len(kb.rules)}개, 노트 {len(kb.notes)}개 로드\n")
 
-    # 5) 오케스트레이션 (유한 단계: RECON→PROFILE→ENUM→REPORT)
+    # 5) LLM 두뇌 구성(선택)
+    llm_router, llm_status = _build_llm_router(args.llm, args.llm_tier)
+    print(f"LLM: {llm_status}\n")
+
+    # 6) 오케스트레이션 (유한 단계: RECON→PROFILE→ENUM→(LLM)→REPORT)
     approver = auto_approve_in_scope if args.auto else interactive_approver
     orchestrator = Orchestrator(guard, SubprocessRunner(), kb, approver,
                                 max_enum=args.max_enum,
-                                recon_max_attempts=args.max_attempts)
+                                recon_max_attempts=args.max_attempts,
+                                llm_router=llm_router)
     report = orchestrator.run()
     print("\n" + report.summary())
     return 0 if report.status == "done" else 1

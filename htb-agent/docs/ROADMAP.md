@@ -43,7 +43,7 @@ LLM 제안
 | Target Profiler | `src/htb_agent/target_profiler.py` | ✅ 완료 (감사 반영) |
 | 지식베이스(학습데이터) | `src/htb_agent/knowledge.py`, `knowledge/` | ✅ 완료 (사용자 규칙/노트로 성장) |
 | 오케스트레이터 | `src/htb_agent/orchestrator.py` | ✅ 완료 (유한 단계 상태머신) |
-| LLM 추상화 + 티어링 | `src/htb_agent/llm/` | ⏳ 예정 |
+| LLM 추상화 + 티어링 | `src/htb_agent/llm/` | ✅ 완료 (Claude/Ollama + Fake, 3관문 연동) |
 | 관측 파서/압축기 | `src/htb_agent/observation/` | ✅ 완료 (nmap XML·텍스트, HTTP, 폴백제안) |
 | 승인 루프 | `src/htb_agent/approval.py` | ✅ 완료 (3분할 해설) |
 

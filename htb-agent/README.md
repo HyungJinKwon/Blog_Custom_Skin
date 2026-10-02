@@ -50,6 +50,23 @@ python3 -m htb_agent.main 10.129.1.5 --auto --attacker-ip 10.10.14.5
 python3 -m htb_agent.main 10.129.1.5 --range 10.129.0.0/16 --max-attempts 3
 ```
 
+
+### LLM 두뇌 (선택)
+
+규칙기반(KB)만으로도 동작하지만, LLM 을 얹으면 관측·KB 를 근거로 다음 명령을
+동적으로 추론합니다. LLM 제안도 **검증→범위→승인 3관문**을 그대로 통과해야 실행됩니다.
+
+```bash
+# Claude API (pip install anthropic; export ANTHROPIC_API_KEY=...)
+python3 -m htb_agent.main 10.129.1.5 --llm claude --llm-tier standard
+
+# 로컬 Ollama (ollama serve; 모델 pull)
+python3 -m htb_agent.main 10.129.1.5 --llm ollama
+```
+
+티어: `cheap`(Haiku) / `standard`(Sonnet) / `strong`(Opus). 토큰 절감을 위해
+관측은 압축 요약만 전달합니다.
+
 ---
 
 ## 설계 원칙
