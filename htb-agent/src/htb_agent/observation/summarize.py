@@ -11,8 +11,10 @@ from __future__ import annotations
 import shlex
 
 from .parsers import parse_http
-from .web import parse_gobuster, parse_ffuf, parse_feroxbuster
+from .web import (parse_gobuster, parse_ffuf, parse_feroxbuster,
+                  parse_nikto, parse_whatweb)
 from .smb import parse_smbclient_shares, parse_smbmap, parse_nxc_smb
+from .ad import parse_ldapsearch
 
 
 def _binary(cmd: str) -> str:
@@ -51,6 +53,18 @@ def summarize_tool_output(cmd: str, stdout: str, stderr: str = "") -> str:
         elif binary == "feroxbuster":
             r = parse_feroxbuster(stdout)
             if r.entries:
+                return r.summary()
+        elif binary == "nikto":
+            r = parse_nikto(stdout)
+            if r.server or r.findings:
+                return r.summary()
+        elif binary == "whatweb":
+            r = parse_whatweb(stdout)
+            if r.plugins:
+                return r.summary()
+        elif binary == "ldapsearch":
+            r = parse_ldapsearch(stdout)
+            if r.naming_contexts or r.dns:
                 return r.summary()
         elif binary == "smbclient" and "-L" in cmd:
             r = parse_smbclient_shares(stdout)

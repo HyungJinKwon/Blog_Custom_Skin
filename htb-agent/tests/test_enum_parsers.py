@@ -2,8 +2,9 @@
 import sys
 sys.path.insert(0, "src")
 from htb_agent.observation.web import (parse_gobuster, parse_ffuf, parse_ffuf_json,
-                                       parse_feroxbuster)
+                                       parse_feroxbuster, parse_nikto, parse_whatweb)
 from htb_agent.observation.smb import (parse_smbclient_shares, parse_smbmap, parse_nxc_smb)
+from htb_agent.observation.ad import parse_ldapsearch
 from htb_agent.observation.summarize import summarize_tool_output
 
 passed = failed = 0
@@ -83,10 +84,55 @@ check("OS 파싱", "Windows Server 2019" in r.info.get("os", ""))
 check("domain 파싱", r.info.get("domain") == "corp.local")
 check("signing 파싱", r.info.get("signing") == "True")
 
+print("\n=== nikto ===")
+nk = """- Nikto v2.5.0
++ Target IP: 10.129.1.5
++ Server: Apache/2.4.41 (Ubuntu)
++ /admin/: This might be interesting.
++ OSVDB-3233: /icons/README: Apache default file found.
++ 8 item(s) reported
+"""
+r = parse_nikto(nk)
+check("nikto Server 파싱", r.server == "Apache/2.4.41 (Ubuntu)")
+check("nikto 발견 2건(통계 제외)", len(r.findings) == 2)
+check("nikto 요약", "Server=Apache" in r.summary())
+
+print("\n=== whatweb ===")
+ww = "http://10.129.1.5 [200 OK] Apache[2.4.41], Country[RESERVED][ZZ], HTTPServer[Apache/2.4.41], PHP[7.4.3], Title[Welcome], X-Powered-By[PHP/7.4.3]"
+r = parse_whatweb(ww)
+check("whatweb url/status", r.url == "http://10.129.1.5" and r.status == "200 OK")
+check("whatweb 플러그인 파싱", r.plugins.get("Apache") == "2.4.41" and r.plugins.get("PHP") == "7.4.3")
+check("whatweb 중첩대괄호", r.plugins.get("Country") == "RESERVED,ZZ")
+
+print("\n=== ldapsearch ===")
+ld = """# extended LDIF
+#
+dn:
+namingContexts: DC=corp,DC=local
+namingContexts: CN=Configuration,DC=corp,DC=local
+domainFunctionality: 7
+
+dn: CN=Administrator,CN=Users,DC=corp,DC=local
+cn: Administrator
+
+dn: CN=svc-sql,CN=Users,DC=corp,DC=local
+cn: svc-sql
+
+# search result
+"""
+r = parse_ldapsearch(ld)
+check("naming contexts 2건", len(r.naming_contexts) == 2 and "DC=corp,DC=local" in r.naming_contexts)
+check("엔트리 dn 2건(빈 dn 포함 3줄 중)", r.entries == 2)
+check("기능수준 파싱", r.domain_functionality == "7")
+check("ldap 요약", "베이스:" in r.summary())
+
 print("\n=== summarize 디스패처 ===")
 check("gobuster 라우팅", "gobuster:" in summarize_tool_output("gobuster dir -u http://x", gob))
 check("smbmap 라우팅", "공유" in summarize_tool_output("smbmap -H 10.129.1.5", sm))
 check("nxc 라우팅", "domain=corp.local" in summarize_tool_output("nxc smb 10.129.1.10", nx))
+check("nikto 라우팅", "nikto:" in summarize_tool_output("nikto -h http://10.129.1.5", nk))
+check("whatweb 라우팅", "whatweb:" in summarize_tool_output("whatweb http://10.129.1.5", ww))
+check("ldapsearch 라우팅", "ldap:" in summarize_tool_output("ldapsearch -x -H ldap://10.129.1.5", ld))
 check("미지원도구 폴백 트렁케이트", summarize_tool_output("someweirdtool", "x"*300).endswith("…"))
 
 print(f"\n결과: {passed} passed, {failed} failed")
