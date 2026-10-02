@@ -42,7 +42,7 @@ LLM 제안
 | Command Validator | `src/htb_agent/command_validator.py` | ✅ 완료 (감사 반영) |
 | Target Profiler | `src/htb_agent/target_profiler.py` | ✅ 완료 (감사 반영) |
 | LLM 추상화 + 티어링 | `src/htb_agent/llm/` | ⏳ 예정 |
-| 관측 압축기 | `src/htb_agent/observation/compressor.py` | ⏳ 예정 |
+| 관측 파서/압축기 | `src/htb_agent/observation/` | ✅ 완료 (nmap XML·텍스트, HTTP, 폴백제안) |
 | 승인 루프 | `src/htb_agent/approval.py` | ⏳ 예정 |
 | 오케스트레이터 | `src/htb_agent/orchestrator.py` | ⏳ 예정 |
 | Recon 도구(nmap) | `src/htb_agent/tools/recon.py` | ⏳ 예정 |
