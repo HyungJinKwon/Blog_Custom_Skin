@@ -1,0 +1,90 @@
+[
+  {
+    "name": "Telnet 로그인 점검(약한/빈 자격)",
+    "when": {"ports": [23], "services": ["telnet"], "os": ["linux"]},
+    "suggest": [
+      "nmap -p23 -sV --script banner {t}"
+    ],
+    "note": "HTB Meow 패턴: telnet 배너 확인 후 대화형으로 빈 비밀번호 로그인 시도(수동) — 'telnet {t}' 접속 → 로그인 프롬프트에 root/admin/administrator 입력, 비밀번호는 Enter. 성공 시 'ls; cat flag.txt'. 자동실행 불가(대화형).",
+    "tags": ["telnet", "weak-cred"],
+    "phase": "enum"
+  },
+  {
+    "name": "FTP 익명 로그인 열거",
+    "when": {"ports": [21], "services": ["ftp"]},
+    "suggest": [
+      "nmap -p21 -sV --script ftp-anon {t}",
+      "curl -s ftp://{t}/ --user anonymous:anonymous"
+    ],
+    "note": "HTB Fawn 패턴: vsftpd 등 익명 로그인(anonymous / 빈 비번 또는 아무 값) 허용 시 파일 노출. 대화형: 'ftp {t}' → anonymous → ls → get flag.txt. ftp-anon 스크립트로 자동 확인.",
+    "tags": ["ftp", "anon"],
+    "phase": "enum"
+  },
+  {
+    "name": "SMB 익명 공유 접근/수집",
+    "when": {"ports": [139, 445], "services": ["smb", "microsoft-ds", "netbios"]},
+    "suggest": [
+      "smbclient -L //{t}/ -N",
+      "smbmap -H {t} -u anonymous",
+      "nmap -p445 --script smb-enum-shares,smb-enum-users {t}"
+    ],
+    "note": "HTB Dancing 패턴: 익명/게스트로 비표준 공유(예: WorkShares) 접근 → 디렉토리 열람 → 파일 다운로드(get flag.txt). ADMIN$/C$/IPC$ 는 보통 NT_STATUS_ACCESS_DENIED. 접속: 'smbclient //{t}/<share> -N'.",
+    "tags": ["smb", "anon"],
+    "phase": "enum"
+  },
+  {
+    "name": "Redis 비인증 열거",
+    "when": {"ports": [6379], "services": ["redis"]},
+    "suggest": [
+      "nmap -p6379 -sV --script redis-info {t}",
+      "redis-cli -h {t} ping",
+      "redis-cli -h {t} info keyspace",
+      "redis-cli -h {t} --scan"
+    ],
+    "note": "HTB Redeemer 패턴: 인증 없는 Redis → info(Keyspace 로 db 수 확인) → 'redis-cli -h {t} -n <db> keys *' → 'redis-cli -h {t} -n <db> get <key>'. 플래그가 키 값에 저장되는 경우가 있음.",
+    "tags": ["redis", "db", "anon"],
+    "phase": "enum"
+  },
+  {
+    "name": "MongoDB 비인증 열거",
+    "when": {"ports": [27017], "services": ["mongodb", "mongod"]},
+    "suggest": [
+      "nmap -p27017 -sV --script mongodb-info,mongodb-databases {t}",
+      "mongosh --quiet mongodb://{t}:27017 --eval \"db.adminCommand({listDatabases:1})\""
+    ],
+    "note": "HTB Mongod 패턴: 인증 없는 MongoDB → show dbs → 흥미로운 db 선택(use sensitive_information) → show collections → db.<collection>.find(). 플래그가 문서 필드에 저장. mongosh 는 서버 버전 호환 필요(<=2.3.x).",
+    "tags": ["mongodb", "db", "anon"],
+    "phase": "enum"
+  },
+  {
+    "name": "rsync 익명 모듈 열거",
+    "when": {"ports": [873], "services": ["rsync"]},
+    "suggest": [
+      "nmap -p873 -sV --script rsync-list-modules {t}",
+      "rsync --list-only rsync://{t}/"
+    ],
+    "note": "HTB Synced 패턴: 익명 모듈 나열 → 'rsync --list-only {t}::<module>' 로 파일 열람 → 'rsync {t}::<module>/flag.txt ./' 로 다운로드 후 cat. 모듈명(예: public)은 나열 결과로 확인(수동).",
+    "tags": ["rsync", "anon"],
+    "phase": "enum"
+  },
+  {
+    "name": "RDP 접속 점검(약한/빈 자격)",
+    "when": {"ports": [3389], "services": ["ms-wbt-server", "rdp"], "os": ["windows", "windows_ad"]},
+    "suggest": [
+      "nmap -p3389 --script rdp-ntlm-info {t}"
+    ],
+    "note": "HTB Explosion 패턴: Administrator 가 빈 비밀번호로 RDP 허용되는 오구성. 대화형(수동): 'xfreerdp /v:{t} /cert:ignore /u:Administrator' → 비밀번호 Enter → 데스크톱의 flag 파일. 자동실행 불가(GUI 세션).",
+    "tags": ["rdp", "weak-cred"],
+    "phase": "access"
+  },
+  {
+    "name": "웹 관리자 패널 기본자격 점검",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [
+      "gobuster dir -u http://{t} -w /usr/share/seclists/Discovery/Web-Content/common.txt -x php,txt,html"
+    ],
+    "note": "HTB Preignition 패턴: nginx 기본페이지 = 미구성 신호. gobuster 로 숨은 경로(예: /admin.php) 발견 → 로그인 폼에 기본자격(admin/admin, admin/password 등) 시도 → 성공 시 플래그 노출. 기본자격 로그인은 수동.",
+    "tags": ["web", "default-cred"],
+    "phase": "enum"
+  }
+]

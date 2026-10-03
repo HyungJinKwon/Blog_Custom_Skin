@@ -75,12 +75,17 @@ htb-agent 10.129.1.5 --config config/config.example.json
 
 원칙: 승인제 · **외부 라이트업 미참조(사용자 자료만)** · 무한루프 금지 · 증거기반(〔확인〕/〔추정〕).
 
+> 기본 동봉 학습 규칙: `knowledge/rules/htb-startingpoint-tier0.json` — 사용자가 제공한
+> HTB Starting Point Tier 0(Meow·Fawn·Dancing·Redeemer·Explosion·Preignition·Mongod·Synced)
+> 라이트업에서 학습한 서비스별 비인증/약한자격 점검 규칙(telnet·ftp·smb·redis·mongodb·rsync·rdp·web).
+> 학습데이터를 더 넣을수록 제안이 풍부해집니다(성장).
+
 ---
 
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 23 스위트 370 테스트
+cd htb-agent && python3 tests/run_all.py     # 24 스위트 380 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
