@@ -1,9 +1,18 @@
 # HTB 에이전트 설정 예시 (참고용 — 현재는 CLI 인자/환경변수 우선)
 # config.yaml 은 .gitignore 처리됨.
 
-# 허용 타겟 대역 (생략 시 HTB 기본: 10.10.10.0/23, 10.129.0.0/16)
+# 플랫폼 프로파일: htb | dreamhack | ctf
+#   htb       = HTB 대역 강제 + boot2root(user/root)
+#   dreamhack = 단일 타겟(host:port/URL) + DH{} 플래그
+#   ctf       = 단일 타겟 + flag{}/CTF{} 플래그
+platform: htb
+
+# 허용 타겟 대역 (htb 전용. 생략 시 기본 10.10.10.0/23, 10.129.0.0/16)
 allowed_ranges:
   - 10.129.0.0/16
+
+# 명령당 옵션 조합 변형(경우의 수) 수 (기본 2, 1=변형끔)
+max_variants: 2
 
 # LLM 두뇌
 llm:

@@ -12,13 +12,15 @@ htb-agent — HTB 머신 승인제 자동 풀이 에이전트
 
 from __future__ import annotations
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 from .scope_guard import ScopeGuard, ScopeViolation
 from .orchestrator import Orchestrator, OrchestrationReport, PENTEST_PHASES
 from .knowledge import KnowledgeBase
 from .vuln import VulnKB
 from .creds import CredentialVault
+from .profiles import Platform, get_profile, PROFILES
+from .enrich import Enricher, CveInfo
 
 __all__ = [
     "__version__",
@@ -27,6 +29,11 @@ __all__ = [
     "Orchestrator",
     "OrchestrationReport",
     "PENTEST_PHASES",
+    "Platform",
+    "get_profile",
+    "PROFILES",
+    "Enricher",
+    "CveInfo",
     "KnowledgeBase",
     "VulnKB",
     "CredentialVault",

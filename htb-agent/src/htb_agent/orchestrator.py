@@ -205,7 +205,7 @@ class Orchestrator:
         self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
 
     def run(self) -> OrchestrationReport:
-        if self.guard.bound_target is None:
+        if self.guard.bound_target is None and self.guard.bound_host is None:
             raise ScopeViolation("타겟 미바인딩 — bind_target() 먼저 호출하세요.")
         target = str(self.guard.bound_target or self.guard.bound_host)
         report = OrchestrationReport(target=target, flag_kind=self.flag_kind)
