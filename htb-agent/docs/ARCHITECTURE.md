@@ -32,6 +32,11 @@ flowchart TD
 이전 관측을 다음 제안에 반영한다. 전역 상한(`max_enum`·`max_llm`) + 라운드
 상한(`max_rounds`) + "새 명령 없으면 조기 종료"로 **반드시 유한**하다.
 
+실행 가능한 각 명령은 `variants.py` 가 도구별로 **유효·안전한 옵션 조합 변형
+(경우의 수)** 을 `max_variants` 개까지 생성해 순서대로 시도한다(기본 명령이 항상
+첫 번째, 이미 있는 플래그는 중복 추가 안 함). 변형도 `max_enum`·중복제거 예산에
+포함되어 유한하며, 각 변형이 아래 3관문을 그대로 통과한다.
+
 ---
 
 ## 3. 실행 전 3관문 (모든 명령 공통)
@@ -65,6 +70,7 @@ LLM 이 제안한 명령도 '신뢰하지 않는 데이터'로 간주되어 이 
 | **식별** | `target_profiler.py` | Linux vs Windows-AD, 증거기반 확신도 |
 | **지능** | `knowledge.py` + `knowledge/` | 단계별 규칙·노트·취약점(사용자 학습으로 성장) |
 | | `orchestrator.py` | 단계 순서 상태머신(유한) |
+| | `variants.py` | 도구별 옵션 조합 변형(경우의 수) 생성 |
 | | `llm/` | Claude/Ollama 프로바이더 + 티어링 + 캐싱·비용 |
 | **실행** | `tools/runner.py` | Subprocess(실제) / Fake(테스트) |
 | | `tools/recon.py` | 유한 폴백 포트스캔 |

@@ -35,6 +35,7 @@ from .audit import NullAudit
 from .llm.router import LLMRouter
 from .vuln import VulnKB, VulnMatch, extract_vuln_ids
 from .flag import FlagHit, scan as scan_flags
+from .variants import expand_variants
 from .state import SessionState, StateStore, host_to_dict, host_from_dict
 from .tools.runner import Runner
 from .tools.recon import ReconExecutor, ReconReport, auto_approve_in_scope, Approver
@@ -137,6 +138,7 @@ class Orchestrator:
                  max_enum: int = 6,
                  recon_max_attempts: int = 4,
                  max_rounds: int = 2,
+                 max_variants: int = 1,
                  llm_router: LLMRouter | None = None,
                  max_llm: int = 5,
                  vuln_kb: VulnKB | None = None,
@@ -154,6 +156,7 @@ class Orchestrator:
         self.max_enum = max_enum
         self.recon_max_attempts = recon_max_attempts
         self.max_rounds = max(1, max_rounds)
+        self.max_variants = max(1, max_variants)
         self.llm_router = llm_router
         self.max_llm = max_llm
         self.vuln_kb = vuln_kb
@@ -290,18 +293,23 @@ class Orchestrator:
         for rec in recs:
             for tmpl in rec.suggestions:
                 for cmd, runnable in self._expand(tmpl, target):
-                    if cmd in seen:
-                        continue
-                    seen.add(cmd)
                     if not runnable:
+                        if cmd in seen:
+                            continue
+                        seen.add(cmd)
                         report.manual_suggestions.append(
                             cmd + f"   # [{_PHASE_LABEL.get(phase, phase)}] {rec.rule_name}")
                         continue
-                    if attempted >= budget:
-                        report.manual_suggestions.append(cmd + "   # (상한 초과 — 수동)")
-                        continue
-                    self._attempt(report, report.enum_findings, cmd, phase)
-                    attempted += 1
+                    # 실행 가능한 명령은 옵션 조합(경우의 수) 변형까지 시도
+                    for vcmd in expand_variants(cmd, self.max_variants):
+                        if vcmd in seen:
+                            continue
+                        seen.add(vcmd)
+                        if attempted >= budget:
+                            report.manual_suggestions.append(vcmd + "   # (상한 초과 — 수동)")
+                            continue
+                        self._attempt(report, report.enum_findings, vcmd, phase)
+                        attempted += 1
         return attempted
 
     def _expand(self, tmpl: str, target: str) -> list[tuple[str, bool]]:
