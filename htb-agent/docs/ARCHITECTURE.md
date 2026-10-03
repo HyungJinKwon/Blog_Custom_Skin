@@ -81,7 +81,8 @@ LLM 이 제안한 명령도 '신뢰하지 않는 데이터'로 간주되어 이 
 | | `creds.py` | 크리덴셜 볼트(수동제안 → 실행 승격) |
 | | `audit.py` | 실행 트랜스크립트(JSONL) |
 | | `config.py` | 설정 파일(JSON/YAML, CLI>config>기본) |
-| | `environment.py` · `main.py` | Kali 프리플라이트 · CLI 진입점 |
+| | `environment.py` · `main.py` | Kali 프리플라이트 · CLI 진입점(ASSASSIN) |
+| | `ui.py` | 터미널 렌더링(블루/네이비 색상·박스·정렬, NO_COLOR/비-TTY 자동 무색) |
 | | `writeup.py` | 라이트업 생성(htb-ctf-writeup-v5 / Tistory 13섹션) |
 
 ---

@@ -27,8 +27,8 @@ from .orchestrator import Orchestrator
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="htb-agent",
-        description="HTB 머신 승인제 풀이 에이전트 (Kali). 권한 확인된 대상만.",
+        prog="assassin",
+        description="ASSASSIN — HTB 머신 승인제 풀이 에이전트 (Kali). 권한 확인된 대상만.",
     )
     p.add_argument("target", help="대상 HTB 머신 IP (허용 대역 내)")
     p.add_argument("--range", action="append", dest="ranges",
@@ -92,13 +92,15 @@ def _build_llm_router(kind: str, tier_name: str):
 def main(argv: list[str] | None = None, runner=None) -> int:
     # runner 주입 가능(테스트). 기본은 실제 Kali 용 SubprocessRunner.
     args = build_parser().parse_args(argv)
+    from . import ui
+    print(ui.banner())
 
     # 0) 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값)
     from .config import load_config, pick, Config, ConfigError
     try:
         cfg = load_config(args.config) if args.config else Config()
     except ConfigError as e:
-        print(f"⛔ 설정 오류: {e}", file=sys.stderr)
+        print(ui.mark_err(f"설정 오류: {e}"), file=sys.stderr)
         return 2
     ranges = pick(args.ranges, cfg.allowed_ranges, None)
     max_attempts = pick(args.max_attempts, cfg.max_attempts, 4)
@@ -115,7 +117,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     try:
         guard.bind_target(args.target)
     except ScopeViolation as e:
-        print(f"⛔ {e}", file=sys.stderr)
+        print(ui.mark_err(str(e)), file=sys.stderr)
         return 2
 
     # 2) 공격자 VPN IP 등록 (지정 or 설정 or 자동탐지)
@@ -124,23 +126,29 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         try:
             guard.add_attacker_ip(ip)
         except ValueError as e:
-            print(f"⚠️ 공격자 IP 무시: {e}", file=sys.stderr)
+            print(ui.mark_warn(f"공격자 IP 무시: {e}"), file=sys.stderr)
 
     # 3) 환경 프리플라이트
     pf = preflight(required_tool_keys=["nmap"])
     print(pf.render())
-    print(f"\n타겟 바인딩: {guard.bound_target} | 허용대역: {guard.describe()} | 공격자IP: {attacker or '(없음)'}\n")
+    print(ui.panel("세션", [
+        ui.kv("타겟", ui.accent2(str(guard.bound_target)), 8),
+        ui.kv("허용대역", guard.describe(), 8),
+        ui.kv("공격자IP", (ui.ok(", ".join(attacker)) if attacker
+                        else ui.dim("(없음)")), 8),
+    ], style="navy") + "\n")
 
     # 4) 지식베이스 + 취약점 KB 로드 (사용자 학습데이터로 성장)
     kb = KnowledgeBase.load(base_dir=knowledge_dir)
     from .vuln import VulnKB
     vuln_kb = VulnKB.load(base_dir=knowledge_dir)
-    print(f"지식베이스: 규칙 {len(kb.rules)}개, 노트 {len(kb.notes)}개, "
-          f"취약점 규칙 {len(vuln_kb.rules)}개 로드\n")
+    print(ui.kv("지식베이스", f"규칙 {ui.bold(str(len(kb.rules)))}개 · 노트 "
+                f"{ui.bold(str(len(kb.notes)))}개 · 취약점규칙 "
+                f"{ui.bold(str(len(vuln_kb.rules)))}개", 10))
 
     # 5) LLM 두뇌 구성(선택)
     llm_router, llm_status = _build_llm_router(llm_kind, llm_tier)
-    print(f"LLM: {llm_status}\n")
+    print(ui.kv("LLM", ui.info(llm_status), 10) + "\n")
 
     # 6) 상태 저장소 (중단/재개) + 자격증명 볼트
     from .state import StateStore

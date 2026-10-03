@@ -50,11 +50,13 @@ class PreflightReport:
     vpn_ips: list[str] = field(default_factory=list)
 
     def render(self) -> str:
-        lines = ["# 환경 프리플라이트"]
-        lines += [f"  ✅ {i}" for i in self.info]
-        lines += [f"  ⚠️ {w}" for w in self.warnings]
-        lines.append(f"  VPN IP: {self.vpn_ips or '(미탐지 — HTB VPN 연결/수동지정 필요)'}")
-        return "\n".join(lines)
+        from . import ui
+        rows = [ui.mark_ok(i) for i in self.info]
+        rows += [ui.mark_warn(w) for w in self.warnings]
+        vpn = ui.ok(", ".join(self.vpn_ips)) if self.vpn_ips \
+            else ui.warn("미탐지 — HTB VPN 연결/수동지정 필요")
+        rows.append(ui.kv("VPN IP", vpn, 8))
+        return ui.panel("환경 프리플라이트", rows, style="accent")
 
 
 def preflight(required_tool_keys: list[str] | None = None) -> PreflightReport:

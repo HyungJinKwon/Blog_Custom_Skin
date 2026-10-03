@@ -85,49 +85,60 @@ class OrchestrationReport:
         return next((f.value for f in self.flags if f.kind == "root"), None)
 
     def summary(self) -> str:
-        lines = [f"# 오케스트레이션 — {self.target} [{self.status}] {self.message}".rstrip()]
+        from . import ui
+        st = ui.ok if self.status == "done" else ui.accent2
+        head = (ui.accent("ASSASSIN") + ui.dim(" · 오케스트레이션 ")
+                + ui.bold(self.target) + "  " + st(f"[{self.status}]")
+                + (("  " + ui.dim(self.message)) if self.message else ""))
+        lines = [head, ui.rule("", 60, "navy")]
         if self.recon:
-            lines.append("\n## RECON")
+            lines.append(ui.heading("RECON", "📡"))
             lines.append(self.recon.summary())
         if self.profile:
-            lines.append("\n## PROFILE")
+            lines.append("\n" + ui.heading("PROFILE", "🧭"))
             lines.append(self.profile.summary())
         # 모의해킹 단계 순서대로 그룹화 출력
         all_findings = self.enum_findings + self.llm_findings
         for key, label in PENTEST_PHASES:
             group = [f for f in all_findings if f.phase == key]
             if group:
-                lines.append(f"\n## 단계: {label}")
+                lines.append("\n" + ui.rule(f"단계: {label}", 60))
                 for f in group:
-                    mark = "▶" if f.ran else "·"
-                    lines.append(f"  {mark} {f.command}" + (f"  — {f.note}" if f.note else ""))
+                    mark = ui.mark_run() if f.ran else ui.dim("·")
+                    note = ui.dim(f"  — {f.note}") if f.note else ""
+                    lines.append(f"  {mark} {f.command}{note}")
                     if f.output:
-                        lines.append(f"      {f.output}")
+                        lines.append("      " + ui.dim(f.output))
         if self.detected_cve or self.detected_cwe or self.vuln_matches:
-            lines.append("\n## VULN (탐지된 취약점 — 수동 검증/익스플로잇 필요)")
+            lines.append("\n" + ui.heading(
+                "VULN  (탐지된 취약점 — 수동 검증/익스플로잇 필요)", "🛑"))
             if self.detected_cve:
-                lines.append(f"  탐지 CVE: {', '.join(self.detected_cve)}")
+                lines.append(ui.kv("탐지 CVE", ui.warn(", ".join(self.detected_cve)), 9))
             if self.detected_cwe:
-                lines.append(f"  탐지 CWE: {', '.join(self.detected_cwe)}")
+                lines.append(ui.kv("탐지 CWE", ui.warn(", ".join(self.detected_cwe)), 9))
             for m in self.vuln_matches:
                 sev = f"[{m.severity}] " if m.severity else ""
                 ids = " ".join(m.cve + m.cwe)
-                lines.append(f"  ⚠️ {sev}{m.name} ({ids}) — 매칭:{m.matched_on}")
+                lines.append("  " + ui.mark_warn(
+                    ui.warn(sev) + m.name + ui.dim(f" ({ids}) — 매칭:{m.matched_on}")))
                 if m.note:
-                    lines.append(f"       비고: {m.note}")
+                    lines.append(ui.dim(f"       비고: {m.note}"))
                 for s in m.suggest:
-                    lines.append(f"       제안: {s}")
+                    lines.append("       " + ui.accent2("제안: ") + s)
         if self.flags:
-            lines.append("\n## 🚩 플래그 (FLAG)")
-            lines.append(f"  user.txt: {self.user_flag or '미획득'}")
-            lines.append(f"  root.txt: {self.root_flag or '미획득'}")
+            lines.append("\n" + ui.heading("🚩 플래그 (FLAG)"))
+            uf = ui.flag(self.user_flag) if self.user_flag else ui.dim("미획득")
+            rf = ui.flag(self.root_flag) if self.root_flag else ui.dim("미획득")
+            lines.append("  " + ui.dim("user.txt:") + " " + uf)
+            lines.append("  " + ui.dim("root.txt:") + " " + rf)
             for f in self.flags:
                 if f.kind == "unknown":
-                    lines.append(f"  (미분류) {f.value} ← {f.source}")
+                    lines.append(ui.dim(f"  (미분류) {f.value} ← {f.source}"))
         if self.manual_suggestions:
-            lines.append("\n## 수동 제안 (크리덴셜 등 필요 — 승인/입력 후 실행)")
+            lines.append("\n" + ui.heading(
+                "수동 제안 (크리덴셜 등 필요 — 승인/입력 후 실행)", "✋"))
             for s in self.manual_suggestions:
-                lines.append(f"  · {s}")
+                lines.append(ui.bullet(s, "·", "dim"))
         return "\n".join(lines)
 
 

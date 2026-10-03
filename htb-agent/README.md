@@ -1,7 +1,15 @@
-# htb-agent — HTB 머신 승인제 자동 풀이 에이전트
+# ASSASSIN — HTB 머신 승인제 자동 풀이 에이전트
+
+```
+▄▀█ █▀ █▀ ▄▀█ █▀ █▀ █ █▄░█
+█▀█ ▄█ ▄█ █▀█ ▄█ ▄█ █ █░▀█
+```
 
 레드팀 학습·모의해킹 연습용. **권한이 확인된 Hack The Box 머신에 한정**해 동작하는,
-승인제(Human-in-the-loop) 자동 풀이 보조 에이전트.
+승인제(Human-in-the-loop) 자동 풀이 보조 에이전트. (패키지명: `htb-agent`)
+
+> 터미널 출력은 블루/네이비 팔레트의 색상·박스·정렬 UI 로 렌더링됩니다
+> (비-TTY·파이프·`NO_COLOR` 환경에서는 색 자동 비활성 → 로그/CI 안전).
 
 > ⚠️ **대상 범위**: HTB VPN 으로 연결된 본인 계정 할당 머신만. 그 외 자산 사용 금지
 > (Scope Guard 가 코드로 강제). 실제 공격 실행은 사용자 Kali + HTB VPN 환경에서.
@@ -43,7 +51,7 @@ Python 3.10+ (코어는 표준 라이브러리만, 외부 의존성 없음). LLM
 
 ```bash
 # 승인제 포트스캔+열거 (명령마다 3분할 해설 + 승인)
-htb-agent 10.129.1.5
+assassin 10.129.1.5   # 또는 htb-agent
 
 # 범위내 자동승인 + 자격증명(→ 초기 침투·플래그 승격) + 라이트업 생성
 htb-agent 10.129.1.5 --auto --cred administrator:Passw0rd --writeup
@@ -85,7 +93,7 @@ htb-agent 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 24 스위트 380 테스트
+cd htb-agent && python3 tests/run_all.py     # 25 스위트 430 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

@@ -55,6 +55,7 @@ def explain_command(command: str) -> str:
         else:
             params.append(t)
         j += 1
+    # 플레인 텍스트 유지(라이트업 Markdown·테스트 호환). 색은 render_proposal 에서.
     lines = ["[명령 3분할 해설]"]
     if env:
         lines.append(f"  환경변수 : {' '.join(env)}")
@@ -66,20 +67,22 @@ def explain_command(command: str) -> str:
 
 def render_proposal(command: str, vrep: ValidationReport,
                     sres: CommandScopeResult) -> str:
-    """승인 요청 화면 텍스트."""
-    return "\n".join([
-        "──────────────────────────────────────────",
-        f"$ {command}",
+    """승인 요청 화면 텍스트(블루/네이비 박스)."""
+    from . import ui
+    body = [
+        ui.accent2("$ ") + ui.bold(command),
+        ui.dim("─" * max(10, min(70, ui.display_width(command) + 2))),
+        *explain_command(command).splitlines(),
         "",
-        explain_command(command),
-        "",
-        "[검증] " + ("통과" if vrep.ok else "실패"),
-        *[f"   {i}" for i in vrep.issues],
-        "",
-        "[범위] " + ("자동허용" if sres.auto_allowed else "추가확인 필요"),
-        *([f"   ⚠️ {sres.needs_confirmation}"] if sres.needs_confirmation else []),
-        "──────────────────────────────────────────",
-    ])
+        ui.kv("검증", ui.mark_ok("통과") if vrep.ok else ui.mark_err("실패"), 8),
+        *[ui.bullet(str(i), " ", "dim") for i in vrep.issues],
+        ui.kv("범위", ui.mark_ok("자동허용") if sres.auto_allowed
+              else ui.mark_warn("추가확인 필요"), 8),
+        *([ui.bullet(sres.needs_confirmation, "▲", "warn")]
+          if sres.needs_confirmation else []),
+    ]
+    style = "accent" if (vrep.ok and sres.auto_allowed) else "warn"
+    return ui.panel("실행 제안 (승인 대기)", body, style=style)
 
 
 def interactive_approver(command: str, vrep: ValidationReport,
@@ -88,13 +91,14 @@ def interactive_approver(command: str, vrep: ValidationReport,
     대화형 승인(Kali 터미널). 검증 실패면 자동 거부. 범위밖이면 명시적 재확인.
     반환 True=실행 승인.
     """
+    from . import ui
     print(render_proposal(command, vrep, sres))
     if not vrep.ok:
-        print("⛔ 검증 실패 — 실행 거부합니다.")
+        print(ui.mark_err("검증 실패 — 실행 거부합니다."))
         return False
-    prompt = "실행할까요? [y/N] "
+    prompt = ui.accent2("실행할까요?") + ui.dim(" [y/N] ")
     if not sres.auto_allowed:
-        prompt = "⚠️ 범위 밖 대상이 포함됐습니다. 그래도 실행? [y/N] "
+        prompt = ui.warn("▲ 범위 밖 대상 포함 — 그래도 실행?") + ui.dim(" [y/N] ")
     try:
         ans = input(prompt).strip().lower()
     except EOFError:
