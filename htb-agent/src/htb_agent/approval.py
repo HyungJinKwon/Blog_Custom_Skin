@@ -104,3 +104,23 @@ def interactive_approver(command: str, vrep: ValidationReport,
     except EOFError:
         return False
     return ans in ("y", "yes")
+
+
+def smart_approver(command: str, vrep: ValidationReport,
+                   sres: CommandScopeResult) -> bool:
+    """
+    스마트 자동 승인(기본 모드). '나머지는 다 자동, 엄격한 권한만 확인':
+      - 검증 실패(파괴명령 포함) → 자동 거부(무프롬프트)
+      - 범위내 + 검증통과         → 자동 실행(무프롬프트)
+      - 범위 밖(권한 경계)        → 사람에게 1회 확인(interactive)
+    """
+    from . import ui
+    if not vrep.ok:
+        print(ui.mark_err("검증 실패 — 자동 거부: ") + ui.dim(command))
+        for i in vrep.issues:
+            print(ui.dim(f"   {i}"))
+        return False
+    if sres.auto_allowed:
+        return True
+    # 범위 밖 = 엄격한 권한 경계 → 명시 확인
+    return interactive_approver(command, vrep, sres)

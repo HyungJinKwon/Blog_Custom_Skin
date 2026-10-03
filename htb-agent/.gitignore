@@ -9,3 +9,7 @@ audit_*.jsonl
 *.egg-info/
 build/
 dist/
+
+# CVE 자동수집 캐시(런타임)
+knowledge/cve_cache/
+**/cve_cache/

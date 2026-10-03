@@ -21,6 +21,7 @@ class ConfigError(Exception):
 class Config:
     allowed_ranges: list[str] | None = None
     attacker_ips: list[str] | None = None
+    platform: str | None = None
     llm_backend: str | None = None
     llm_tier: str | None = None
     max_attempts: int | None = None
@@ -38,6 +39,7 @@ class Config:
         return cls(
             allowed_ranges=d.get("allowed_ranges"),
             attacker_ips=d.get("attacker_ips"),
+            platform=d.get("platform"),
             llm_backend=llm.get("backend", d.get("llm_backend")),
             llm_tier=llm.get("tier", d.get("llm_tier")),
             max_attempts=d.get("max_attempts"),

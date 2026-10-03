@@ -30,9 +30,15 @@ def build_parser() -> argparse.ArgumentParser:
         prog="assassin",
         description="ASSASSIN — HTB 머신 승인제 풀이 에이전트 (Kali). 권한 확인된 대상만.",
     )
-    p.add_argument("target", help="대상 HTB 머신 IP (허용 대역 내)")
+    p.add_argument("target", help="대상(IP 또는 호스트명/URL). HTB=허용대역 내 IP, "
+                   "CTF/Dreamhack=챌린지 host:port/URL")
+    p.add_argument("--platform", choices=["htb", "dreamhack", "ctf"], default=None,
+                   help="플랫폼 프로파일 (기본 htb). dreamhack/ctf=단일 타겟+flag{} 모드")
+    p.add_argument("--flag-prefix", action="append", dest="flag_prefixes",
+                   help="우선 인식할 플래그 접두 (반복 가능, 예: --flag-prefix DH). "
+                        "플랫폼 기본값에 추가")
     p.add_argument("--range", action="append", dest="ranges",
-                   help="허용 타겟 CIDR (반복 가능). 생략 시 HTB 기본 대역")
+                   help="허용 타겟 CIDR (반복 가능). 생략 시 플랫폼 기본(HTB만 대역 강제)")
     p.add_argument("--attacker-ip", action="append", dest="attacker_ips",
                    help="공격자 VPN IP (반복 가능). 생략 시 tun0 자동탐지")
     p.add_argument("--cred", action="append", dest="creds",
@@ -40,7 +46,15 @@ def build_parser() -> argparse.ArgumentParser:
                         "{user}/{pass}/{domain} 제안을 실행 후보로 승격")
     p.add_argument("--config", help="설정 파일(.json/.yaml). 우선순위: CLI > 설정파일 > 기본값")
     p.add_argument("--auto", action="store_true",
-                   help="범위내+검증통과 명령 자동승인 (비대화형)")
+                   help="완전 자동: 범위내+검증통과만 실행, 범위 밖은 조용히 건너뜀(무프롬프트)")
+    p.add_argument("--manual", action="store_true",
+                   help="완전 수동: 모든 명령을 실행 전 확인(승인제 최대)")
+    p.add_argument("--no-enrich", action="store_true",
+                   help="CVE/CWE 자동 수집(NVD/GitHub) 비활성")
+    p.add_argument("--offline", action="store_true",
+                   help="오프라인: 네트워크 수집 금지(캐시만 사용)")
+    p.add_argument("--enrich-cache", default=None,
+                   help="CVE 캐시 디렉토리 (기본 <knowledge>/cve_cache)")
     # 아래 덮어쓰기 가능 옵션은 기본값 None → 설정파일/내장기본값과 병합
     p.add_argument("--max-attempts", type=int, default=None,
                    help="포트스캔 폴백 최대 시도 (기본 4, 무한루프 방지)")
@@ -93,7 +107,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     # runner 주입 가능(테스트). 기본은 실제 Kali 용 SubprocessRunner.
     args = build_parser().parse_args(argv)
     from . import ui
-    print(ui.banner())
+    from .profiles import get_profile
 
     # 0) 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값)
     from .config import load_config, pick, Config, ConfigError
@@ -102,7 +116,16 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     except ConfigError as e:
         print(ui.mark_err(f"설정 오류: {e}"), file=sys.stderr)
         return 2
-    ranges = pick(args.ranges, cfg.allowed_ranges, None)
+    # 플랫폼 프로파일(HTB/Dreamhack/CTF)
+    try:
+        profile = get_profile(pick(args.platform, cfg.platform, "htb"))
+    except ValueError as e:
+        print(ui.mark_err(str(e)), file=sys.stderr)
+        return 2
+    print(ui.banner(profile.banner_subtitle))
+    flag_prefixes = tuple(profile.flag_prefixes) + tuple(args.flag_prefixes or ())
+    ranges = pick(args.ranges, cfg.allowed_ranges,
+                  list(profile.default_ranges) or None)
     max_attempts = pick(args.max_attempts, cfg.max_attempts, 4)
     max_enum = pick(args.max_enum, cfg.max_enum, 6)
     max_rounds = pick(args.max_rounds, cfg.max_rounds, 2)
@@ -112,8 +135,10 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     llm_tier = pick(args.llm_tier, cfg.llm_tier, "standard")
     state_dir = pick(args.state_dir, cfg.state_dir, "state")
 
-    # 1) Scope Guard 구성 + 타겟 바인딩
-    guard = ScopeGuard.from_cidr_strings(ranges)
+    # 1) Scope Guard 구성 + 타겟 바인딩 (플랫폼별 대역강제/호스트명 허용)
+    guard = ScopeGuard.from_cidr_strings(
+        ranges, enforce_ranges=profile.enforce_ranges,
+        allow_hostname_target=profile.allow_hostname_target)
     try:
         guard.bind_target(args.target)
     except ScopeViolation as e:
@@ -131,11 +156,15 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     # 3) 환경 프리플라이트
     pf = preflight(required_tool_keys=["nmap"])
     print(pf.render())
+    _mode = "완전자동" if args.auto else ("완전수동" if args.manual else "스마트(범위밖만 확인)")
     print(ui.panel("세션", [
-        ui.kv("타겟", ui.accent2(str(guard.bound_target)), 8),
-        ui.kv("허용대역", guard.describe(), 8),
+        ui.kv("플랫폼", ui.accent2(profile.name) + ui.dim(f"  ({profile.flag_kind})"), 8),
+        ui.kv("타겟", ui.accent2(str(guard.bound_target or guard.bound_host)), 8),
+        ui.kv("범위", guard.describe(), 8),
         ui.kv("공격자IP", (ui.ok(", ".join(attacker)) if attacker
                         else ui.dim("(없음)")), 8),
+        ui.kv("승인", ui.info(_mode), 8),
+        ui.kv("플래그", ui.dim("접두 " + (", ".join(flag_prefixes) or "자동") + " · TAG{} 자동인식"), 8),
     ], style="navy") + "\n")
 
     # 4) 지식베이스 + 취약점 KB 로드 (사용자 학습데이터로 성장)
@@ -175,8 +204,24 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         audit = AuditLog(log_path)
         print(f"감사 로그: {log_path}\n")
 
+    # 6.6) CVE/CWE 자동 수집기(공식 출처, 기본 활성 · 캐시 · 오프라인 안전)
+    from .enrich import Enricher
+    enrich_cache = args.enrich_cache or _os.path.join(knowledge_dir, "cve_cache")
+    enricher = None if args.no_enrich else Enricher(
+        cache_dir=enrich_cache, enabled=not args.offline)
+    print(ui.kv("CVE수집", (ui.dim("비활성") if args.no_enrich
+                else (ui.info("캐시만(오프라인)") if args.offline
+                      else ui.ok("자동(NVD/GitHub) · 캐시 " + enrich_cache))), 10) + "\n")
+
     # 7) 오케스트레이션 (유한 단계: RECON→PROFILE→ENUM→(LLM)→REPORT)
-    approver = auto_approve_in_scope if args.auto else interactive_approver
+    # 승인 모드: --auto(완전자동) / --manual(완전수동) / 기본=스마트(범위밖만 확인)
+    from .approval import smart_approver
+    if args.auto:
+        approver = auto_approve_in_scope
+    elif args.manual:
+        approver = interactive_approver
+    else:
+        approver = smart_approver
     orchestrator = Orchestrator(guard, runner or SubprocessRunner(), kb, approver,
                                 max_enum=max_enum,
                                 recon_max_attempts=max_attempts,
@@ -184,6 +229,9 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 max_variants=max_variants,
                                 llm_router=llm_router, vuln_kb=vuln_kb,
                                 vault=vault if vault.creds else None,
+                                flag_kind=profile.flag_kind,
+                                flag_prefixes=flag_prefixes,
+                                enricher=enricher,
                                 state_store=store, resume=args.resume, audit=audit)
     report = orchestrator.run()
     print("\n" + report.summary())

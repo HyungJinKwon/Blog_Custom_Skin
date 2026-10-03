@@ -180,6 +180,6 @@ _BANNER_ART = r"""
 def banner(subtitle: str = "HTB 머신 승인제 풀이 에이전트") -> str:
     """ASSASSIN 시작 배너(블루/네이비)."""
     art = "\n".join(paint(ln, "accent", "bold") for ln in _BANNER_ART.splitlines())
-    tag = "   " + dim("권한 확인된 HTB 자산 전용 · 승인제 · 외부 라이트업 미참조")
+    tag = "   " + dim("권한 확인된 대상 전용 · 승인제 · 외부 라이트업 미참조")
     sub = "   " + accent2(subtitle)
     return "\n".join([art, sub, tag, rule("", 46, "navy")])

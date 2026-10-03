@@ -36,7 +36,7 @@ need_root(){
 }
 
 # 설치할 카테고리 (인자 없으면 전체)
-ALL_CATS=(recon web smb ad creds cloud pivot wordlist)
+ALL_CATS=(recon web smb ad creds cloud pivot wordlist traffic re pwn forensic)
 CATS=("${@:-${ALL_CATS[@]}}")
 [ "$#" -eq 0 ] && CATS=("${ALL_CATS[@]}")
 want(){ local c; for c in "${CATS[@]}"; do [ "$c" = "$1" ] && return 0; done; return 1; }
@@ -68,7 +68,37 @@ fi
 
 if want web; then
   LOG "[web] 웹 열거"
-  for p in ffuf gobuster feroxbuster nikto whatweb curl; do apt_pkg "$p"; done
+  for p in ffuf gobuster feroxbuster nikto whatweb curl sqlmap wfuzz; do apt_pkg "$p"; done
+  pipx_pkg git-dumper
+  WARN "jwt_tool 은 git clone ticarpi/jwt_tool 로 별도 설치"
+fi
+
+if want traffic; then
+  LOG "[traffic] 프록시/패킷 (Burp·Wireshark 등)"
+  apt_pkg burpsuite
+  apt_pkg wireshark; apt_pkg tshark; apt_pkg tcpdump
+  apt_pkg zaproxy
+  pipx_pkg mitmproxy
+fi
+
+if want re; then
+  LOG "[re] 리버싱"
+  apt_pkg gdb; apt_pkg radare2; apt_pkg ghidra
+  WARN "pwndbg/GEF 는 github setup.sh 로 별도 설치 권장"
+fi
+
+if want pwn; then
+  LOG "[pwn] 포너블"
+  apt_pkg checksec
+  pipx_pkg pwntools; pipx_pkg ROPgadget
+fi
+
+if want forensic; then
+  LOG "[forensic] 포렌식/스테가노"
+  apt_pkg binwalk; apt_pkg foremost; apt_pkg libimage-exiftool-perl
+  apt_pkg steghide; apt_pkg hashid; apt_pkg oath-toolkit
+  pipx_pkg volatility3
+  WARN "zsteg 는 gem install zsteg 로 설치"
 fi
 
 if want smb; then
