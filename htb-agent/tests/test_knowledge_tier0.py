@@ -110,5 +110,22 @@ for kw in ["Shadow Credentials 공격(GenericWrite/WriteProperty)", "SPN Jacking
            "Laravel env 조작(CVE-2024-52301)", "sudo BASH_ENV 임의실행"]:
     check(f"고급 규칙 존재: {kw[:24]}", kw in names_all)
 
+print("\n=== 웹앱/RE 학습데이터 로드/검증 ===")
+b5 = [r for r in kb.rules if r.source.startswith("user:htb-webapps-re")]
+check("webapps-re 규칙 16개 로드", len(b5) == 16)
+bad5 = 0
+for r in b5:
+    for tmpl in r.suggest:
+        cmd, _ = kb.format_suggestion(tmpl, "10.129.1.5")
+        if not validate(cmd).ok:
+            bad5 += 1
+            print(f"    ! FAIL: {cmd}")
+check("webapps-re 모든 명령 검증 통과", bad5 == 0)
+names5 = {r.name for r in b5}
+for kw in ["Grafana SQL Expressions RCE(CVE-2024-9264)", "Teampass SQLi(CVE-2023-1545)",
+           "Apache CXF Aegis SSRF(CVE-2024-28752, XOP)", "GenericAll on Computer → RBCD(Powermad+Rubeus)",
+           "심볼릭 링크 체인 우회(루트 리더)"]:
+    check(f"규칙 존재: {kw[:22]}", kw in names5)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
