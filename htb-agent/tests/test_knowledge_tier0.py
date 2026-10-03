@@ -46,5 +46,28 @@ for (osc, port, svc), kw in expect.items():
     names = " | ".join(r.rule_name for r in recs)
     check(f"{svc}:{port} → '{kw}' 규칙 제안", kw in names)
 
+print("\n=== Tier I/II 학습데이터 로드/검증 ===")
+t12 = [r for r in kb.rules if r.source.startswith("user:htb-tier1-2")]
+check("Tier1-2 규칙 30개 로드", len(t12) == 30)
+bad12 = 0
+for r in t12:
+    for tmpl in r.suggest:
+        cmd, _ = kb.format_suggestion(tmpl, "10.129.1.5")
+        if not validate(cmd).ok:
+            bad12 += 1
+            print(f"    ! FAIL: {cmd}")
+check("Tier1-2 모든 명령 검증 통과", bad12 == 0)
+
+expect12 = {
+    ("windows", 1433, "ms-sql"): "MSSQL",
+    ("linux", 69, "tftp"): "TFTP",
+    ("windows", 5985, "winrm"): "evil-winrm",
+    ("windows", 445, "microsoft-ds"): "psexec",
+}
+for (osc, port, svc), kw in expect12.items():
+    recs = kb.query(osc, [port], [svc])
+    names = " | ".join(r.rule_name for r in recs)
+    check(f"{svc}:{port} → '{kw}' 규칙 제안", kw in names)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

