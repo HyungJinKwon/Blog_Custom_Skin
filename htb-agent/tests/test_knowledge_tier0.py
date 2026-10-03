@@ -92,5 +92,23 @@ for (osc, port, svc), kw in expect3.items():
     names = " | ".join(r.rule_name for r in recs)
     check(f"{svc}:{port} → '{kw}' 규칙 제안", kw in names)
 
+print("\n=== 고급(AD/웹CVE) 학습데이터 로드/검증 ===")
+b4 = [r for r in kb.rules if r.source.startswith("user:htb-advanced")]
+check("advanced 규칙 25개 로드", len(b4) == 25)
+bad4 = 0
+for r in b4:
+    for tmpl in r.suggest:
+        cmd, _ = kb.format_suggestion(tmpl, "10.129.1.5")
+        if not validate(cmd).ok:
+            bad4 += 1
+            print(f"    ! FAIL: {cmd}")
+check("advanced 모든 명령 검증 통과", bad4 == 0)
+# 핵심 고급 기법 규칙 존재 확인
+names_all = {r.name for r in b4}
+for kw in ["Shadow Credentials 공격(GenericWrite/WriteProperty)", "SPN Jacking(WriteSPN + 제약위임)",
+           "Rogue WSUS 공격", "ADCS ESC17 (서버인증 템플릿)", "NTDS.dit 오프라인 덤프",
+           "Laravel env 조작(CVE-2024-52301)", "sudo BASH_ENV 임의실행"]:
+    check(f"고급 규칙 존재: {kw[:24]}", kw in names_all)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
