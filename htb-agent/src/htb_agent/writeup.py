@@ -19,6 +19,13 @@ from .approval import explain_command
 
 def _flag_line(report, kind: str, fallback: str) -> str:
     """캡처된 플래그가 있으면 값, 없으면 안내 문구."""
+    # CTF/Dreamhack(single) 는 user/root 구분이 없으므로 캡처된 플래그를 user 행에 표기
+    if getattr(report, "flag_kind", "boot2root") == "single":
+        if kind == "user":
+            vals = [f.value for f in report.flags]
+            return ("  ".join(f"`{v}`" for v in vals) + "  ✅ 획득") if vals \
+                else f"미획득 ({fallback})"
+        return "(Jeopardy — 단일 플래그, 상단 참조)"
     val = report.user_flag if kind == "user" else report.root_flag
     if val:
         return f"`{val}`  ✅ 획득"

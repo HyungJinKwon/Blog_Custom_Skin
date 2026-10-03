@@ -100,9 +100,10 @@ class ReconExecutor:
         self.hosts_map = hosts_map
 
     def run_portscan(self) -> ReconReport:
-        if self.guard.bound_target is None:
+        if self.guard.bound_target is None and self.guard.bound_host is None:
             raise ScopeViolation("타겟 미바인딩 — bind_target() 먼저 호출하세요.")
-        target = str(self.guard.bound_target)
+        # 호스트명 타겟(CTF)도 지원: IP 가 없으면 호스트명으로 스캔(nmap 가 해석)
+        target = str(self.guard.bound_target or self.guard.bound_host)
         report = ReconReport(target=target, status="escalate")
 
         for idx, (label, tmpl, timeout) in enumerate(PORTSCAN_PLAN):

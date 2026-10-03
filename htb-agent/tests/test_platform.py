@@ -74,5 +74,29 @@ for r in ctf:
             bad += 1
 check("ctf 명령 검증 통과", bad == 0)
 
+print("\n=== CTF 호스트명 타겟 엔드투엔드(회귀) ===")
+from htb_agent.tools.runner import FakeRunner, RunOutput
+from htb_agent.tools.recon import auto_approve_in_scope
+from htb_agent.orchestrator import Orchestrator
+from htb_agent.writeup import generate_writeup
+XML = ('<?xml version="1.0"?><nmaprun><host><status state="up"/>'
+       '<address addr="1.2.3.4"/><ports>'
+       '<port protocol="tcp" portid="80"><state state="open"/>'
+       '<service name="http" product="Apache"/></port></ports></host></nmaprun>')
+def runner():
+    return FakeRunner(lambda c: RunOutput(c, stdout=XML) if c.startswith("nmap")
+                      else RunOutput(c, stdout="HTTP/1.1 200 OK\nflag{ctf_e2e_ok}"))
+gh = ScopeGuard.from_cidr_strings(None, enforce_ranges=False, allow_hostname_target=True)
+gh.bind_target("chall.ctf.io:9999")   # 호스트명 타겟(IP 미해석)
+rep = Orchestrator(gh, runner(), KnowledgeBase.load(), auto_approve_in_scope,
+                   max_enum=3, flag_kind="single", flag_prefixes=("flag",),
+                   is_tool_available=lambda b: True).run()
+check("호스트명 타겟 run() 완료", rep.status == "done")
+check("타겟=호스트명", rep.target == "chall.ctf.io")
+check("단일 플래그 캡처", any(f.value == "flag{ctf_e2e_ok}" and f.kind == "flag"
+                           for f in rep.flags))
+md = generate_writeup(rep)
+check("라이트업에 단일 플래그 노출", "flag{ctf_e2e_ok}" in md)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
