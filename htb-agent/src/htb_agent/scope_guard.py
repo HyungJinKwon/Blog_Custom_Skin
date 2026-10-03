@@ -87,43 +87,87 @@ class CommandScopeResult:
         return "\n".join(lines)
 
 
+def normalize_target(raw: str) -> str:
+    """타겟 문자열에서 스킴(http://)·경로·포트(:1337)를 제거해 호스트/IP만 남긴다."""
+    t = raw.strip()
+    m = _URL_HOST_RE.match(t)
+    if m:
+        return m.group(1).strip()
+    t = t.split("/", 1)[0]
+    # IPv4:port 또는 host:port 에서 포트 제거(IPv6 미지원이라 단순 rsplit 안전)
+    if t.count(":") == 1:
+        t = t.split(":", 1)[0]
+    return t
+
+
 @dataclass
 class ScopeGuard:
     allowed_target_cidrs: list[ipaddress.IPv4Network] = field(default_factory=list)
     bound_target: ipaddress.IPv4Address | None = None
     attacker_ips: set[ipaddress.IPv4Address] = field(default_factory=set)
+    enforce_ranges: bool = True            # False=단일 타겟 바인딩(CTF/Dreamhack)
+    allow_hostname_target: bool = False    # 호스트명 타겟 허용(CTF)
+    bound_host: str | None = None          # 호스트명 타겟(해석 전/불가 시)
 
     # ── 생성 ────────────────────────────────────────────────────────
     @classmethod
-    def from_cidr_strings(cls, cidrs: Iterable[str] | None = None) -> "ScopeGuard":
-        raw = list(cidrs) if cidrs else list(DEFAULT_HTB_RANGES)
+    def from_cidr_strings(cls, cidrs: Iterable[str] | None = None,
+                          enforce_ranges: bool = True,
+                          allow_hostname_target: bool = False) -> "ScopeGuard":
+        raw = list(cidrs) if cidrs else (list(DEFAULT_HTB_RANGES) if enforce_ranges else [])
         nets: list[ipaddress.IPv4Network] = []
         for c in raw:
             try:
                 nets.append(ipaddress.ip_network(c, strict=False))
             except ValueError as exc:
                 raise ValueError(f"잘못된 CIDR 설정: {c!r} ({exc})") from exc
-        if not nets:
+        if enforce_ranges and not nets:
             raise ValueError("Scope Guard: 허용 대역이 비어 있습니다. fail-closed.")
-        logger.info("Scope Guard — 허용 타겟 대역: %s", [str(n) for n in nets])
-        return cls(allowed_target_cidrs=nets)
+        logger.info("Scope Guard — 대역강제=%s, 허용 대역: %s",
+                    enforce_ranges, [str(n) for n in nets])
+        return cls(allowed_target_cidrs=nets, enforce_ranges=enforce_ranges,
+                   allow_hostname_target=allow_hostname_target)
 
     # ── 타겟 바인딩 ─────────────────────────────────────────────────
-    def bind_target(self, ip: str) -> ipaddress.IPv4Address:
-        """타겟을 허용 대역에 대해 검증하고 세션에 바인딩한다."""
+    def bind_target(self, ip: str) -> ipaddress.IPv4Address | None:
+        """
+        타겟을 세션에 바인딩한다.
+          - 대역강제(HTB): 허용 대역 안인지 '한 번' 검증.
+          - 단일타겟(CTF): 명시한 IP 를 그대로 허용(/32 추가). 호스트명도 허용 가능.
+        호스트명 타겟이면 IPv4 주소는 None 을 반환(bound_host 로 추적).
+        """
+        host = normalize_target(ip)
         try:
-            addr = ipaddress.ip_address(ip.strip())
-        except ValueError as exc:
-            raise ScopeViolation(f"타겟 IP 파싱 실패: {ip!r}") from exc
+            addr = ipaddress.ip_address(host)
+        except ValueError:
+            # IP 가 아님 → 호스트명 타겟
+            if not self.allow_hostname_target:
+                raise ScopeViolation(
+                    f"타겟 파싱 실패: {ip!r} (호스트명 타겟은 CTF/Dreamhack 모드에서만)."
+                )
+            self.bound_host = host.lower()
+            resolved = self.load_etc_hosts().get(self.bound_host)
+            if resolved:
+                self.bound_target = ipaddress.ip_address(resolved)
+                self._allow(self.bound_target)
+            logger.info("호스트명 타겟 바인딩: %s (해석: %s)", self.bound_host, resolved or "미해석")
+            return self.bound_target
         if isinstance(addr, ipaddress.IPv6Address):
             raise ScopeViolation("현재 IPv4 타겟만 지원합니다(IPv6 미지원).")
-        if not any(addr in net for net in self.allowed_target_cidrs):
+        if self.enforce_ranges and not any(addr in net for net in self.allowed_target_cidrs):
             raise ScopeViolation(
                 f"타겟 {addr} 은(는) 허용 HTB 대역({self.describe()}) 밖입니다. 바인딩 거부."
             )
+        if not self.enforce_ranges:
+            self._allow(addr)      # 단일 타겟 모드: 명시한 타겟만 /32 허용
         self.bound_target = addr
         logger.info("타겟 바인딩: %s", addr)
         return addr
+
+    def _allow(self, addr: ipaddress.IPv4Address) -> None:
+        net = ipaddress.ip_network(f"{addr}/32")
+        if net not in self.allowed_target_cidrs:
+            self.allowed_target_cidrs.append(net)
 
     def add_attacker_ip(self, ip: str) -> None:
         try:
@@ -170,7 +214,7 @@ class ScopeGuard:
     def inspect_command(self, command: str,
                         hosts_map: dict[str, str] | None = None) -> CommandScopeResult:
         """명령 속 IP/호스트를 분류한다. 바인딩 전에는 fail-closed."""
-        if self.bound_target is None:
+        if self.bound_target is None and self.bound_host is None:
             raise ScopeViolation("타겟이 바인딩되지 않았습니다. bind_target() 먼저 호출하세요.")
         hosts_map = hosts_map if hosts_map is not None else self.load_etc_hosts()
         result = CommandScopeResult(command=command)
@@ -182,6 +226,10 @@ class ScopeGuard:
                 result.needs_confirmation.append(ip)
 
         for host in self._extract_hosts(command):
+            # CTF 호스트명 타겟: 바인딩된 호스트는 TARGET 으로 자동 허용
+            if self.bound_host is not None and host.lower() == self.bound_host:
+                result.classified.append((host, IPClass.TARGET, "(바인딩 타겟)"))
+                continue
             resolved = hosts_map.get(host.lower())
             if resolved:
                 cls = self.classify_ip(resolved)
@@ -244,4 +292,8 @@ class ScopeGuard:
         return mapping
 
     def describe(self) -> str:
-        return ", ".join(str(n) for n in self.allowed_target_cidrs)
+        if self.allowed_target_cidrs:
+            return ", ".join(str(n) for n in self.allowed_target_cidrs)
+        if self.bound_host:
+            return f"단일 타겟: {self.bound_host}"
+        return "(단일 타겟 모드 — 바인딩 대기)"

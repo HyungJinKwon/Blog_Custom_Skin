@@ -49,8 +49,13 @@ def is_flag_command(command: str) -> bool:
     return any(h in c for h in _FLAG_FILE_HINTS) or "desktop" in c
 
 
-def classify_flag(command: str) -> str:
-    """명령 맥락으로 user/root 분류. 파일명을 사용자명보다 우선(오분류 방지)."""
+def classify_flag(command: str, flag_kind: str = "boot2root") -> str:
+    """
+    명령 맥락으로 플래그 분류. 파일명을 사용자명보다 우선(오분류 방지).
+    flag_kind="single"(CTF/Dreamhack Jeopardy) 이면 user/root 구분 없이 "flag".
+    """
+    if flag_kind == "single":
+        return "flag"
     c = command.lower()
     # 1) 명시적 플래그 파일명 우선
     if "root.txt" in c or "proof.txt" in c:
@@ -68,19 +73,31 @@ def classify_flag(command: str) -> str:
     return "unknown"
 
 
-def scan(command: str, output: str) -> list[FlagHit]:
-    """명령 + 출력에서 플래그를 찾아 분류. (오탐 방지 조건 적용)"""
+def scan(command: str, output: str, flag_kind: str = "boot2root",
+         prefixes: tuple[str, ...] = ()) -> list[FlagHit]:
+    """
+    명령 + 출력에서 플래그를 찾아 분류. (오탐 방지 조건 적용)
+      - flag_kind : boot2root(user/root) | single(CTF flag 1개)
+      - prefixes  : 우선 인식할 TAG{} 접두(예: ('DH','flag')). 지정 시 해당 접두
+                    플래그를 먼저/확실히 기록(오탐 감소). 32-hex 은 boot2root 에서만.
+    """
     hits: list[FlagHit] = []
     seen: set[str] = set()
+    fmt_hits = extract_flags(output, require_fmt=True)
+    # 접두 지정 시 매칭 접두를 앞세움(정렬 안정)
+    if prefixes:
+        pref_l = tuple(p.lower() for p in prefixes)
+        fmt_hits = ([v for v in fmt_hits if v.split("{", 1)[0].lower() in pref_l]
+                    + [v for v in fmt_hits if v.split("{", 1)[0].lower() not in pref_l])
     # TAG{...} 형식은 항상 플래그로 간주
-    for v in extract_flags(output, require_fmt=True):
+    for v in fmt_hits:
         if v not in seen:
             seen.add(v)
-            hits.append(FlagHit(v, classify_flag(command), command))
-    # 32-hex 는 플래그 파일을 읽는 명령 맥락일 때만
-    if is_flag_command(command):
+            hits.append(FlagHit(v, classify_flag(command, flag_kind), command))
+    # 32-hex 는 boot2root(HTB) + 플래그 파일 맥락일 때만(CTF single 에선 제외: 해시 오탐↓)
+    if flag_kind != "single" and is_flag_command(command):
         for v in extract_flags(output):
             if v not in seen:
                 seen.add(v)
-                hits.append(FlagHit(v, classify_flag(command), command))
+                hits.append(FlagHit(v, classify_flag(command, flag_kind), command))
     return hits

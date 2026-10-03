@@ -1,0 +1,34 @@
+[
+  {
+    "name": "CTF 웹 기초 점검(소스·robots·쿠키·버전)",
+    "when": {"ports": [80, 443, 3000, 5000, 8000, 8080], "services": ["http", "https"]},
+    "suggest": [
+      "curl -s -D - http://{t}/ -o /dev/null",
+      "curl -s http://{t}/robots.txt",
+      "whatweb http://{t}"
+    ],
+    "note": "Jeopardy 웹: 응답헤더(Server/Set-Cookie/X-Powered-By)·robots.txt·HTML 주석/숨은 경로 확인. View-Source 로 JS 내 엔드포인트/키, 쿠키(JWT 면 jwt_tool 디코드), /flag·/admin·/.git·/backup 시도. 플래그는 보통 flag{...}/DH{...}.",
+    "tags": ["ctf", "web"],
+    "phase": "enum"
+  },
+  {
+    "name": "CTF 웹 소스/백업/깃 노출 탐색",
+    "when": {"ports": [80, 443, 3000, 5000, 8000, 8080], "services": ["http", "https"]},
+    "suggest": [
+      "gobuster dir -u http://{t} -w /usr/share/seclists/Discovery/Web-Content/common.txt -x php,txt,bak,swp,old,zip,git,js"
+    ],
+    "note": "노출된 소스는 로직 취약점(인증우회·타입저글링)·하드코딩 플래그/키의 지름길. /.git 발견 시 git-dumper 로 복원, *.bak/*.swp 는 strings/vim -r 로 복구. Dreamhack 웹은 제공 소스(app.py 등)를 먼저 읽고 취약 라우트 식별.",
+    "tags": ["ctf", "web", "source-disclosure"],
+    "phase": "enum"
+  },
+  {
+    "name": "CTF Pwnable(바이너리 서비스) 점검",
+    "when": {"ports": [1337], "services": ["unknown", "pwn"]},
+    "suggest": [
+      "nc {t} 1337"
+    ],
+    "note": "Jeopardy pwn: 보통 nc host port 로 접속하는 바이너리 서비스. 제공 바이너리를 checksec(NX/PIE/Canary/RELRO) → file/strings → Ghidra/IDA 디컴파일 → 오버플로우·포맷스트링·UAF 분석 → pwntools 로 익스. 원격은 remote(host,port). libc 주어지면 ret2libc/one_gadget. 포트는 챌린지가 지정(예시 1337).",
+    "tags": ["ctf", "pwn"],
+    "phase": "access"
+  }
+]

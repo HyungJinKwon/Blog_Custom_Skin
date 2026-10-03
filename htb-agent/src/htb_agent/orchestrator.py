@@ -74,6 +74,8 @@ class OrchestrationReport:
     detected_cwe: list[str] = field(default_factory=list)
     vuln_matches: list[VulnMatch] = field(default_factory=list)
     flags: list[FlagHit] = field(default_factory=list)
+    flag_kind: str = "boot2root"     # boot2root(user/root) | single(CTF flag)
+    enriched: list = field(default_factory=list)   # list[enrich.CveInfo]
     message: str = ""
 
     @property
@@ -85,49 +87,77 @@ class OrchestrationReport:
         return next((f.value for f in self.flags if f.kind == "root"), None)
 
     def summary(self) -> str:
-        lines = [f"# 오케스트레이션 — {self.target} [{self.status}] {self.message}".rstrip()]
+        from . import ui
+        st = ui.ok if self.status == "done" else ui.accent2
+        head = (ui.accent("ASSASSIN") + ui.dim(" · 오케스트레이션 ")
+                + ui.bold(self.target) + "  " + st(f"[{self.status}]")
+                + (("  " + ui.dim(self.message)) if self.message else ""))
+        lines = [head, ui.rule("", 60, "navy")]
         if self.recon:
-            lines.append("\n## RECON")
+            lines.append(ui.heading("RECON", "📡"))
             lines.append(self.recon.summary())
         if self.profile:
-            lines.append("\n## PROFILE")
+            lines.append("\n" + ui.heading("PROFILE", "🧭"))
             lines.append(self.profile.summary())
         # 모의해킹 단계 순서대로 그룹화 출력
         all_findings = self.enum_findings + self.llm_findings
         for key, label in PENTEST_PHASES:
             group = [f for f in all_findings if f.phase == key]
             if group:
-                lines.append(f"\n## 단계: {label}")
+                lines.append("\n" + ui.rule(f"단계: {label}", 60))
                 for f in group:
-                    mark = "▶" if f.ran else "·"
-                    lines.append(f"  {mark} {f.command}" + (f"  — {f.note}" if f.note else ""))
+                    mark = ui.mark_run() if f.ran else ui.dim("·")
+                    note = ui.dim(f"  — {f.note}") if f.note else ""
+                    lines.append(f"  {mark} {f.command}{note}")
                     if f.output:
-                        lines.append(f"      {f.output}")
+                        lines.append("      " + ui.dim(f.output))
         if self.detected_cve or self.detected_cwe or self.vuln_matches:
-            lines.append("\n## VULN (탐지된 취약점 — 수동 검증/익스플로잇 필요)")
+            lines.append("\n" + ui.heading(
+                "VULN  (탐지된 취약점 — 수동 검증/익스플로잇 필요)", "🛑"))
             if self.detected_cve:
-                lines.append(f"  탐지 CVE: {', '.join(self.detected_cve)}")
+                lines.append(ui.kv("탐지 CVE", ui.warn(", ".join(self.detected_cve)), 9))
             if self.detected_cwe:
-                lines.append(f"  탐지 CWE: {', '.join(self.detected_cwe)}")
+                lines.append(ui.kv("탐지 CWE", ui.warn(", ".join(self.detected_cwe)), 9))
             for m in self.vuln_matches:
                 sev = f"[{m.severity}] " if m.severity else ""
                 ids = " ".join(m.cve + m.cwe)
-                lines.append(f"  ⚠️ {sev}{m.name} ({ids}) — 매칭:{m.matched_on}")
+                lines.append("  " + ui.mark_warn(
+                    ui.warn(sev) + m.name + ui.dim(f" ({ids}) — 매칭:{m.matched_on}")))
                 if m.note:
-                    lines.append(f"       비고: {m.note}")
+                    lines.append(ui.dim(f"       비고: {m.note}"))
                 for s in m.suggest:
-                    lines.append(f"       제안: {s}")
+                    lines.append("       " + ui.accent2("제안: ") + s)
+        if self.enriched:
+            lines.append("\n" + ui.heading("CVE 레퍼런스 (자동 수집 — NVD/GitHub)", "📚"))
+            for e in self.enriched:
+                sev = f"[{e.severity} {e.cvss}] " if e.severity else ""
+                lines.append("  " + ui.warn(sev) + ui.bold(e.id)
+                             + (ui.dim("  " + ", ".join(e.cwe)) if e.cwe else ""))
+                if e.description:
+                    lines.append(ui.dim("     " + e.description[:160]))
+                for r in e.references[:3]:
+                    lines.append("     " + ui.accent2("ref: ") + ui.dim(r))
+                for p in e.poc_repos[:3]:
+                    lines.append("     " + ui.accent2("PoC: ") + ui.dim(p))
         if self.flags:
-            lines.append("\n## 🚩 플래그 (FLAG)")
-            lines.append(f"  user.txt: {self.user_flag or '미획득'}")
-            lines.append(f"  root.txt: {self.root_flag or '미획득'}")
-            for f in self.flags:
-                if f.kind == "unknown":
-                    lines.append(f"  (미분류) {f.value} ← {f.source}")
+            lines.append("\n" + ui.heading("🚩 플래그 (FLAG)"))
+            if self.flag_kind == "single":
+                for f in self.flags:
+                    lines.append("  " + ui.flag(f.value)
+                                 + ui.dim(f"  ← {f.source}"))
+            else:
+                uf = ui.flag(self.user_flag) if self.user_flag else ui.dim("미획득")
+                rf = ui.flag(self.root_flag) if self.root_flag else ui.dim("미획득")
+                lines.append("  " + ui.dim("user.txt:") + " " + uf)
+                lines.append("  " + ui.dim("root.txt:") + " " + rf)
+                for f in self.flags:
+                    if f.kind == "unknown":
+                        lines.append(ui.dim(f"  (미분류) {f.value} ← {f.source}"))
         if self.manual_suggestions:
-            lines.append("\n## 수동 제안 (크리덴셜 등 필요 — 승인/입력 후 실행)")
+            lines.append("\n" + ui.heading(
+                "수동 제안 (크리덴셜 등 필요 — 승인/입력 후 실행)", "✋"))
             for s in self.manual_suggestions:
-                lines.append(f"  · {s}")
+                lines.append(ui.bullet(s, "·", "dim"))
         return "\n".join(lines)
 
 
@@ -147,6 +177,9 @@ class Orchestrator:
                  resume: bool = False,
                  audit=None,
                  phases: list[tuple[str, str]] | None = None,
+                 flag_kind: str = "boot2root",
+                 flag_prefixes: tuple[str, ...] = (),
+                 enricher=None,
                  is_tool_available: Callable[[str], bool] | None = None):
         self.guard = guard
         self.runner = runner
@@ -165,14 +198,17 @@ class Orchestrator:
         self.resume = resume
         self.audit = audit or NullAudit()
         self.phases = phases or PENTEST_PHASES
+        self.flag_kind = flag_kind
+        self.flag_prefixes = flag_prefixes
+        self.enricher = enricher
         # 도구 설치 여부 판단(주입 가능 — 테스트에서 대체)
         self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
 
     def run(self) -> OrchestrationReport:
         if self.guard.bound_target is None:
             raise ScopeViolation("타겟 미바인딩 — bind_target() 먼저 호출하세요.")
-        target = str(self.guard.bound_target)
-        report = OrchestrationReport(target=target)
+        target = str(self.guard.bound_target or self.guard.bound_host)
+        report = OrchestrationReport(target=target, flag_kind=self.flag_kind)
         self.audit.event("session_start", target=target, resume=self.resume,
                          ranges=[str(n) for n in self.guard.allowed_target_cidrs])
 
@@ -234,6 +270,20 @@ class Orchestrator:
             ports = ",".join(str(p) for p in host.open_ports)
             report.manual_suggestions.append(
                 f"nmap -sV --script vuln -p {ports} {target}   # NSE 취약점 스캔(수동)")
+
+        # ── CVE/CWE 레퍼런스 자동 수집(공식 출처, best-effort) ──
+        if self.enricher is not None:
+            all_cves = list(report.detected_cve)
+            for m in report.vuln_matches:
+                all_cves += m.cve
+            if all_cves:
+                try:
+                    report.enriched = self.enricher.enrich(all_cves, report.detected_cwe)
+                    if report.enriched:
+                        self.audit.event("enriched",
+                                         cves=[e.id for e in report.enriched])
+                except Exception as e:   # noqa: BLE001 — 수집 실패는 진행 방해 금지
+                    self.audit.event("enrich_error", error=str(e))
 
         # ── PHASE 4: REPORT ──
         report.status = "done"
@@ -409,8 +459,9 @@ class Orchestrator:
         finding.output = summarize_tool_output(cmd, out.stdout, out.stderr)
         self.audit.event("executed", cmd=cmd, launched=True,
                          returncode=out.returncode, summary=finding.output)
-        # 플래그 스캔 — 출력에서 user.txt/root.txt 획득
-        for hit in scan_flags(cmd, out.stdout):
+        # 플래그 스캔 — 출력에서 플래그 획득(플랫폼별 종류/접두 적용)
+        for hit in scan_flags(cmd, out.stdout, flag_kind=self.flag_kind,
+                              prefixes=self.flag_prefixes):
             if hit.value not in {f.value for f in report.flags}:
                 report.flags.append(hit)
                 finding.note = (finding.note + " " if finding.note else "") + f"🚩 {hit.kind} flag"

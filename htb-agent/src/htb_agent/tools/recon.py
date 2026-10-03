@@ -28,10 +28,13 @@ from .runner import Runner, RunOutput
 
 
 # (레이블, 명령 템플릿, 타임아웃초)
+# -sC(기본 NSE 스크립트) + -sV(버전) 은 HTB/CTF 표준 첫 스캔. 폴백 단계로 -Pn(핑생략)·
+# -sT(TCP connect)·-p-(전체 포트)로 경우의 수를 넓힌다. 전체포트는 속도 위해 -sC 생략 후
+# 발견 포트 대상 정밀 스캔을 별도 수행한다.
 PORTSCAN_PLAN: list[tuple[str, str, int]] = [
-    ("기본 서비스 스캔", "nmap -sV -oX - {t}", 300),
-    ("핑 생략(-Pn)", "nmap -Pn -sV -oX - {t}", 300),
-    ("TCP connect(-Pn -sT)", "nmap -Pn -sT -sV -oX - {t}", 600),
+    ("기본 서비스+스크립트 스캔", "nmap -sC -sV -oX - {t}", 300),
+    ("핑 생략(-Pn)", "nmap -Pn -sC -sV -oX - {t}", 300),
+    ("TCP connect(-Pn -sT)", "nmap -Pn -sT -sC -sV -oX - {t}", 600),
     ("전체 포트(-Pn -p-)", "nmap -Pn -p- -oX - {t}", 900),
 ]
 

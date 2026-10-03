@@ -1,10 +1,27 @@
-# htb-agent — HTB 머신 승인제 자동 풀이 에이전트
+# ASSASSIN — 승인제 자동 풀이 에이전트 (HTB · Dreamhack · CTF)
 
-레드팀 학습·모의해킹 연습용. **권한이 확인된 Hack The Box 머신에 한정**해 동작하는,
-승인제(Human-in-the-loop) 자동 풀이 보조 에이전트.
+```
+▄▀█ █▀ █▀ ▄▀█ █▀ █▀ █ █▄░█
+█▀█ ▄█ ▄█ █▀█ ▄█ ▄█ █ █░▀█
+```
 
-> ⚠️ **대상 범위**: HTB VPN 으로 연결된 본인 계정 할당 머신만. 그 외 자산 사용 금지
-> (Scope Guard 가 코드로 강제). 실제 공격 실행은 사용자 Kali + HTB VPN 환경에서.
+레드팀 학습·모의해킹·CTF 연습용. **권한이 확인된 대상에 한정**해 동작하는,
+승인제(Human-in-the-loop) 자동 풀이 보조 에이전트. (패키지명/명령: `assassin`, `htb-agent`)
+
+**플랫폼 프로파일** `--platform {htb,dreamhack,ctf}`:
+- `htb` (기본): HTB VPN 대역 강제 · boot2root(user.txt/root.txt, 32-hex/HTB{})
+- `dreamhack` / `ctf`: 챌린지 단일 타겟(host:port/URL) 바인딩 · Jeopardy 단일 플래그
+  (DH{}/flag{}/CTF{} 등 `TAG{}` 자동 인식, `--flag-prefix` 로 추가)
+
+> 터미널 출력은 블루/네이비 팔레트의 색상·박스·정렬 UI 로 렌더링됩니다
+> (비-TTY·파이프·`NO_COLOR` 환경에서는 색 자동 비활성 → 로그/CI 안전).
+
+> ⚠️ **대상 범위**: 대회/플랫폼이 명시한 권한 확인 대상만. 그 외 자산 사용 금지
+> (Scope Guard 가 코드로 강제). 실제 공격 실행은 사용자 Kali 환경에서.
+
+**승인 모드**(기본=스마트): 범위내·검증통과 명령은 자동 실행, 검증실패(파괴명령 포함)는
+자동 거부, **범위 밖만 사람 확인**. `--auto`(완전자동)·`--manual`(완전수동)로 조절.
+탐지된 CVE/CWE 는 **공식 출처(NVD·GitHub PoC)에서 자동 수집·캐시**(`--no-enrich`/`--offline`).
 
 ---
 
@@ -43,13 +60,22 @@ Python 3.10+ (코어는 표준 라이브러리만, 외부 의존성 없음). LLM
 
 ```bash
 # 승인제 포트스캔+열거 (명령마다 3분할 해설 + 승인)
-htb-agent 10.129.1.5
+assassin 10.129.1.5   # 또는 htb-agent
 
 # 범위내 자동승인 + 자격증명(→ 초기 침투·플래그 승격) + 라이트업 생성
 htb-agent 10.129.1.5 --auto --cred administrator:Passw0rd --writeup
 
 # 명령당 옵션 조합 변형(경우의 수) 수 조절 (기본 2, 1=변형끔)
 htb-agent 10.129.1.5 --variants 3
+
+# Dreamhack / CTF 챌린지 (단일 타겟 + flag{} 모드)
+assassin web-chall.dreamhack.games:8080 --platform dreamhack
+assassin http://ctf.example.com/chall --platform ctf --flag-prefix myctf
+
+# 승인 모드: 완전자동 / 완전수동 / 오프라인(CVE 자동수집 끔)
+assassin 10.129.1.5 --auto
+assassin 10.129.1.5 --manual
+assassin 10.129.1.5 --offline
 
 # LLM 두뇌 / 중단 후 재개 / 설정 파일
 htb-agent 10.129.1.5 --llm claude --llm-tier standard
@@ -85,7 +111,7 @@ htb-agent 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 24 스위트 380 테스트
+cd htb-agent && python3 tests/run_all.py     # 27 스위트 465 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

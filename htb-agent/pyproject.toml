@@ -14,6 +14,7 @@ claude = ["anthropic>=0.40"]
 config = ["pyyaml>=6.0"]
 
 [project.scripts]
+assassin = "htb_agent.main:main"
 htb-agent = "htb_agent.main:main"
 
 [tool.setuptools.packages.find]
