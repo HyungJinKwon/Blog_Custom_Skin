@@ -16,7 +16,9 @@
 ```
 
 모든 실행 명령은 **① 검증 → ② 범위 → ③ 승인** 3관문을 통과해야 실행됩니다.
-단계·라운드·명령 수에 상한이 있어 무한루프가 없습니다.
+단계·라운드·명령 수에 상한이 있어 무한루프가 없습니다. 각 명령은 도구별로
+**유효·안전한 옵션 조합 변형(경우의 수)** 을 몇 가지 더 시도해(`--variants`),
+한 가지 방식만 보고 포기하지 않습니다 — 변형도 유한하며 3관문을 그대로 통과합니다.
 
 구조·다이어그램·모듈 지도는 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** 참고.
 
@@ -46,6 +48,9 @@ htb-agent 10.129.1.5
 # 범위내 자동승인 + 자격증명(→ 초기 침투·플래그 승격) + 라이트업 생성
 htb-agent 10.129.1.5 --auto --cred administrator:Passw0rd --writeup
 
+# 명령당 옵션 조합 변형(경우의 수) 수 조절 (기본 2, 1=변형끔)
+htb-agent 10.129.1.5 --variants 3
+
 # LLM 두뇌 / 중단 후 재개 / 설정 파일
 htb-agent 10.129.1.5 --llm claude --llm-tier standard
 htb-agent 10.129.1.5 --resume
@@ -63,19 +68,24 @@ htb-agent 10.129.1.5 --config config/config.example.json
 | 안전 | Target-Binding 범위강제 · 명령 검증(문법·base64·해시·포트·파괴명령) · 승인 게이트 |
 | 관측 | nmap·HTTP·gobuster/ffuf/feroxbuster/nikto/whatweb·smbclient/smbmap/netexec·ldapsearch·dig/snmpwalk 파싱 |
 | 식별 | Linux vs Windows-AD 증거기반 판정(확신도) |
-| 지능 | 지식베이스(사용자 학습으로 성장) · 단계 순서 오케스트레이터 · LLM(Claude/Ollama, 캐싱·비용) |
+| 지능 | 지식베이스(사용자 학습으로 성장) · 단계 순서 오케스트레이터 · 옵션 조합 변형(경우의 수) · LLM(Claude/Ollama, 캐싱·비용) |
 | 목표 | CVE/CWE 탐지·매핑 · user.txt/root.txt 플래그 캡처 |
 | 운영 | 중단/재개 · 크리덴셜 볼트 · 감사 로그 · 설정 파일 · 도구 설치 스크립트 |
 | 산출 | 라이트업 자동 생성(htb-ctf-writeup-v5 / Tistory 13섹션) |
 
 원칙: 승인제 · **외부 라이트업 미참조(사용자 자료만)** · 무한루프 금지 · 증거기반(〔확인〕/〔추정〕).
 
+> 기본 동봉 학습 규칙: `knowledge/rules/htb-startingpoint-tier0.json` — 사용자가 제공한
+> HTB Starting Point Tier 0(Meow·Fawn·Dancing·Redeemer·Explosion·Preignition·Mongod·Synced)
+> 라이트업에서 학습한 서비스별 비인증/약한자격 점검 규칙(telnet·ftp·smb·redis·mongodb·rsync·rdp·web).
+> 학습데이터를 더 넣을수록 제안이 풍부해집니다(성장).
+
 ---
 
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 22 스위트 359 테스트
+cd htb-agent && python3 tests/run_all.py     # 24 스위트 380 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
