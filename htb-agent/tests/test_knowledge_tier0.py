@@ -69,5 +69,28 @@ for (osc, port, svc), kw in expect12.items():
     names = " | ".join(r.rule_name for r in recs)
     check(f"{svc}:{port} → '{kw}' 규칙 제안", kw in names)
 
+print("\n=== AD/CVE 학습데이터 로드/검증 ===")
+b3 = [r for r in kb.rules if r.source.startswith("user:htb-ad-and-cves")]
+check("AD/CVE 규칙 17개 로드", len(b3) == 17)
+bad3 = 0
+for r in b3:
+    for tmpl in r.suggest:
+        cmd, _ = kb.format_suggestion(tmpl, "10.129.1.5")
+        if not validate(cmd).ok:
+            bad3 += 1
+            print(f"    ! FAIL: {cmd}")
+check("AD/CVE 모든 명령 검증 통과", bad3 == 0)
+
+expect3 = {
+    ("linux", 3306, "mysql"): "MySQL",
+    ("windows_ad", 389, "ldap"): "LDAP 익명 바인드",
+    ("windows_ad", 88, "kerberos"): "ASREPRoast",
+    ("linux", 8765, "http"): "MotionEye",
+}
+for (osc, port, svc), kw in expect3.items():
+    recs = kb.query(osc, [port], [svc])
+    names = " | ".join(r.rule_name for r in recs)
+    check(f"{svc}:{port} → '{kw}' 규칙 제안", kw in names)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

