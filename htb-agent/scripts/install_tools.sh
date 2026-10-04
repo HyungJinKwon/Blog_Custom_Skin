@@ -11,7 +11,7 @@
 # 사용법:
 #   sudo ./install_tools.sh            # 전체 설치
 #   sudo ./install_tools.sh ad cloud   # 지정 카테고리만
-#     카테고리: recon web smb ad creds cloud pivot wordlist traffic re pwn forensic
+#     카테고리: recon web smb ad creds cloud pivot wordlist traffic re pwn forensic llm
 # =============================================================================
 
 set -uo pipefail
@@ -37,7 +37,7 @@ need_root(){
 }
 
 # 설치할 카테고리 (인자 없으면 전체)
-ALL_CATS=(recon web smb ad creds cloud pivot wordlist traffic re pwn forensic)
+ALL_CATS=(recon web smb ad creds cloud pivot wordlist traffic re pwn forensic llm)
 CATS=("${@:-${ALL_CATS[@]}}")
 [ "$#" -eq 0 ] && CATS=("${ALL_CATS[@]}")
 want(){ local c; for c in "${CATS[@]}"; do [ "$c" = "$1" ] && return 0; done; return 1; }
@@ -145,6 +145,18 @@ fi
 if want wordlist; then
   LOG "[wordlist] 워드리스트"
   apt_pkg seclists
+fi
+
+if want llm; then
+  LOG "[llm] LLM 두뇌 (하이브리드 = Claude + Ollama, 선택)"
+  try "pip anthropic" pip install -q anthropic    # Claude: + export ANTHROPIC_API_KEY=sk-...
+  if command -v ollama >/dev/null 2>&1; then
+    OK "ollama 설치됨 — 'ollama serve' 후 'ollama pull llama3.1:8b'"
+  else
+    WARN "ollama 미설치 — 로컬 LLM 쓰려면: curl -fsSL https://ollama.com/install.sh | sh"
+    WARN "  설치 후: ollama pull llama3.1:8b  (또는 OLLAMA_MODEL 로 다른 모델 지정)"
+  fi
+  echo "    확인:  assassin --doctor   (LLM 백엔드 가용성 점검)"
 fi
 
 LOG "요약"

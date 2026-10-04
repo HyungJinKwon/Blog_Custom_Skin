@@ -6,7 +6,7 @@
 ```
 
 레드팀 학습·모의해킹·CTF 연습용. **권한이 확인된 대상에 한정**해 동작하는,
-승인제(Human-in-the-loop) 자동 풀이 보조 에이전트. (패키지명/명령: `assassin`, `htb-agent`)
+승인제(Human-in-the-loop) 자동 풀이 보조 에이전트. **명령은 `assassin`** (`htb-agent` 는 하위호환 별칭).
 
 **플랫폼 프로파일** `--platform {htb,dreamhack,ctf}`:
 - `htb` (기본): HTB VPN 대역 강제 · boot2root(user.txt/root.txt, 32-hex/HTB{})
@@ -46,7 +46,7 @@
 ```bash
 cd htb-agent
 sudo ./scripts/install_tools.sh          # 보안 도구 전체(BloodHound·S3 등) / 또는: ... recon web smb ad
-pip install -e .                         # 에이전트 설치 → 'htb-agent' 명령 생성
+pip install -e .                         # 에이전트 설치 → 'assassin' 명령 생성
 sudo openvpn your-htb.ovpn               # tun0 → 공격자 IP 자동탐지
 ```
 
@@ -56,20 +56,21 @@ Python 3.10+ (코어는 표준 라이브러리만, 외부 의존성 없음). LLM
 
 ## 실행
 
-설치(`pip install -e .`) 후에는 어디서나 `htb-agent` 명령을 쓸 수 있습니다.
+설치(`pip install -e .`) 후에는 어디서나 `assassin` 명령을 쓸 수 있습니다.
+**처음이라면 먼저 `assassin --doctor`** 로 환경(도구·VPN·LLM)을 점검하세요.
 
 ```bash
 # 승인제 포트스캔+열거 (명령마다 3분할 해설 + 승인)
-assassin 10.129.1.5   # 또는 htb-agent
+assassin 10.129.1.5   # (htb-agent 도 동일 — 하위호환 별칭)
 
 # 범위내 자동승인 + 자격증명(→ 초기 침투·플래그 승격) + 라이트업 생성
-htb-agent 10.129.1.5 --auto --cred administrator:Passw0rd --writeup
+assassin 10.129.1.5 --auto --cred administrator:Passw0rd --writeup
 
 # 결과 내보내기: 기계판독 JSON + 블루/네이비 HTML 대시보드
-htb-agent 10.129.1.5 --json --html   # <state-dir>/report_<타겟>.{json,html}
+assassin 10.129.1.5 --json --html   # <state-dir>/report_<타겟>.{json,html}
 
 # 명령당 옵션 조합 변형(경우의 수) 수 조절 (기본 2, 1=변형끔)
-htb-agent 10.129.1.5 --variants 3
+assassin 10.129.1.5 --variants 3
 
 # Dreamhack / CTF 챌린지 (단일 타겟 + flag{} 모드)
 assassin web-chall.dreamhack.games:8080 --platform dreamhack
@@ -82,13 +83,13 @@ assassin 10.129.1.5 --manual
 assassin 10.129.1.5 --offline
 
 # LLM 두뇌 / 중단 후 재개 / 설정 파일
-htb-agent 10.129.1.5 --llm hybrid --llm-tier standard   # 하이브리드(Ollama+Claude 라우팅/폴백)
-htb-agent 10.129.1.5 --llm claude --llm-tier standard
-htb-agent 10.129.1.5 --resume
-htb-agent 10.129.1.5 --config config/config.example.json
+assassin 10.129.1.5 --llm hybrid --llm-tier standard   # 하이브리드(Ollama+Claude 라우팅/폴백)
+assassin 10.129.1.5 --llm claude --llm-tier standard
+assassin 10.129.1.5 --resume
+assassin 10.129.1.5 --config config/config.example.json
 ```
 
-전체 옵션: `htb-agent --help` (설치 전: `PYTHONPATH=src python3 -m htb_agent --help`).
+전체 옵션: `assassin --help` (설치 전: `PYTHONPATH=src python3 -m htb_agent --help`).
 
 > **데모(네트워크·실도구 없이 전체 흐름 보기)**: `python3 scripts/demo.py`
 > (라이트업 저장: `python3 scripts/demo.py --write out/`). 실전 운영·트러블슈팅은
@@ -126,7 +127,7 @@ htb-agent 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 34 스위트 626 테스트
+cd htb-agent && python3 tests/run_all.py     # 35 스위트 643 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

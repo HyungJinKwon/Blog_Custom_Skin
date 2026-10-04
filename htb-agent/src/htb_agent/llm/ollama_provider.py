@@ -18,6 +18,11 @@ class OllamaProvider(LLMProvider):
 
     def __init__(self, host: str | None = None, models: dict | None = None):
         self.host = (host or os.environ.get("OLLAMA_HOST", "http://localhost:11434")).rstrip("/")
+        self.models = dict(self.models)
+        # 초보자 편의: OLLAMA_MODEL 하나로 전 티어를 설치된 모델로 덮어쓴다.
+        env_model = os.environ.get("OLLAMA_MODEL")
+        if env_model:
+            self.models = {t: env_model for t in self.models}
         if models:
             self.models = {**self.models, **models}
 

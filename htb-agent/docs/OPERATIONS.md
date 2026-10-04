@@ -2,6 +2,25 @@
 
 > 권한이 확인된 대상(HTB·Dreamhack·CTF·인가된 진단)에서만 사용. 실제 공격/VPN 은
 > 사용자 Kali 환경 전용. 데모(네트워크 없이 흐름 확인)는 `python3 scripts/demo.py`.
+> 명령은 **`assassin`** (옛 `htb-agent` 도 동일하게 동작하는 별칭).
+
+---
+
+## 0. 완전 초보자 빠른 시작 (3단계)
+
+```bash
+# ① 설치
+cd htb-agent && pip install -e . && sudo ./scripts/install_tools.sh
+
+# ② 환경 점검 — 도구·VPN·LLM 이 준비됐는지 한눈에 (스캔 안 함)
+assassin --doctor
+
+# ③ 첫 실행 (초록불이면 바로)
+assassin 10.129.1.5                 # HTB (VPN 연결 후)
+assassin chall.site:1337 --platform ctf   # CTF/Dreamhack
+```
+
+`--doctor` 가 알려주는 대로 빠진 것만 채우면 됩니다. 막히면 아래 트러블슈팅(§4) 참고.
 
 ---
 
@@ -68,9 +87,13 @@ CVE 자동수집: 기본 활성(NVD/GitHub) · 끄기 `--no-enrich` · 오프라
 
 ### 4.4 LLM 백엔드 사용 불가
 - 증상: `hybrid 사용 불가: ollama(Connection refused) / claude(anthropic SDK 미설치)`.
-- 조치: Claude=`pip install anthropic` + `ANTHROPIC_API_KEY`. Ollama=`ollama serve`
-  + 모델 pull. 둘 중 하나만 있어도 hybrid 가 단일 백엔드로 동작. LLM 없이도
-  규칙기반(`--llm none`)으로 완전 동작.
+- 먼저: `assassin --doctor` 로 어느 백엔드가 왜 안 되는지 확인(복붙 설치 힌트 제공).
+- 일괄 설치: `sudo ./scripts/install_tools.sh llm` (anthropic 설치 + ollama 안내).
+- 조치: Claude=`pip install anthropic` + `export ANTHROPIC_API_KEY=sk-...`.
+  Ollama=`ollama serve` + `ollama pull llama3.1:8b`(다른 모델은 `export OLLAMA_MODEL=...`,
+  원격 서버는 `export OLLAMA_HOST=http://ip:11434`).
+- 둘 중 하나만 있어도 hybrid 가 단일 백엔드로 동작. LLM 없이도 규칙기반(`--llm none`,
+  기본값)으로 완전 동작.
 
 ### 4.5 CVE 자동수집이 비어 있음
 - 원인: `--offline`/`--no-enrich`, 네트워크 차단, 또는 캐시 없음.

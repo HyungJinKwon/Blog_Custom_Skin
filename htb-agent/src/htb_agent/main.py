@@ -33,7 +33,10 @@ def build_parser() -> argparse.ArgumentParser:
         description="ASSASSIN — HTB 머신 승인제 풀이 에이전트 (Kali). 권한 확인된 대상만.",
     )
     p.add_argument("--version", action="version", version=f"ASSASSIN {__version__}")
-    p.add_argument("target", help="대상(IP 또는 호스트명/URL). HTB=허용대역 내 IP, "
+    p.add_argument("--doctor", action="store_true",
+                   help="환경 자가진단(도구·LLM·VPN 점검, 스캔 안 함). 완전 초보자 권장 첫 실행")
+    p.add_argument("target", nargs="?", default=None,
+                   help="대상(IP 또는 호스트명/URL). HTB=허용대역 내 IP, "
                    "CTF/Dreamhack=챌린지 host:port/URL")
     p.add_argument("--platform", choices=["htb", "dreamhack", "ctf"], default=None,
                    help="플랫폼 프로파일 (기본 htb). dreamhack/ctf=단일 타겟+flag{} 모드")
@@ -131,9 +134,19 @@ def _build_llm_router(kind: str, tier_name: str):
 
 def main(argv: list[str] | None = None, runner=None) -> int:
     # runner 주입 가능(테스트). 기본은 실제 Kali 용 SubprocessRunner.
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     from . import ui
     from .profiles import get_profile
+
+    # 환경 자가진단(스캔 안 함) — 완전 초보자 권장 첫 실행
+    if args.doctor:
+        from .doctor import run_doctor
+        text, ok = run_doctor()
+        print(text)
+        return 0 if ok else 2
+    if not args.target:
+        parser.error("target 이 필요합니다 (또는 --doctor 로 환경 점검). 예: assassin 10.129.1.5")
 
     # 0) 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값)
     from .config import load_config, pick, Config, ConfigError
