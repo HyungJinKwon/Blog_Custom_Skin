@@ -78,7 +78,7 @@ def render_proposal(command: str, vrep: ValidationReport,
         *[ui.bullet(str(i), " ", "dim") for i in vrep.issues],
         ui.kv("범위", ui.mark_ok("자동허용") if sres.auto_allowed
               else ui.mark_warn("추가확인 필요"), 8),
-        *([ui.bullet(sres.needs_confirmation, "▲", "warn")]
+        *([ui.bullet(", ".join(sres.needs_confirmation), "▲", "warn")]
           if sres.needs_confirmation else []),
     ]
     style = "accent" if (vrep.ok and sres.auto_allowed) else "warn"

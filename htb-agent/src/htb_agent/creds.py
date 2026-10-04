@@ -20,6 +20,12 @@ _LEFT = re.compile(r"\{[a-zA-Z_]+\}")
 # 플레이스홀더 → Credential 속성
 _FIELD = {"user": "username", "pass": "password", "domain": "domain",
           "hash": "nt_hash", "nthash": "nt_hash"}
+# NT 해시(32 hex) 또는 LM:NT(32:32 hex) 형태
+_HASH_RE = re.compile(r"^(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{32}:[0-9a-fA-F]{32})$")
+
+
+def _looks_like_hash(s: str) -> bool:
+    return bool(_HASH_RE.fullmatch(s.strip()))
 
 
 @dataclass
@@ -68,16 +74,28 @@ class CredentialVault:
 
     @classmethod
     def from_cli(cls, items: list[str] | None) -> "CredentialVault":
-        """'user:pass' 또는 'user:pass:domain' 또는 'user' 형식 파싱."""
+        """
+        자격증명 문자열 파싱(':' 구분):
+          user / user:pass / user:pass:domain / user:pass:domain:nthash
+        Pass-the-Hash 지름길:
+          user:<32hex>                 → NT 해시로 인식(비번 아님)
+          user::domain:<NT|LM:NT>      → 해시 자리에 지정(LM:NT 의 콜론 보존)
+        해시 자리는 parts[3:] 를 다시 이어붙여 'LM:NT' 형식을 깨지 않는다.
+        """
         vault = cls()
         for item in items or []:
             parts = item.split(":")
             username = parts[0]
             password = parts[1] if len(parts) > 1 and parts[1] != "" else None
             domain = parts[2] if len(parts) > 2 and parts[2] != "" else None
+            # 해시 자리(4번째~): LM:NT 의 콜론을 유지하려 재결합
+            nt_hash = ":".join(parts[3:]) if len(parts) > 3 and parts[3] != "" else None
+            # 지름길: 'user:<32hex>' (2필드, 비번이 NT 해시 형태) → 해시로 승격
+            if nt_hash is None and domain is None and password and _looks_like_hash(password):
+                nt_hash, password = password, None
             if username:
                 vault.add(Credential(username=username, password=password,
-                                     domain=domain, source="cli"))
+                                     domain=domain, nt_hash=nt_hash, source="cli"))
         return vault
 
     @classmethod

@@ -42,8 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--attacker-ip", action="append", dest="attacker_ips",
                    help="공격자 VPN IP (반복 가능). 생략 시 tun0 자동탐지")
     p.add_argument("--cred", action="append", dest="creds",
-                   help="자격증명 'user:pass' 또는 'user:pass:domain' (반복 가능). "
-                        "{user}/{pass}/{domain} 제안을 실행 후보로 승격")
+                   help="자격증명 'user:pass' / 'user:pass:domain' / "
+                        "'user:pass:domain:nthash' (반복 가능). Pass-the-Hash 는 "
+                        "'user:<32hex>' 또는 'user::domain:<NT|LM:NT>'. "
+                        "{user}/{pass}/{domain}/{hash} 제안을 실행 후보로 승격")
     p.add_argument("--config", help="설정 파일(.json/.yaml). 우선순위: CLI > 설정파일 > 기본값")
     p.add_argument("--auto", action="store_true",
                    help="완전 자동: 범위내+검증통과만 실행, 범위 밖은 조용히 건너뜀(무프롬프트)")
