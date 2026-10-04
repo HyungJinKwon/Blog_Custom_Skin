@@ -65,6 +65,9 @@ assassin 10.129.1.5   # 또는 htb-agent
 # 범위내 자동승인 + 자격증명(→ 초기 침투·플래그 승격) + 라이트업 생성
 htb-agent 10.129.1.5 --auto --cred administrator:Passw0rd --writeup
 
+# 결과 내보내기: 기계판독 JSON + 블루/네이비 HTML 대시보드
+htb-agent 10.129.1.5 --json --html   # <state-dir>/report_<타겟>.{json,html}
+
 # 명령당 옵션 조합 변형(경우의 수) 수 조절 (기본 2, 1=변형끔)
 htb-agent 10.129.1.5 --variants 3
 
@@ -122,7 +125,7 @@ htb-agent 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 31 스위트 545 테스트
+cd htb-agent && python3 tests/run_all.py     # 32 스위트 580 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

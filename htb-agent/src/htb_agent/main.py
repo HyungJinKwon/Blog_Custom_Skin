@@ -83,6 +83,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="풀이 라이트업 Markdown 생성(경로 생략 시 writeup_<타겟>.md)")
     p.add_argument("--writeup-format", choices=["htb", "tistory"], default="htb",
                    help="라이트업 형식: htb(기본, htb-ctf-writeup-v5) / tistory(13섹션)")
+    p.add_argument("--json", nargs="?", const="__auto__", default=None, dest="json_out",
+                   help="결과를 기계판독 JSON 으로 내보내기(경로 생략 시 <state-dir>/report_<타겟>.json)")
+    p.add_argument("--html", nargs="?", const="__auto__", default=None, dest="html_out",
+                   help="결과를 HTML 대시보드로 내보내기(블루/네이비, 경로 생략 시 <state-dir>/report_<타겟>.html)")
     return p
 
 
@@ -266,6 +270,31 @@ def main(argv: list[str] | None = None, runner=None) -> int:
             print(f"\n라이트업 생성: {path}")
         except OSError as e:
             print(f"\n⚠️ 라이트업 저장 실패: {e}", file=sys.stderr)
+
+    # 9) 구조화 결과 내보내기(선택) — JSON(기계판독) / HTML(대시보드)
+    if args.json_out is not None or args.html_out is not None:
+        from . import report_export
+        from .state import StateStore
+        safe = StateStore._safe(args.target)
+        _os.makedirs(state_dir, exist_ok=True)
+        if args.json_out is not None:
+            jp = (args.json_out if args.json_out != "__auto__"
+                  else _os.path.join(state_dir, f"report_{safe}.json"))
+            try:
+                with open(jp, "w", encoding="utf-8") as f:
+                    f.write(report_export.to_json(report))
+                print(f"JSON 결과 내보내기: {jp}")
+            except OSError as e:
+                print(f"⚠️ JSON 내보내기 실패: {e}", file=sys.stderr)
+        if args.html_out is not None:
+            hp = (args.html_out if args.html_out != "__auto__"
+                  else _os.path.join(state_dir, f"report_{safe}.html"))
+            try:
+                with open(hp, "w", encoding="utf-8") as f:
+                    f.write(report_export.to_html(report))
+                print(f"HTML 대시보드 내보내기: {hp}")
+            except OSError as e:
+                print(f"⚠️ HTML 내보내기 실패: {e}", file=sys.stderr)
 
     return 0 if report.status == "done" else 1
 
