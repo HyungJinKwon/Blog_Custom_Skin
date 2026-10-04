@@ -87,6 +87,7 @@ LLM 이 제안한 명령도 '신뢰하지 않는 데이터'로 간주되어 이 
 | | `enrich.py` | CVE/CWE 자동 수집(NVD·GitHub PoC, 주입식 fetcher·캐시·오프라인 안전) |
 | | `approval.py` | 승인 게이트(스마트=범위밖만 확인 / auto / manual) + 3분할 해설 |
 | | `writeup.py` | 라이트업 생성(htb-ctf-writeup-v5 / Tistory 13섹션) |
+| | `report_export.py` | 결과 내보내기 — 기계판독 JSON · 블루/네이비 HTML 대시보드 |
 
 ---
 

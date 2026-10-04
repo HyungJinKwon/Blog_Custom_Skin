@@ -32,6 +32,7 @@ from htb_agent.orchestrator import Orchestrator  # noqa: E402
 from htb_agent.llm.router import LLMRouter  # noqa: E402
 from htb_agent.llm.fake_provider import FakeProvider  # noqa: E402
 from htb_agent.writeup import generate_writeup, generate_tistory  # noqa: E402
+from htb_agent import report_export  # noqa: E402
 
 TARGET = "10.129.10.10"
 ATTACKER = "10.10.14.7"
@@ -139,7 +140,14 @@ def main(argv: list[str] | None = None) -> int:
             f.write(htb_md)
         with open(tp, "w", encoding="utf-8") as f:
             f.write(tis_md)
+        jp = os.path.join(write_dir, "demo_report.json")
+        hpf = os.path.join(write_dir, "demo_report.html")
+        with open(jp, "w", encoding="utf-8") as f:
+            f.write(report_export.to_json(report))
+        with open(hpf, "w", encoding="utf-8") as f:
+            f.write(report_export.to_html(report, "DemoBox"))
         print(ui.ok(f"\n라이트업 저장: {hp} / {tp}"))
+        print(ui.ok(f"구조화 결과 저장: {jp} / {hpf}"))
     else:
         print(ui.rule("HTB 라이트업 미리보기 (앞부분)"))
         print("\n".join(htb_md.splitlines()[:40]))

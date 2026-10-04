@@ -12,7 +12,7 @@ htb-agent — HTB 머신 승인제 자동 풀이 에이전트
 
 from __future__ import annotations
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 
 from .scope_guard import ScopeGuard, ScopeViolation
 from .orchestrator import Orchestrator, OrchestrationReport, PENTEST_PHASES
@@ -21,6 +21,7 @@ from .vuln import VulnKB
 from .creds import CredentialVault
 from .profiles import Platform, get_profile, PROFILES
 from .enrich import Enricher, CveInfo
+from .report_export import to_dict, to_json, to_html
 
 __all__ = [
     "__version__",
@@ -37,4 +38,7 @@ __all__ = [
     "KnowledgeBase",
     "VulnKB",
     "CredentialVault",
+    "to_dict",
+    "to_json",
+    "to_html",
 ]

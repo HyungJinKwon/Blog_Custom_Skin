@@ -98,6 +98,8 @@ CVE 자동수집: 기본 활성(NVD/GitHub) · 끄기 `--no-enrich` · 오프라
 
 - 라이트업: `--writeup`(htb-ctf-writeup-v5) · `--writeup-format tistory`(13섹션).
   CVE 레퍼런스(NVD/CVSS/PoC)·블루팀 탐지지표(SIEM/Snort/Wireshark)가 자동 포함된다.
+- 결과 내보내기: `--json`(기계판독, 외부 도구·파이프라인 연계) · `--html`(블루/네이비
+  대시보드, 외부 의존 0). 경로 생략 시 `<state-dir>/report_<타겟>.{json,html}`.
 - 감사 로그(JSONL): 기본 `<state-dir>/audit_<타겟>.jsonl` · 끄기 `--no-audit`.
 
 ---
