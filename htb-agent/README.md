@@ -126,11 +126,12 @@ htb-agent 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 34 스위트 624 테스트
+cd htb-agent && python3 tests/run_all.py     # 34 스위트 626 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
-테스트+컴파일(게이트) + ruff/mypy(비차단) 수행.
+**파이썬 3.10~3.13 매트릭스**로 테스트+컴파일(게이트) + ruff/mypy(비차단) 수행.
+버전 확인: `assassin --version`.
 
 ---
 

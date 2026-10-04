@@ -58,5 +58,20 @@ else:
         except ConfigError as e:
             check("pyyaml 없음 안내", "pyyaml" in str(e))
 
+print("\n=== --version 플래그 ===")
+import io
+from contextlib import redirect_stdout
+from htb_agent.main import build_parser
+from htb_agent import __version__
+buf = io.StringIO()
+code = None
+try:
+    with redirect_stdout(buf):
+        build_parser().parse_args(["--version"])
+except SystemExit as e:
+    code = e.code
+check("--version 종료코드 0", code == 0)
+check("--version 출력에 버전", __version__ in buf.getvalue() and "ASSASSIN" in buf.getvalue())
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
