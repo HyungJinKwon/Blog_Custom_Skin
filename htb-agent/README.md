@@ -106,13 +106,19 @@ htb-agent 10.129.1.5 --config config/config.example.json
 > HTB Starting Point Tier 0(Meow·Fawn·Dancing·Redeemer·Explosion·Preignition·Mongod·Synced)
 > 라이트업에서 학습한 서비스별 비인증/약한자격 점검 규칙(telnet·ftp·smb·redis·mongodb·rsync·rdp·web).
 > 학습데이터를 더 넣을수록 제안이 풍부해집니다(성장).
+>
+> 동봉 **공개 취약점 지식**(특정 머신 라이트업 아님 · 출처 NVD/MITRE/벤더):
+> `knowledge/vulns/common-services.json` — 배너/버전 탐지형 원격 서비스 CVE
+> (Exim·Webmin·Tomcat Ghostcat·Grafana·Jenkins·Confluence·Spring·Struts·Drupal·PHP-CGI),
+> `knowledge/rules/linux-privesc.json` · `windows-privesc.json` — 권한상승·측면이동 방법론
+> (SUID/sudo/capabilities·PwnKit·Dirty Pipe/COW·Kerberoast·Zerologon·DCSync·PtH, 전부 승인제·크리덴셜 게이트).
 
 ---
 
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 28 스위트 483 테스트
+cd htb-agent && python3 tests/run_all.py     # 29 스위트 505 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

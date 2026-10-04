@@ -1,0 +1,102 @@
+[
+  {
+    "name": "Exim RCE (Return of the WIZard)",
+    "service": "Exim",
+    "version_contains": ["4.87", "4.88", "4.89", "4.90", "4.91"],
+    "cve": ["CVE-2019-10149"],
+    "cwe": ["CWE-78"],
+    "suggest": ["searchsploit exim 4.9", "nmap -p25 --script smtp-commands {t}"],
+    "severity": "critical",
+    "note": "deliver_message() 수신자주소 미검증 → root 원격명령. 영향 4.87~4.91, 패치 4.92. 출처: NVD/Qualys"
+  },
+  {
+    "name": "Webmin 비인증 RCE (백도어)",
+    "service": "Webmin",
+    "version_contains": ["1.890", "1.900", "1.910", "1.920"],
+    "cve": ["CVE-2019-15107"],
+    "cwe": ["CWE-78"],
+    "suggest": ["searchsploit webmin 1.920"],
+    "severity": "critical",
+    "note": "password_change.cgi 비인증 명령주입. 영향 1.890~1.920(패스워드 만료 활성 시). 패치 1.930. 출처: NVD"
+  },
+  {
+    "name": "Apache Tomcat AJP 파일읽기/포함 (Ghostcat)",
+    "service": "Tomcat",
+    "version_contains": ["7.0", "8.5", "9.0"],
+    "cve": ["CVE-2020-1938"],
+    "cwe": ["CWE-20"],
+    "suggest": ["nmap -p8009 --script ajp-methods {t}", "searchsploit ghostcat"],
+    "severity": "high",
+    "note": "AJP(8009) 커넥터로 WEB-INF 파일 읽기/포함→RCE. 정확 영향 7.0.0~7.0.99 / 8.5.0~8.5.50 / 9.0.0.M1~9.0.0.30(배너 버전 대조 필요). 출처: NVD/Tenable"
+  },
+  {
+    "name": "Grafana 비인증 경로우회 파일읽기",
+    "service": "Grafana",
+    "version_contains": ["8.0", "8.1", "8.2", "8.3.0"],
+    "cve": ["CVE-2021-43798"],
+    "cwe": ["CWE-22"],
+    "suggest": ["searchsploit grafana 8"],
+    "severity": "high",
+    "note": "/public/plugins/<id>/../ 경로우회로 임의파일 읽기. 영향 8.0.0-beta1~8.3.0, 패치 8.0.7/8.1.8/8.2.7/8.3.1+. 출처: NVD/Grafana GHSA"
+  },
+  {
+    "name": "Jenkins CLI 비인증 임의파일 읽기",
+    "service": "Jenkins",
+    "version_contains": [],
+    "cve": ["CVE-2024-23897"],
+    "cwe": ["CWE-22"],
+    "suggest": ["searchsploit jenkins 2024", "curl -sI http://{t}/ | grep -i jenkins"],
+    "severity": "critical",
+    "note": "args4j @파일 치환으로 임의파일 읽기→RCE 연계. 영향 ≤2.441 / LTS ≤2.426.2, 패치 2.442 / LTS 2.426.3. X-Jenkins 헤더로 버전 확인. 출처: NVD/Jenkins SA"
+  },
+  {
+    "name": "Atlassian Confluence OGNL 주입 RCE",
+    "service": "Confluence",
+    "version_contains": [],
+    "cve": ["CVE-2022-26134"],
+    "cwe": ["CWE-917"],
+    "suggest": ["searchsploit confluence 2022"],
+    "severity": "critical",
+    "note": "OGNL 표현식 주입 비인증 RCE. 패치 7.4.17/7.13.7/7.14.3/7.15.2/7.16.4/7.17.4/7.18.1(그 이전 영향). 버전 대조 필요. 출처: NVD/Atlassian"
+  },
+  {
+    "name": "Spring Framework RCE (Spring4Shell)",
+    "service": "Spring",
+    "version_contains": [],
+    "cve": ["CVE-2022-22965"],
+    "cwe": ["CWE-94"],
+    "suggest": ["searchsploit spring4shell"],
+    "severity": "critical",
+    "note": "JDK9+·Tomcat WAR 배포 시 데이터바인딩 ClassLoader 조작 RCE. 영향 Spring 5.3.0~5.3.17 / 5.2.0~5.2.19, 패치 5.3.18/5.2.20. 출처: NVD/VMware"
+  },
+  {
+    "name": "Apache Struts2 Jakarta Multipart RCE",
+    "service": "Struts",
+    "version_contains": [],
+    "cve": ["CVE-2017-5638"],
+    "cwe": ["CWE-20"],
+    "suggest": ["searchsploit struts 2017-5638"],
+    "severity": "critical",
+    "note": "Content-Type 헤더 OGNL 주입 RCE. 영향 2.3.5~2.3.31 / 2.5~2.5.10, 패치 2.3.32/2.5.10.1. 출처: NVD"
+  },
+  {
+    "name": "Drupal 비인증 RCE (Drupalgeddon2)",
+    "service": "Drupal",
+    "version_contains": [],
+    "cve": ["CVE-2018-7600"],
+    "cwe": ["CWE-20"],
+    "suggest": ["searchsploit drupalgeddon2"],
+    "severity": "critical",
+    "note": "Form API(#) 렌더링 미검증 비인증 RCE. 영향 7.x<7.58 / 8.x<8.5.1 등. 출처: NVD/Drupal SA-CORE-2018-002"
+  },
+  {
+    "name": "PHP-CGI 인자주입 RCE",
+    "service": "PHP",
+    "version_contains": ["5.3", "5.4"],
+    "cve": ["CVE-2012-1823"],
+    "cwe": ["CWE-78"],
+    "suggest": ["searchsploit php-cgi 1823"],
+    "severity": "high",
+    "note": "쿼리스트링 인자주입(?-d). 영향 PHP<5.3.12 / <5.4.2 (CGI 모드 한정). 출처: NVD"
+  }
+]
