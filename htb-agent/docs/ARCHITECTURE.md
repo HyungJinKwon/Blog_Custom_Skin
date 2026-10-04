@@ -107,14 +107,14 @@ LLM 이 제안한 명령도 '신뢰하지 않는 데이터'로 간주되어 이 
 cd htb-agent
 sudo ./scripts/install_tools.sh                 # Kali 보안 도구 일괄 설치
 pip install -e .                                # 에이전트 설치 → 'htb-agent' 명령
-htb-agent 10.129.1.5                            # 승인제 풀이
-htb-agent 10.129.1.5 --auto \
+assassin 10.129.1.5                            # 승인제 풀이
+assassin 10.129.1.5 --auto \
   --cred administrator:Passw0rd \               # 자격증명 → access/flag 승격
   --llm claude --writeup                        # LLM 두뇌 + 라이트업 생성
-htb-agent 10.129.1.5 --resume                   # 중단 지점 재개
+assassin 10.129.1.5 --resume                   # 중단 지점 재개
 ```
 
-전체 옵션은 `htb-agent --help`. 설치 없이 쓰려면 `PYTHONPATH=src python3 -m htb_agent ...`.
+전체 옵션은 `assassin --help`. 설치 없이 쓰려면 `PYTHONPATH=src python3 -m htb_agent ...`.
 
 ---
 
