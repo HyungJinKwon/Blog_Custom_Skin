@@ -21,6 +21,7 @@ from .environment import preflight, detect_vpn_ips
 from .tools.runner import SubprocessRunner
 from .tools.recon import auto_approve_in_scope
 from .approval import interactive_approver
+from . import __version__
 from .knowledge import KnowledgeBase
 from .orchestrator import Orchestrator
 from .profiles import JEOPARDY_CATEGORIES
@@ -31,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="assassin",
         description="ASSASSIN — HTB 머신 승인제 풀이 에이전트 (Kali). 권한 확인된 대상만.",
     )
+    p.add_argument("--version", action="version", version=f"ASSASSIN {__version__}")
     p.add_argument("target", help="대상(IP 또는 호스트명/URL). HTB=허용대역 내 IP, "
                    "CTF/Dreamhack=챌린지 host:port/URL")
     p.add_argument("--platform", choices=["htb", "dreamhack", "ctf"], default=None,
