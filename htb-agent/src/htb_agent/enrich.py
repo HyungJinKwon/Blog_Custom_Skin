@@ -210,6 +210,11 @@ class Enricher:
         num = cwe_id.upper().replace("CWE-", "")
         return f"https://cwe.mitre.org/data/definitions/{num}.html"
 
+    @staticmethod
+    def cve_url(cve_id: str) -> str:
+        """사람이 보는 NVD 상세 페이지 URL(라이트업·레퍼런스용)."""
+        return f"https://nvd.nist.gov/vuln/detail/{cve_id.upper()}"
+
     # ── 일괄 ────────────────────────────────────────────────────────
     def enrich(self, cve_ids: list[str], cwe_ids: list[str] | None = None
                ) -> list[CveInfo]:
