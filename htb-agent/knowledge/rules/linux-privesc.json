@@ -1,0 +1,84 @@
+[
+  {
+    "name": "Linux 기본 권한상승 열거",
+    "when": {"os": ["linux"]},
+    "suggest": [
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} \"id; sudo -n -l 2>/dev/null\"",
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} \"find / -perm -4000 -type f 2>/dev/null\"",
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} \"getcap -r / 2>/dev/null\""
+    ],
+    "note": "SUID/sudo/capabilities 1차 열거. 결과는 GTFOBins 대조(수동). 크리덴셜 필요.",
+    "tags": ["linux", "privesc", "enum"],
+    "phase": "privesc"
+  },
+  {
+    "name": "Linux 커널 버전 확인 (커널 익스 판단)",
+    "when": {"os": ["linux"]},
+    "suggest": [
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} \"uname -a; cat /etc/os-release 2>/dev/null | head -n2\""
+    ],
+    "note": "커널/배포판 식별 후 Dirty COW/Dirty Pipe 등 해당 여부 판단(아래 규칙 참조).",
+    "tags": ["linux", "privesc", "kernel"],
+    "phase": "privesc"
+  },
+  {
+    "name": "PwnKit (polkit pkexec) 점검",
+    "when": {"os": ["linux"]},
+    "suggest": [
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} \"ls -l /usr/bin/pkexec; pkexec --version\""
+    ],
+    "note": "CVE-2021-4034 (CWE-787). pkexec SUID 존재 시 점검. 패치 전 polkit 로컬 root. 익스는 승인 후 수동. 출처: NVD",
+    "tags": ["linux", "privesc", "cve"],
+    "phase": "privesc"
+  },
+  {
+    "name": "Sudo Baron Samedit 점검",
+    "when": {"os": ["linux"]},
+    "suggest": [
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} \"sudo --version | head -n1\""
+    ],
+    "note": "CVE-2021-3156 (CWE-787 heap overflow). sudo <1.9.5p2 / 1.8.2~1.8.31p2 영향. 로컬 root. 출처: NVD/Qualys",
+    "tags": ["linux", "privesc", "cve"],
+    "phase": "privesc"
+  },
+  {
+    "name": "Dirty Pipe 커널 점검",
+    "when": {"os": ["linux"]},
+    "suggest": [
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} \"uname -r\""
+    ],
+    "note": "CVE-2022-0847. Linux 커널 5.8 ~ 5.16.11/5.15.25/5.10.102 영향. 읽기전용/파이프 페이지 덮어쓰기→root. 출처: NVD",
+    "tags": ["linux", "privesc", "cve", "kernel"],
+    "phase": "privesc"
+  },
+  {
+    "name": "Dirty COW 커널 점검",
+    "when": {"os": ["linux"]},
+    "suggest": [
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} \"uname -r\""
+    ],
+    "note": "CVE-2016-5195 (CWE-362 race). 커널 <4.8.3 등 광범위. COW 경쟁조건→root. 출처: NVD",
+    "tags": ["linux", "privesc", "cve", "kernel"],
+    "phase": "privesc"
+  },
+  {
+    "name": "cron/스케줄 쓰기권한 점검",
+    "when": {"os": ["linux"]},
+    "suggest": [
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} \"cat /etc/crontab; ls -la /etc/cron.* 2>/dev/null\""
+    ],
+    "note": "쓰기가능 스크립트/와일드카드 인젝션 점검. CWE-732.",
+    "tags": ["linux", "privesc"],
+    "phase": "privesc"
+  },
+  {
+    "name": "민감 파일/자격 노출 점검",
+    "when": {"os": ["linux"]},
+    "suggest": [
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} \"ls -la /etc/passwd /etc/shadow; cat ~/.bash_history 2>/dev/null | tail -n20\""
+    ],
+    "note": "쓰기가능 /etc/passwd, 평문 자격(.bash_history/config). CWE-312/CWE-522.",
+    "tags": ["linux", "privesc", "creds"],
+    "phase": "privesc"
+  }
+]

