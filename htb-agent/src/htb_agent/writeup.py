@@ -15,6 +15,46 @@ Writeup Generator — 풀이 라이트업 자동 생성 (htb-ctf-writeup-v5 구�
 from __future__ import annotations
 
 from .approval import explain_command
+from .enrich import CWE_NAMES, Enricher
+
+
+def _cwe_label(cwe_id: str) -> str:
+    """CWE ID 에 이름을 덧붙인다(가독성·§5). 미등재면 ID 만."""
+    name = CWE_NAMES.get(cwe_id.upper(), "")
+    return f"{cwe_id}({name})" if name else cwe_id
+
+
+def _enriched_refs(report) -> str:
+    """수집된 CVE 레퍼런스(NVD 설명·CVSS·PoC)를 출처와 함께 표기(§3·§5)."""
+    enriched = getattr(report, "enriched", None) or []
+    if not enriched:
+        return "_(CVE 자동 수집 비활성/오프라인 또는 탐지 CVE 없음 — `--no-enrich`/`--offline` 확인)_"
+    lines = []
+    for e in enriched:
+        head = f"- **{e.id}**"
+        meta = []
+        if e.severity:
+            meta.append(e.severity)
+        if e.cvss:
+            meta.append(f"CVSS {e.cvss}")
+        if meta:
+            head += f" [{' · '.join(meta)}]"
+        lines.append(head)
+        if e.description:
+            desc = e.description.strip().replace("\n", " ")
+            lines.append(f"  - 설명: {desc[:240]}")
+        if e.cwe:
+            lines.append(f"  - CWE: {', '.join(_cwe_label(c) for c in e.cwe)}")
+        if e.references:
+            lines.append(f"  - 참조: {Enricher.cve_url(e.id)}")
+            for r in e.references[:3]:
+                lines.append(f"    - {r}")
+        else:
+            lines.append(f"  - 참조(NVD): {Enricher.cve_url(e.id)}")
+        if e.poc_repos:
+            lines.append(f"  - 공개 PoC: {', '.join(e.poc_repos[:3])}")
+        lines.append(f"  - 출처: {e.source}")
+    return "\n".join(lines)
 
 
 def _flag_line(report, kind: str, fallback: str) -> str:
@@ -64,6 +104,54 @@ _BLUE: dict[int, dict] = {
     5985: {"svc": "WinRM", "siem": "Event 4624, WinRM 운영 로그",
            "ids": 'alert tcp any any -> $HOME_NET 5985 (msg:"WinRM";)',
            "wireshark": "http && tcp.port==5985", "check": "자격증명 재사용, PSRemoting 제한"},
+    5986: {"svc": "WinRM/HTTPS", "siem": "Event 4624, WinRM 운영 로그(암호화)",
+           "ids": 'alert tcp any any -> $HOME_NET 5986 (msg:"WinRM-S";)',
+           "wireshark": "tls && tcp.port==5986", "check": "자격증명 재사용, 인증서 검증"},
+    25: {"svc": "SMTP", "siem": "메일 로그: 비정상 RCPT/VRFY 급증",
+         "ids": 'alert tcp any any -> $HOME_NET 25 (msg:"SMTP user enum (VRFY/EXPN)"; content:"VRFY";)',
+         "wireshark": "smtp", "check": "VRFY/EXPN 사용자 열거, 오픈릴레이, 서비스 버전(Exim CVE)"},
+    53: {"svc": "DNS", "siem": "DNS 쿼리 로그: AXFR 시도, 비정상 대량 쿼리",
+         "ids": 'alert tcp any any -> $HOME_NET 53 (msg:"DNS zone transfer (AXFR)"; content:"|00 00 fc|";)',
+         "wireshark": "dns", "check": "존 전송(AXFR) 허용, 서브도메인 열거"},
+    110: {"svc": "POP3", "siem": "메일 로그: 로그인 실패/성공",
+          "ids": 'alert tcp any any -> $HOME_NET 110 (msg:"POP3 login";)',
+          "wireshark": "pop", "check": "평문 자격증명, 무차별 대입"},
+    143: {"svc": "IMAP", "siem": "메일 로그: 로그인 실패/성공",
+          "ids": 'alert tcp any any -> $HOME_NET 143 (msg:"IMAP login";)',
+          "wireshark": "imap", "check": "평문 자격증명, 무차별 대입"},
+    111: {"svc": "RPCbind", "siem": "RPC 포트매퍼 조회 로그",
+          "ids": 'alert tcp any any -> $HOME_NET 111 (msg:"RPC portmapper dump";)',
+          "wireshark": "portmap || rpc", "check": "rpcinfo 노출, NFS 공유(2049) 연계"},
+    2049: {"svc": "NFS", "siem": "NFS mount/export 접근 로그",
+           "ids": 'alert tcp any any -> $HOME_NET 2049 (msg:"NFS access";)',
+           "wireshark": "nfs || mount", "check": "no_root_squash, 세계쓰기 export, showmount -e"},
+    135: {"svc": "MSRPC", "siem": "Event 5156(WFP), RPC 엔드포인트 조회",
+          "ids": 'alert tcp any any -> $HOME_NET 135 (msg:"MSRPC endpoint mapper";)',
+          "wireshark": "dcerpc || epm", "check": "RPC 엔드포인트 열거, PetitPotam/인증강제"},
+    161: {"svc": "SNMP", "siem": "SNMP 접근 로그: 기본 커뮤니티 스트링",
+          "ids": 'alert udp any any -> $HOME_NET 161 (msg:"SNMP public community"; content:"public";)',
+          "wireshark": "snmp", "check": "기본 커뮤니티(public/private), v1/v2c 평문, snmpwalk 노출"},
+    636: {"svc": "LDAPS", "siem": "Event 2889, DC 로그(암호화 바인드)",
+          "ids": 'alert tcp any any -> $HOME_NET 636 (msg:"LDAPS query";)',
+          "wireshark": "tls && tcp.port==636", "check": "익명 바인드, 인증서, 채널바인딩"},
+    1433: {"svc": "MSSQL", "siem": "SQL Server 로그인 감사, Event 33205",
+           "ids": 'alert tcp any any -> $HOME_NET 1433 (msg:"MSSQL login";)',
+           "wireshark": "tds", "check": "sa 약한 암호, xp_cmdshell, 링크드서버, 무차별 대입"},
+    3306: {"svc": "MySQL/MariaDB", "siem": "general_log/감사 플러그인 로그인",
+           "ids": 'alert tcp any any -> $HOME_NET 3306 (msg:"MySQL login";)',
+           "wireshark": "mysql", "check": "root 약한 암호, 원격 접속 허용, UDF 권한상승"},
+    5432: {"svc": "PostgreSQL", "siem": "pg_log 로그인 실패/성공",
+           "ids": 'alert tcp any any -> $HOME_NET 5432 (msg:"PostgreSQL login";)',
+           "wireshark": "pgsql", "check": "postgres 약한 암호, COPY TO/FROM PROGRAM RCE"},
+    6379: {"svc": "Redis", "siem": "비인증 접근 로그, 비정상 CONFIG/SAVE",
+           "ids": 'alert tcp any any -> $HOME_NET 6379 (msg:"Redis unauth"; content:"PING";)',
+           "wireshark": "redis || tcp.port==6379", "check": "비인증 접근, CONFIG SET으로 키/웹셸/SSH키 기록"},
+    27017: {"svc": "MongoDB", "siem": "비인증 접근 로그",
+            "ids": 'alert tcp any any -> $HOME_NET 27017 (msg:"MongoDB access";)',
+            "wireshark": "mongo || tcp.port==27017", "check": "비인증 접근, 기본 바인드 노출"},
+    8080: {"svc": "HTTP-alt", "siem": "웹 access.log 비정상 경로/상태코드",
+           "ids": 'alert http any any -> $HOME_NET 8080 (msg:"HTTP-alt dir brute"; threshold:type threshold,track by_src,count 50,seconds 10;)',
+           "wireshark": "http.request && tcp.port==8080", "check": "관리 콘솔(Tomcat/Jenkins), 디렉토리 브루트포싱"},
 }
 
 
@@ -144,10 +232,11 @@ def generate_writeup(report, machine_name: str = "<머신명>",
     if report.detected_cve:
         vuln_lines.append(f"- 탐지 CVE: {', '.join(report.detected_cve)}")
     if report.detected_cwe:
-        vuln_lines.append(f"- 탐지 CWE: {', '.join(report.detected_cwe)}")
+        vuln_lines.append(f"- 탐지 CWE: {', '.join(_cwe_label(c) for c in report.detected_cwe)}")
     for m in report.vuln_matches:
         sev = f"[{m.severity}] " if m.severity else ""
-        vuln_lines.append(f"- {sev}**{m.name}** ({' '.join(m.cve + m.cwe)}) — {m.note}")
+        ids = " ".join(m.cve + [_cwe_label(c) for c in m.cwe])
+        vuln_lines.append(f"- {sev}**{m.name}** ({ids}) — {m.note}")
         for s in m.suggest:
             vuln_lines.append(f"  - 제안: `{s}`")
     vuln_block = "\n".join(vuln_lines) or "_(명시적 CVE/CWE 미탐지 — 수동 분석 필요)_"
@@ -190,6 +279,10 @@ def generate_writeup(report, machine_name: str = "<머신명>",
 ## 3. 취약점 분석 (Vulnerability Analysis)
 
 {vuln_block}
+
+### 3.1 CVE 레퍼런스 (공식 출처 자동 수집 — NVD/PoC)
+
+{_enriched_refs(report)}
 
 ## 4. 공격 시나리오 요약
 
@@ -285,6 +378,19 @@ def _advanced_combos(host, target: str) -> str:
         combos.append("impacket-GetUserSPNs DOMAIN/user:pass -dc-ip {t} -request".replace("{t}", target))
     if 22 in ports:
         combos.append("hydra -L users.txt -P pass.txt ssh://{t} -t 4".replace("{t}", target))
+    if any(p in ports for p in (389, 636)):
+        combos.append("ldapsearch -x -H ldap://{t} -b 'DC=domain,DC=local' '(objectClass=user)'".replace("{t}", target))
+    if 161 in ports:
+        combos.append("snmpwalk -v2c -c public {t} | tee snmp.txt".replace("{t}", target))
+        combos.append("onesixtyone -c community.txt {t}".replace("{t}", target))
+    if 1433 in ports:
+        combos.append("impacket-mssqlclient DOMAIN/user:pass@{t} -windows-auth".replace("{t}", target))
+    if 3306 in ports:
+        combos.append("mysql -h {t} -u root -p --ssl=0".replace("{t}", target))
+    if 6379 in ports:
+        combos.append("redis-cli -h {t} INFO; redis-cli -h {t} CONFIG GET dir".replace("{t}", target))
+    if any(p in ports for p in (111, 2049)):
+        combos.append("showmount -e {t}".replace("{t}", target))
     return "\n".join(f"- `{c}`" for c in combos) or "- _(관측된 서비스에 대한 조합 없음)_"
 
 
@@ -297,9 +403,10 @@ def generate_tistory(report, machine_name: str = "<머신명>",
     if report.detected_cve:
         vuln_lines.append(f"- 탐지 CVE: {', '.join(report.detected_cve)}")
     if report.detected_cwe:
-        vuln_lines.append(f"- 탐지 CWE: {', '.join(report.detected_cwe)}")
+        vuln_lines.append(f"- 탐지 CWE: {', '.join(_cwe_label(c) for c in report.detected_cwe)}")
     for m in report.vuln_matches:
-        vuln_lines.append(f"- [{m.severity}] {m.name} ({' '.join(m.cve + m.cwe)}) — {m.note}")
+        ids = " ".join(m.cve + [_cwe_label(c) for c in m.cwe])
+        vuln_lines.append(f"- [{m.severity}] {m.name} ({ids}) — {m.note}")
     vuln_block = "\n".join(vuln_lines) or "_(명시적 CVE/CWE 미탐지)_"
 
     return f"""# [{machine_name}] 보안 분석 — 포트부터 탐지까지
@@ -327,6 +434,9 @@ def generate_tistory(report, machine_name: str = "<머신명>",
 
 ## 7. 취약점 분석 (CVE / CWE)
 {vuln_block}
+
+### 7.1 CVE 레퍼런스 (NVD/PoC 자동 수집)
+{_enriched_refs(report)}
 
 ## 8. 고급 명령 조합 예시
 {_advanced_combos(report.host, report.target)}
