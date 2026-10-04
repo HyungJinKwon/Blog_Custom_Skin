@@ -62,5 +62,37 @@ with tempfile.TemporaryDirectory() as d:
     check("재개 시 nmap 미호출", not any(c.startswith("nmap") for c in r2.calls))
     check("재개 안내 출력", "재개" in out)
 
+print("\n=== 결과 내보내기 플래그 (--writeup / --json / --html, main 경유) ===")
+with tempfile.TemporaryDirectory() as d:
+    wp = os.path.join(d, "wu.md")
+    jp = os.path.join(d, "r.json")
+    hp = os.path.join(d, "r.html")
+    code, out, r = run_main(["10.129.1.5", "--auto", "--state-dir", d,
+                             "--writeup", wp, "--json", jp, "--html", hp])
+    check("정상 종료(exit 0)", code == 0)
+    check("라이트업 파일 생성", os.path.isfile(wp))
+    check("JSON 파일 생성", os.path.isfile(jp))
+    check("HTML 파일 생성", os.path.isfile(hp))
+    # JSON 은 파싱 가능 + 핵심 필드
+    data = json.load(open(jp, encoding="utf-8"))
+    check("JSON schema_version", data.get("schema_version") == "1.0")
+    check("JSON target 일치", data.get("target") == "10.129.1.5")
+    check("JSON CVE 반영", "CVE-2011-2523" in data.get("detected_cve", []))
+    # HTML 은 doctype + 타겟 + 이스케이프 건전성
+    htmltext = open(hp, encoding="utf-8").read()
+    check("HTML doctype", htmltext.startswith("<!doctype html>"))
+    check("HTML 타겟 포함", "10.129.1.5" in htmltext)
+    # 라이트업에 포트/취약점 반영
+    wtext = open(wp, encoding="utf-8").read()
+    check("라이트업 CVE 반영", "CVE-2011-2523" in wtext)
+    # 안내 메시지(stdout)
+    check("내보내기 안내 출력", "JSON 결과 내보내기" in out and "HTML 대시보드" in out)
+
+print("\n=== 기본 경로 내보내기 (--json/--html 경로 생략 → state-dir) ===")
+with tempfile.TemporaryDirectory() as d:
+    code, out, r = run_main(["10.129.1.5", "--auto", "--state-dir", d, "--json", "--html"])
+    check("기본 JSON 경로 생성", os.path.isfile(os.path.join(d, "report_10.129.1.5.json")))
+    check("기본 HTML 경로 생성", os.path.isfile(os.path.join(d, "report_10.129.1.5.html")))
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
