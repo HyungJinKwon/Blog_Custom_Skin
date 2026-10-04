@@ -23,6 +23,7 @@ from .tools.recon import auto_approve_in_scope
 from .approval import interactive_approver
 from .knowledge import KnowledgeBase
 from .orchestrator import Orchestrator
+from .profiles import JEOPARDY_CATEGORIES
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -34,6 +35,9 @@ def build_parser() -> argparse.ArgumentParser:
                    "CTF/Dreamhack=챌린지 host:port/URL")
     p.add_argument("--platform", choices=["htb", "dreamhack", "ctf"], default=None,
                    help="플랫폼 프로파일 (기본 htb). dreamhack/ctf=단일 타겟+flag{} 모드")
+    p.add_argument("--category", choices=[k for k, _ in JEOPARDY_CATEGORIES], default=None,
+                   help="Jeopardy 카테고리 힌트(web/pwn/rev/crypto/forensic/misc). "
+                        "CTF/Dreamhack 에서 LLM 제안을 카테고리에 맞게 유도")
     p.add_argument("--flag-prefix", action="append", dest="flag_prefixes",
                    help="우선 인식할 플래그 접두 (반복 가능, 예: --flag-prefix DH). "
                         "플랫폼 기본값에 추가")
@@ -177,8 +181,11 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     pf = preflight(required_tool_keys=["nmap"])
     print(pf.render())
     _mode = "완전자동" if args.auto else ("완전수동" if args.manual else "스마트(범위밖만 확인)")
+    _plat = ui.accent2(profile.name) + ui.dim(f"  ({profile.flag_kind}")
+    _plat += ui.dim(f" · {args.category})") if (profile.is_jeopardy and args.category) \
+        else ui.dim(")")
     print(ui.panel("세션", [
-        ui.kv("플랫폼", ui.accent2(profile.name) + ui.dim(f"  ({profile.flag_kind})"), 8),
+        ui.kv("플랫폼", _plat, 8),
         ui.kv("타겟", ui.accent2(str(guard.bound_target or guard.bound_host)), 8),
         ui.kv("범위", guard.describe(), 8),
         ui.kv("공격자IP", (ui.ok(", ".join(attacker)) if attacker
@@ -252,6 +259,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 flag_kind=profile.flag_kind,
                                 flag_prefixes=flag_prefixes,
                                 enricher=enricher,
+                                platform_name=profile.name,
+                                category=(args.category or ""),
                                 state_store=store, resume=args.resume, audit=audit)
     report = orchestrator.run()
     print("\n" + report.summary())
