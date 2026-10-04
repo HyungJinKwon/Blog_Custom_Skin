@@ -12,7 +12,7 @@ htb-agent — HTB 머신 승인제 자동 풀이 에이전트
 
 from __future__ import annotations
 
-__version__ = "1.6.0"
+__version__ = "1.6.1"
 
 from .scope_guard import ScopeGuard, ScopeViolation
 from .orchestrator import Orchestrator, OrchestrationReport, PENTEST_PHASES

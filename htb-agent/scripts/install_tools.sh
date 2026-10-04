@@ -10,7 +10,8 @@
 #
 # 사용법:
 #   sudo ./install_tools.sh            # 전체 설치
-#   sudo ./install_tools.sh ad cloud   # 지정 카테고리만 (recon web smb ad creds cloud pivot wordlist)
+#   sudo ./install_tools.sh ad cloud   # 지정 카테고리만
+#     카테고리: recon web smb ad creds cloud pivot wordlist traffic re pwn forensic
 # =============================================================================
 
 set -uo pipefail
@@ -61,8 +62,12 @@ go_pkg(){ if command -v go >/dev/null 2>&1; then try "go:$1" go install "$1";
           else WARN "go 미설치 — '$1' 건너뜀 (apt install -y golang-go 후 재실행)"; fi; }
 
 if want recon; then
-  LOG "[recon] 포트/서비스 스캔"
+  LOG "[recon] 포트/서비스 스캔 + DNS/SNMP 열거"
   apt_pkg nmap; apt_pkg masscan; pipx_pkg autorecon
+  apt_pkg dnsutils            # dig
+  apt_pkg dnsenum
+  apt_pkg snmp                # snmpwalk
+  apt_pkg onesixtyone
   WARN "rustscan 은 릴리스 바이너리/cargo 로 별도 설치 권장"
 fi
 
@@ -120,6 +125,7 @@ fi
 if want creds; then
   LOG "[creds] 크래킹/브루트"
   apt_pkg hydra; apt_pkg john; apt_pkg hashcat
+  apt_pkg sshpass            # 권한상승 규칙(ssh 경유 타겟 명령)에 필요
 fi
 
 if want cloud; then
@@ -133,6 +139,7 @@ if want pivot; then
   LOG "[pivot] 셸/터널"
   apt_pkg netcat-traditional; apt_pkg socat
   go_pkg github.com/jpillora/chisel@latest
+  WARN "ligolo-ng 은 GitHub 릴리스 바이너리로 별도 설치 (github.com/nicocha30/ligolo-ng/releases)"
 fi
 
 if want wordlist; then
