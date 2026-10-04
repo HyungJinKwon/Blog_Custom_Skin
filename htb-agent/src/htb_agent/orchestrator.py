@@ -388,7 +388,9 @@ class Orchestrator:
             "findings": prior[-10:],
         }
         try:
-            cmds = self.llm_router.suggest_commands(context, target, max_items=budget)
+            from .llm.base import tier_for_phase
+            cmds = self.llm_router.suggest_commands(
+                context, target, tier=tier_for_phase(phase), max_items=budget)
         except Exception as e:  # LLM 백엔드 오류는 전체를 깨지 않는다
             report.manual_suggestions.append(f"(LLM 제안 실패: {e})")
             return 0

@@ -66,8 +66,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="명령당 옵션 조합 변형 수 (기본 2, 1=변형끔). 경우의 수 시도")
     p.add_argument("--knowledge", default=None,
                    help="지식베이스 디렉토리 (기본 ./knowledge). 사용자 규칙/노트로 성장")
-    p.add_argument("--llm", choices=["none", "claude", "ollama"], default=None,
-                   help="LLM 두뇌 백엔드 (기본 none=규칙기반). claude=Claude API, ollama=로컬")
+    p.add_argument("--llm", choices=["none", "claude", "ollama", "hybrid"], default=None,
+                   help="LLM 두뇌 백엔드 (기본 none=규칙기반). claude=API, ollama=로컬, "
+                        "hybrid=둘을 단계 난이도로 라우팅+폴백(장점극대·단점보완)")
     p.add_argument("--llm-tier", choices=["cheap", "standard", "strong"], default=None,
                    help="LLM 티어 (비용/성능)")
     p.add_argument("--state-dir", default=None,
@@ -90,17 +91,30 @@ def _build_llm_router(kind: str, tier_name: str):
     if kind == "none":
         return None, "LLM 미사용(규칙기반)"
     from .llm.base import Tier
-    from .llm.router import LLMRouter
-    if kind == "claude":
-        from .llm.claude_provider import ClaudeProvider
-        provider = ClaudeProvider()
-    else:
-        from .llm.ollama_provider import OllamaProvider
-        provider = OllamaProvider()
-    ok, reason = provider.available()
-    if not ok:
+    from .llm.router import LLMRouter, HybridRouter
+    from .llm.claude_provider import ClaudeProvider
+    from .llm.ollama_provider import OllamaProvider
+
+    def _mk(provider):
+        ok, reason = provider.available()
+        return (LLMRouter(provider, default_tier=Tier(tier_name)) if ok else None), reason
+
+    if kind == "hybrid":
+        # 두 백엔드를 단계 난이도로 라우팅 + 상호 폴백(장점극대·단점보완)
+        local, lreason = _mk(OllamaProvider())     # 열거·일반 → 무료·토큰절약
+        strong, sreason = _mk(ClaudeProvider())    # 권한상승·exploit → 정확
+        if local is None and strong is None:
+            return None, f"hybrid 사용 불가: ollama({lreason}) / claude({sreason})"
+        status = (f"hybrid(local=ollama[{'OK' if local else 'X'}], "
+                  f"strong=claude[{'OK' if strong else 'X'}], 티어={tier_name})")
+        return HybridRouter(local=local, strong=strong,
+                            default_tier=Tier(tier_name)), status
+
+    provider = ClaudeProvider() if kind == "claude" else OllamaProvider()
+    router, reason = _mk(provider)
+    if router is None:
         return None, f"{kind} 사용 불가: {reason}"
-    return LLMRouter(provider, default_tier=Tier(tier_name)), f"{kind}({tier_name})"
+    return router, f"{kind}({tier_name})"
 
 
 def main(argv: list[str] | None = None, runner=None) -> int:

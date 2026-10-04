@@ -109,3 +109,66 @@ class LLMRouter:
             if len(out) >= limit:
                 break
         return out
+
+
+class HybridRouter:
+    """
+    하이브리드 LLM 라우터 — 로컬(Ollama)과 강력(Claude)을 **단계 난이도로 라우팅**하고
+    실패/빈 응답 시 상호 **폴백**한다. 장점 극대화(로컬=무료·토큰절약, Claude=정확)·
+    단점 보완(로컬 품질 부족분을 Claude 가, Claude 비용을 로컬이).
+
+      - cheap/standard(열거·일반) → 로컬 우선, 실패 시 강력
+      - strong(권한상승·exploit 설계) → 강력 우선, 실패 시 로컬
+
+    LLMRouter 와 동일 인터페이스(suggest_commands·calls·cost_summary)를 제공해
+    오케스트레이터가 교체 없이 사용한다.
+    """
+
+    def __init__(self, local: "LLMRouter | None" = None,
+                 strong: "LLMRouter | None" = None,
+                 default_tier: Tier = Tier.STANDARD, max_items: int = 5):
+        if local is None and strong is None:
+            raise ValueError("HybridRouter: local/strong 중 최소 하나는 필요합니다.")
+        self.local = local
+        self.strong = strong
+        self.default_tier = default_tier
+        self.max_items = max_items
+
+    @property
+    def calls(self) -> int:
+        return (self.local.calls if self.local else 0) + \
+               (self.strong.calls if self.strong else 0)
+
+    def _route(self, tier: Tier):
+        """(우선, 폴백) 라우터 쌍. 한쪽만 있으면 그걸로."""
+        if tier == Tier.STRONG:
+            primary, secondary = self.strong, self.local
+        else:
+            primary, secondary = self.local, self.strong
+        primary = primary or secondary
+        secondary = secondary if secondary is not primary else None
+        return primary, secondary
+
+    def suggest_commands(self, context: dict, target: str,
+                         tier: Tier | None = None,
+                         max_items: int | None = None) -> list[str]:
+        tier = tier or self.default_tier
+        primary, secondary = self._route(tier)
+        for router in (primary, secondary):
+            if router is None:
+                continue
+            try:
+                out = router.suggest_commands(context, target, tier, max_items)
+            except Exception:   # 한 백엔드 실패는 폴백으로 흡수
+                out = []
+            if out:
+                return out
+        return []
+
+    def cost_summary(self) -> str:
+        parts = []
+        if self.local:
+            parts.append("로컬(Ollama) " + self.local.cost_summary())
+        if self.strong:
+            parts.append("강력(Claude) " + self.strong.cost_summary())
+        return " | ".join(parts)
