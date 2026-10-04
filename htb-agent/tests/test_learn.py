@@ -82,5 +82,18 @@ with tempfile.TemporaryDirectory() as d:
         code = main(["--learn", "nonsense-xyz", "--offline", "--knowledge", d])
     check("미지원 주제 종료 2", code == 2)
 
+print("\n=== 확장 카탈로그 + 사전 학습 시드 ===")
+check("주제 50개 이상", len(learn.SOURCES) >= 50)
+for t in ["csrf", "xxe", "jwt", "ssti", "brute-force", "ftp", "ssh", "ssrf"]:
+    check(f"신규/주요 주제 존재: {t}", t in learn.SOURCES)
+# 사전 심은 시드 노트가 KB(notes)로 로드되는지(성장 반영)
+import os as _os
+from htb_agent.knowledge import KnowledgeBase
+kb = KnowledgeBase.load("knowledge")
+joined = " ".join(kb.notes)
+check("시드 노트 KB 로드(kerberoasting)", "학습 시드: kerberoasting" in joined or "Kerberoast" in joined)
+seed_dir = "knowledge/notes/learned"
+check("시드 디렉토리 존재", _os.path.isdir(seed_dir) and len(_os.listdir(seed_dir)) >= 15)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
