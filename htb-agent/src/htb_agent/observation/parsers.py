@@ -176,6 +176,50 @@ def parse_nmap_text(text: str) -> NmapResult:
 
 
 # ── HTTP(curl) 구조 ──────────────────────────────────────────────────
+# 보안 헤더(있으면 방어↑, 없으면 블루팀 점검 포인트). {헤더(lower): 표기}
+SECURITY_HEADERS = {
+    "content-security-policy": "CSP",
+    "strict-transport-security": "HSTS",
+    "x-frame-options": "X-Frame-Options",
+    "x-content-type-options": "X-Content-Type-Options",
+    "referrer-policy": "Referrer-Policy",
+    "permissions-policy": "Permissions-Policy",
+}
+
+
+@dataclass
+class Cookie:
+    name: str
+    httponly: bool = False
+    secure: bool = False
+    samesite: str = ""
+
+    def __str__(self) -> str:
+        flags = []
+        if self.httponly:
+            flags.append("HttpOnly")
+        if self.secure:
+            flags.append("Secure")
+        if self.samesite:
+            flags.append(f"SameSite={self.samesite}")
+        missing = [f for f in ("HttpOnly", "Secure") if f not in flags]
+        tail = f" [{','.join(flags)}]" if flags else ""
+        tail += f" (취약: {','.join('No'+m for m in missing)})" if missing else ""
+        return self.name + tail
+
+
+@dataclass
+class HttpForm:
+    action: str = ""
+    method: str = "get"
+    has_password: bool = False
+    inputs: list[str] = field(default_factory=list)
+
+    def __str__(self) -> str:
+        kind = "로그인폼" if self.has_password else "폼"
+        return f"{kind}[{self.method.upper()} {self.action or '(self)'}]"
+
+
 @dataclass
 class HttpResult:
     status: int | None = None
@@ -183,6 +227,9 @@ class HttpResult:
     headers: dict[str, str] = field(default_factory=dict)
     title: str = ""
     parse_error: str = ""
+    cookies: list[Cookie] = field(default_factory=list)
+    forms: list[HttpForm] = field(default_factory=list)
+    generator: str = ""                       # <meta name=generator> (CMS 식별)
 
     @property
     def server(self) -> str:
@@ -192,6 +239,18 @@ class HttpResult:
     def location(self) -> str:
         return self.headers.get("location", "")
 
+    @property
+    def present_security_headers(self) -> list[str]:
+        return [v for k, v in SECURITY_HEADERS.items() if k in self.headers]
+
+    @property
+    def missing_security_headers(self) -> list[str]:
+        return [v for k, v in SECURITY_HEADERS.items() if k not in self.headers]
+
+    @property
+    def has_login_form(self) -> bool:
+        return any(f.has_password for f in self.forms)
+
     def summary(self) -> str:
         bits = [f"HTTP {self.status} {self.reason}".strip()]
         if self.server:
@@ -200,14 +259,57 @@ class HttpResult:
             bits.append(f"→ {self.location}")
         if self.title:
             bits.append(f'title="{self.title}"')
-        for k in ("x-powered-by", "www-authenticate", "set-cookie"):
+        if self.generator:
+            bits.append(f"generator={self.generator}")
+        for k in ("x-powered-by", "www-authenticate"):
             if k in self.headers:
                 bits.append(f"{k}={self.headers[k]}")
+        if self.cookies:
+            bits.append("cookies=" + "; ".join(str(c) for c in self.cookies))
+        if self.forms:
+            bits.append("forms=" + ", ".join(str(f) for f in self.forms))
+        if self.missing_security_headers:
+            bits.append("보안헤더 누락=" + ",".join(self.missing_security_headers))
         return " | ".join(bits)
 
 
 _STATUS_RE = re.compile(r"^HTTP/\d(?:\.\d)?\s+(\d{3})\s*(.*)$", re.I)
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
+_GENERATOR_RE = re.compile(
+    r"""<meta[^>]+name=["']?generator["']?[^>]+content=["']([^"'>]+)""", re.I)
+_FORM_RE = re.compile(r"<form\b([^>]*)>(.*?)</form>", re.I | re.S)
+_ATTR_RE = re.compile(r"""(\w+)\s*=\s*["']?([^"'\s>]+)""")
+
+
+def _parse_cookie(raw: str) -> Cookie:
+    """Set-Cookie 한 줄을 파싱(이름 + HttpOnly/Secure/SameSite)."""
+    parts = [p.strip() for p in raw.split(";")]
+    name = parts[0].split("=", 1)[0].strip() if parts and "=" in parts[0] else parts[0]
+    c = Cookie(name=name)
+    for attr in parts[1:]:
+        low = attr.lower()
+        if low == "httponly":
+            c.httponly = True
+        elif low == "secure":
+            c.secure = True
+        elif low.startswith("samesite"):
+            c.samesite = attr.split("=", 1)[1].strip() if "=" in attr else "?"
+    return c
+
+
+def _parse_forms(body: str) -> list[HttpForm]:
+    forms: list[HttpForm] = []
+    for m in _FORM_RE.finditer(body):
+        attrs = dict(_ATTR_RE.findall(m.group(1)))
+        inner = m.group(2)
+        inputs = [dict(_ATTR_RE.findall(im)).get("name", "")
+                  for im in re.findall(r"<input\b[^>]*>", inner, re.I)]
+        inputs = [i for i in inputs if i]
+        has_pw = bool(re.search(r"""<input[^>]+type=["']?password""", inner, re.I))
+        forms.append(HttpForm(action=attrs.get("action", ""),
+                              method=(attrs.get("method", "get") or "get").lower(),
+                              has_password=has_pw, inputs=inputs))
+    return forms
 
 
 def parse_http(raw: str) -> HttpResult:
@@ -222,6 +324,7 @@ def parse_http(raw: str) -> HttpResult:
     segments = re.split(r"\r?\n\r?\n", raw)
     body = ""
     seen_status = False
+    cookies_raw: list[str] = []
     for idx, seg in enumerate(segments):
         stripped = seg.strip()
         first = stripped.splitlines()[0] if stripped else ""
@@ -231,10 +334,16 @@ def parse_http(raw: str) -> HttpResult:
             res.status = int(sm.group(1))
             res.reason = sm.group(2).strip()
             res.headers = {}  # 새 응답 시작 → 헤더 리셋
+            cookies_raw = []  # 쿠키도 최종 응답 기준
             for line in lines[1:]:
                 if ":" in line:
                     k, _, v = line.partition(":")
-                    res.headers[k.strip().lower()] = v.strip()
+                    key = k.strip().lower()
+                    val = v.strip()
+                    # Set-Cookie 는 여러 번 올 수 있어 dict 로 덮어쓰지 않고 따로 수집
+                    if key == "set-cookie":
+                        cookies_raw.append(val)
+                    res.headers[key] = val
             seen_status = True
         elif seen_status:
             body = "\r\n\r\n".join(segments[idx:])
@@ -243,4 +352,9 @@ def parse_http(raw: str) -> HttpResult:
     tm = _TITLE_RE.search(body)
     if tm:
         res.title = re.sub(r"\s+", " ", tm.group(1)).strip()
+    gm = _GENERATOR_RE.search(body)
+    if gm:
+        res.generator = gm.group(1).strip()
+    res.cookies = [_parse_cookie(c) for c in cookies_raw]
+    res.forms = _parse_forms(body)
     return res

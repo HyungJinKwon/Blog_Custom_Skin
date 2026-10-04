@@ -87,5 +87,31 @@ h = parse_http(chain)
 check("체인 최종 상태 200", h.status==200)
 check("체인 최종 Server", h.server=="Apache")
 
+print("\n=== HTTP 심화 파싱 (쿠키·보안헤더·폼·generator) ===")
+RICH = ("HTTP/1.1 200 OK\r\n"
+        "Server: Apache/2.4.49\r\n"
+        "Set-Cookie: SID=abc; Path=/; HttpOnly\r\n"
+        "Set-Cookie: track=xyz; Secure; SameSite=Lax\r\n"
+        "X-Frame-Options: DENY\r\n"
+        "X-Powered-By: PHP/7.4\r\n\r\n"
+        '<html><head><title> Admin </title>'
+        '<meta name="generator" content="WordPress 5.8"></head><body>'
+        '<form method="post" action="/login">'
+        '<input name="user"><input type="password" name="pw"></form></body></html>')
+h = parse_http(RICH)
+check("쿠키 2개 수집(중복 Set-Cookie)", len(h.cookies) == 2)
+check("쿠키 플래그 파싱", any(c.name == "SID" and c.httponly and not c.secure for c in h.cookies))
+check("로그인폼 탐지", h.has_login_form and h.forms[0].method == "post")
+check("폼 action", h.forms[0].action == "/login")
+check("generator(CMS) 추출", h.generator == "WordPress 5.8")
+check("보안헤더 present(X-Frame-Options)", "X-Frame-Options" in h.present_security_headers)
+check("보안헤더 missing(CSP/HSTS)", {"CSP", "HSTS"} <= set(h.missing_security_headers))
+check("summary 에 누락헤더/쿠키/폼", all(x in h.summary()
+      for x in ("보안헤더 누락", "cookies=", "forms=", "generator=")))
+# 폼/쿠키 없는 단순 응답은 조용히(회귀)
+simple = parse_http("HTTP/1.1 404 Not Found\r\nServer: nginx\r\n\r\n<h1>nope</h1>")
+check("단순 응답: 쿠키/폼 없음", not simple.cookies and not simple.forms and not simple.has_login_form)
+check("단순 응답: 모든 보안헤더 누락 표기", len(simple.missing_security_headers) == 6)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
