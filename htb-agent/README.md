@@ -86,6 +86,10 @@ htb-agent 10.129.1.5 --config config/config.example.json
 
 전체 옵션: `htb-agent --help` (설치 전: `PYTHONPATH=src python3 -m htb_agent --help`).
 
+> **데모(네트워크·실도구 없이 전체 흐름 보기)**: `python3 scripts/demo.py`
+> (라이트업 저장: `python3 scripts/demo.py --write out/`). 실전 운영·트러블슈팅은
+> **[docs/OPERATIONS.md](docs/OPERATIONS.md)** 참고.
+
 ---
 
 ## 핵심 특징
@@ -118,7 +122,7 @@ htb-agent 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 30 스위트 530 테스트
+cd htb-agent && python3 tests/run_all.py     # 31 스위트 545 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
