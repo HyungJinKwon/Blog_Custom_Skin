@@ -1,0 +1,61 @@
+[
+  {
+    "name": "AWS 자격증명 식별",
+    "when": {"services": ["http", "https", "aws"]},
+    "suggest": [
+      "aws sts get-caller-identity",
+      "aws configure list",
+      "env | grep -i aws"
+    ],
+    "note": "현재 AWS 자격증명/역할 확인(키 노출·IAM 역할). 출처: AWS CLI 공식문서.",
+    "tags": ["cloud", "aws", "creds"],
+    "phase": "enum"
+  },
+  {
+    "name": "S3 버킷 비인증 열거",
+    "when": {"services": ["http", "https", "s3"]},
+    "suggest": [
+      "aws s3 ls s3://{bucket} --no-sign-request",
+      "aws s3 ls s3://{bucket} --no-sign-request --recursive",
+      "curl -s https://{bucket}.s3.amazonaws.com/"
+    ],
+    "note": "퍼블릭(비인증) S3 버킷 나열. {bucket} 는 대상 버킷명(수동). 출처: AWS S3 공식문서.",
+    "tags": ["cloud", "aws", "s3"],
+    "phase": "enum"
+  },
+  {
+    "name": "S3 버킷 자동 탐색(도구)",
+    "when": {"services": ["http", "https", "s3"]},
+    "suggest": [
+      "s3scanner scan --bucket {bucket}",
+      "cloud_enum -k {keyword}"
+    ],
+    "note": "키워드/이름 기반 공개 버킷·멀티클라우드(S3/GCP/Azure) 자산 탐색. 출처: s3scanner/cloud_enum.",
+    "tags": ["cloud", "aws", "s3"],
+    "phase": "enum"
+  },
+  {
+    "name": "S3 쓰기가능/오브젝트 다운로드",
+    "when": {"services": ["s3", "http", "https"]},
+    "suggest": [
+      "aws s3 cp s3://{bucket}/ ./loot/ --no-sign-request --recursive",
+      "echo test > /tmp/t.txt && aws s3 cp /tmp/t.txt s3://{bucket}/ --no-sign-request"
+    ],
+    "note": "오브젝트 수집 + 쓰기권한 점검(쓰기가능=웹셸 업로드 등 위험). CWE-732. 승인 후 수동.",
+    "tags": ["cloud", "aws", "s3"],
+    "phase": "access"
+  },
+  {
+    "name": "AWS 자격증명 확보 후 권한 열거",
+    "when": {"services": ["aws", "s3", "http", "https"]},
+    "suggest": [
+      "aws iam get-account-authorization-details",
+      "aws iam list-attached-user-policies --user-name {user}",
+      "aws s3 ls",
+      "aws ec2 describe-instances --query 'Reservations[].Instances[].InstanceId'"
+    ],
+    "note": "자격증명 확보 후 IAM 권한·자산 열거(권한상승 경로 탐색). 과도권한=횡적이동. 출처: AWS IAM 공식문서.",
+    "tags": ["cloud", "aws", "iam"],
+    "phase": "privesc"
+  }
+]
