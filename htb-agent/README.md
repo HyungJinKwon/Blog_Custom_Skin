@@ -78,6 +78,7 @@ assassin 10.129.1.5 --manual
 assassin 10.129.1.5 --offline
 
 # LLM 두뇌 / 중단 후 재개 / 설정 파일
+htb-agent 10.129.1.5 --llm hybrid --llm-tier standard   # 하이브리드(Ollama+Claude 라우팅/폴백)
 htb-agent 10.129.1.5 --llm claude --llm-tier standard
 htb-agent 10.129.1.5 --resume
 htb-agent 10.129.1.5 --config config/config.example.json
@@ -111,7 +112,7 @@ htb-agent 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 27 스위트 465 테스트
+cd htb-agent && python3 tests/run_all.py     # 28 스위트 483 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

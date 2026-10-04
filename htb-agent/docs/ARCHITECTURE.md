@@ -71,7 +71,7 @@ LLM 이 제안한 명령도 '신뢰하지 않는 데이터'로 간주되어 이 
 | **지능** | `knowledge.py` + `knowledge/` | 단계별 규칙·노트·취약점(사용자 학습으로 성장) |
 | | `orchestrator.py` | 단계 순서 상태머신(유한) |
 | | `variants.py` | 도구별 옵션 조합 변형(경우의 수) 생성 |
-| | `llm/` | Claude/Ollama 프로바이더 + 티어링 + 캐싱·비용 |
+| | `llm/` | Claude/Ollama 프로바이더 + 티어링 + 캐싱·비용 · **HybridRouter**(단계 난이도→로컬/강력 라우팅+상호 폴백) |
 | **실행** | `tools/runner.py` | Subprocess(실제) / Fake(테스트) |
 | | `tools/recon.py` | 유한 폴백 포트스캔 |
 | | `tools/registry.py` + `scripts/install_tools.sh` | 도구 목록·가용성 + 일괄 설치 |
