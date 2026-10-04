@@ -38,6 +38,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--revshell", metavar="LHOST:LPORT", default=None,
                    help="리버스쉘 페이로드 생성(실행 안 함). 'IP:PORT' 또는 'PORT'"
                         "(공격자 IP 자동/--attacker-ip). 권한 확인 대상 전용")
+    p.add_argument("--learn", metavar="TOPIC", default=None,
+                   help="권위 출처 자가학습(도구·공격기법·개념·프로토콜)을 지식베이스에 저장. "
+                        "예: --learn kerberoasting / burp / http. 목록: --learn list")
     p.add_argument("target", nargs="?", default=None,
                    help="대상(IP 또는 호스트명/URL). HTB=허용대역 내 IP, "
                    "CTF/Dreamhack=챌린지 host:port/URL")
@@ -162,8 +165,24 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         print(revshell.render(lhost, lport))
         return 0
 
+    # 권위 출처 자가학습(스캔 안 함) — 지식베이스에 노트 저장(P1 유지)
+    if args.learn:
+        from . import learn
+        if args.learn.strip().lower() in ("list", "topics", "?"):
+            print(ui.heading("학습 가능 주제(권위 출처)", "📚"))
+            print("  " + ", ".join(learn.topics()))
+            return 0
+        import os as _oslearn
+        kdir = args.knowledge or "knowledge"
+        learner = learn.ReferenceLearner(
+            cache_dir=_oslearn.path.join(kdir, "notes", "learned"),
+            enabled=not args.offline)
+        res = learner.learn(args.learn)
+        print(res.summary())
+        return 0 if res.refs else 2
+
     if not args.target:
-        parser.error("target 이 필요합니다 (또는 --doctor / --revshell). 예: assassin 10.129.1.5")
+        parser.error("target 이 필요합니다 (또는 --doctor / --revshell / --learn). 예: assassin 10.129.1.5")
 
     # 0) 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값)
     from .config import load_config, pick, Config, ConfigError

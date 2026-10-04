@@ -91,6 +91,10 @@ assassin 10.129.1.5 --config config/config.example.json
 
 전체 옵션: `assassin --help` (설치 전: `PYTHONPATH=src python3 -m htb_agent --help`).
 
+> **자가학습**(권위 출처만, 라이트업 미참조): `assassin --learn kerberoasting`
+> (MITRE ATT&CK·OWASP·PortSwigger·RFC 등 허용 도메인 → 지식베이스 노트로 축적,
+> `--learn list` 로 주제 목록). 도구·공격기법·개념/정의·프로토콜을 학습합니다.
+
 > **리버스쉘 페이로드 생성**(실행 안 함): `assassin --revshell 10.10.14.5:4444`
 > (bash/nc/python3/php/powershell/socat 등 + 리스너·안정화 힌트).
 > **AWS/S3 열거**는 `cloud` 지식팩 + 도구(awscli·s3scanner·cloud_enum)로 제안됩니다.
@@ -131,7 +135,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 36 스위트 679 테스트
+cd htb-agent && python3 tests/run_all.py     # 37 스위트 704 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

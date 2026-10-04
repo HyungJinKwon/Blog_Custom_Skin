@@ -194,14 +194,16 @@ def _load_rule_dir(path: str) -> list[Rule]:
 
 
 def _load_notes_dir(path: str) -> list[str]:
+    # 하위 디렉토리(예: notes/learned/ — 자가학습 노트)까지 포함해 '성장'을 반영.
     out: list[str] = []
     if not os.path.isdir(path):
         return out
-    for fn in sorted(os.listdir(path)):
-        if fn.endswith((".md", ".txt")):
-            try:
-                with open(os.path.join(path, fn), encoding="utf-8") as f:
-                    out.append(f"[{fn}] " + f.read().strip()[:500])
-            except OSError:
-                continue
+    for root, _dirs, files in os.walk(path):
+        for fn in sorted(files):
+            if fn.endswith((".md", ".txt")):
+                try:
+                    with open(os.path.join(root, fn), encoding="utf-8") as f:
+                        out.append(f"[{fn}] " + f.read().strip()[:500])
+                except OSError:
+                    continue
     return out
