@@ -35,6 +35,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=f"ASSASSIN {__version__}")
     p.add_argument("--doctor", action="store_true",
                    help="환경 자가진단(도구·LLM·VPN 점검, 스캔 안 함). 완전 초보자 권장 첫 실행")
+    p.add_argument("--revshell", metavar="LHOST:LPORT", default=None,
+                   help="리버스쉘 페이로드 생성(실행 안 함). 'IP:PORT' 또는 'PORT'"
+                        "(공격자 IP 자동/--attacker-ip). 권한 확인 대상 전용")
     p.add_argument("target", nargs="?", default=None,
                    help="대상(IP 또는 호스트명/URL). HTB=허용대역 내 IP, "
                    "CTF/Dreamhack=챌린지 host:port/URL")
@@ -145,8 +148,22 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         text, ok = run_doctor()
         print(text)
         return 0 if ok else 2
+
+    # 리버스쉘 페이로드 생성(스캔·실행 안 함)
+    if args.revshell:
+        from . import revshell
+        default_host = (args.attacker_ips[0] if args.attacker_ips
+                        else (detect_vpn_ips() or [None])[0])
+        try:
+            lhost, lport = revshell.parse_target(args.revshell, default_host)
+        except ValueError as e:
+            print(ui.mark_err(str(e)), file=sys.stderr)
+            return 2
+        print(revshell.render(lhost, lport))
+        return 0
+
     if not args.target:
-        parser.error("target 이 필요합니다 (또는 --doctor 로 환경 점검). 예: assassin 10.129.1.5")
+        parser.error("target 이 필요합니다 (또는 --doctor / --revshell). 예: assassin 10.129.1.5")
 
     # 0) 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값)
     from .config import load_config, pick, Config, ConfigError
