@@ -64,5 +64,25 @@ check("볼트 있으면 evil-winrm 실행 승격",
       any("evil-winrm" in f.command and f.ran for f in rep.enum_findings))
 check("승격 명령에 자격증명 치환", any("administrator" in f.command for f in rep.enum_findings))
 
+print("\n=== Pass-the-Hash 자격증명(NT 해시) 파싱 + 치환 ===")
+NT = "31d6cfe0d16ae931b73c59d7e0c089c0"
+LM = "aad3b435b51404eeaad3b435b51404ee"
+# user:pass:domain:nthash
+v = CredentialVault.from_cli([f"admin:pw:corp:{NT}"])
+check("4필드 nthash 파싱", v.creds[0].nt_hash == NT and v.creds[0].password == "pw")
+# 지름길: user:<32hex> → 해시(비번 아님)
+v = CredentialVault.from_cli([f"administrator:{NT}"])
+check("user:<32hex> → 해시로 승격", v.creds[0].nt_hash == NT and v.creds[0].password is None)
+# LM:NT 형식(콜론 보존)
+v = CredentialVault.from_cli([f"admin::corp:{LM}:{NT}"])
+check("LM:NT 해시 콜론 보존", v.creds[0].nt_hash == f"{LM}:{NT}" and v.creds[0].domain == "corp")
+# 일반 비번은 해시로 오인하지 않음
+v = CredentialVault.from_cli(["admin:Summer2024!"])
+check("평문 비번은 해시 아님", v.creds[0].password == "Summer2024!" and v.creds[0].nt_hash is None)
+# {hash} 템플릿 치환(PtH 규칙)
+exp = CredentialVault.from_cli([f"administrator:{NT}"]).expand(
+    "netexec smb {t} -u {user} -H {hash}", "10.10.10.10")
+check("{hash} 치환 runnable", exp == [(f"netexec smb 10.10.10.10 -u administrator -H {NT}", True)])
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
