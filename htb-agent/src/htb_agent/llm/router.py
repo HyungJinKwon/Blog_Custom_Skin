@@ -15,21 +15,60 @@ from .base import LLMProvider, Tier
 from .pricing import estimate_cost
 
 
-SYSTEM_PROMPT = """\
-당신은 권한이 확인된 Hack The Box 훈련용 머신을 대상으로 하는 침투 테스트
-보조자다. 주어진 '관측 결과'에만 근거해 다음에 실행할 '열거(enumeration)/탐색'
-명령 후보를 제안한다.
+# 플랫폼/모드에 맞춰 동적으로 조립한다(HTB boot2root vs Jeopardy CTF). 리터럴
+# {user}/{pass}/{domain} 이 들어가므로 .format() 금지 — replace 로만 치환한다.
+_SYSTEM_BASE = """\
+당신은 권한이 확인된 {platform} 대상의 침투 테스트/CTF 풀이 보조자다. 주어진
+'관측 결과'에만 근거해 다음에 실행할 명령 후보를 제안한다.
 
 규칙(엄수):
-- 특정 머신의 공개 라이트업/워크스루를 인용하지 말고, 주어진 관측에서 추론하라.
-- 대상은 제공된 타겟 IP 하나뿐이다. 다른 호스트/인터넷 대상 금지.
+- 특정 문제/머신의 공개 라이트업·워크스루를 인용하지 말고, 주어진 관측에서 추론하라.
+- 대상은 제공된 타겟 하나뿐이다. 다른 호스트/인터넷 대상 금지.
 - 출력은 '명령만' 한 줄에 하나씩. 설명/서론/마크다운/번호매기기 금지.
 - 파괴적 명령(rm -rf, mkfs, dd of=/dev/... 등) 금지.
 - 크리덴셜이 필요한 명령은 {user}/{pass}/{domain} 플레이스홀더를 그대로 두라.
-- 표준 도구(nmap, ffuf, gobuster, netexec, enum4linux-ng, smbclient,
-  ldapsearch, curl 등)를 우선 사용하라.
+- 표준 도구를 우선 사용하라.
 - 최대 {max_items}개까지만.
-"""
+{mode_block}"""
+
+# boot2root(HTB) 모드 가이드
+_MODE_BOOT2ROOT = """\
+- 목표: user.txt → root.txt 획득(boot2root). 열거→초기침투→권한상승 순으로 진행.
+- 표준 도구: nmap·ffuf·gobuster·netexec·enum4linux-ng·smbclient·ldapsearch·curl 등."""
+
+# Jeopardy(Dreamhack/CTF) 모드 가이드 — 카테고리별 도구/기법 우선
+_MODE_JEOPARDY = """\
+- 이것은 Jeopardy 형식 CTF 문제다. 목표는 단일 플래그({prefixes}) 획득.
+- 카테고리({category})에 맞는 도구/기법을 우선하라:
+  · web   : curl/httpie 요청·ffuf/wfuzz 퍼징·SQLi/XSS/LFI/SSRF·jwt_tool
+  · pwn   : file/checksec·gdb/pwndbg·radare2·ROPgadget·pwntools 익스
+  · rev   : file·strings·radare2/ghidra 디컴파일·ltrace/strace
+  · crypto: 암호 구조 분석·RsaCtfTool·sage/python 수학 공격(무차별 금지 우선 분석)
+  · forensic: binwalk/foremost·exiftool·steghide/zsteg·volatility3·wireshark/tshark
+- 원격 인스턴스면 nc/curl 로 먼저 상호작용해 거동을 관측하라."""
+
+_CAT_LABELS = {
+    "web": "웹", "pwn": "포너블", "rev": "리버싱", "crypto": "암호",
+    "forensic": "포렌식", "misc": "기타",
+}
+
+
+def build_system_prompt(context: dict, max_items: int) -> str:
+    """관측 컨텍스트(플랫폼/카테고리)에 맞춰 시스템 프롬프트를 조립."""
+    platform = context.get("platform") or "Hack The Box"
+    if context.get("jeopardy"):
+        cat = (context.get("category") or "").lower()
+        cat_label = _CAT_LABELS.get(cat, "미상 — 관측으로 추론")
+        prefixes = context.get("flag_prefixes") or "flag{...}"
+        mode = (_MODE_JEOPARDY
+                .replace("{category}", cat_label)
+                .replace("{prefixes}", prefixes))
+    else:
+        mode = _MODE_BOOT2ROOT
+    return (_SYSTEM_BASE
+            .replace("{platform}", platform)
+            .replace("{max_items}", str(max_items))
+            .replace("{mode_block}", mode))
 
 
 class LLMRouter:
@@ -54,8 +93,7 @@ class LLMRouter:
                          tier: Tier | None = None,
                          max_items: int | None = None) -> list[str]:
         limit = max_items or self.max_items
-        # 주의: SYSTEM_PROMPT 에 리터럴 {user}/{pass} 가 있어 .format() 금지.
-        system = SYSTEM_PROMPT.replace("{max_items}", str(limit))
+        system = build_system_prompt(context, limit)
         user = self._user_prompt(context, target)
         resp = self.provider.complete(system, user, tier or self.default_tier)
         self.calls += 1

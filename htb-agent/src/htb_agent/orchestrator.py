@@ -180,6 +180,8 @@ class Orchestrator:
                  flag_kind: str = "boot2root",
                  flag_prefixes: tuple[str, ...] = (),
                  enricher=None,
+                 platform_name: str = "Hack The Box",
+                 category: str = "",
                  is_tool_available: Callable[[str], bool] | None = None):
         self.guard = guard
         self.runner = runner
@@ -200,6 +202,8 @@ class Orchestrator:
         self.phases = phases or PENTEST_PHASES
         self.flag_kind = flag_kind
         self.flag_prefixes = flag_prefixes
+        self.platform_name = platform_name
+        self.category = category
         self.enricher = enricher
         # 도구 설치 여부 판단(주입 가능 — 테스트에서 대체)
         self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
@@ -386,6 +390,12 @@ class Orchestrator:
             "kb": [f"{r.rule_name}: {', '.join(r.suggestions)}" for r in recs[:5]],
             "notes": self.kb.notes[:3],
             "findings": prior[-10:],
+            # 플랫폼 인식 — LLM 프롬프트가 HTB/Jeopardy·카테고리에 맞게 조립된다
+            "platform": self.platform_name,
+            "jeopardy": self.flag_kind == "single",
+            "category": self.category,
+            "flag_prefixes": ("/".join(f"{p}{{...}}" for p in self.flag_prefixes)
+                              if self.flag_prefixes else ""),
         }
         try:
             from .llm.base import tier_for_phase
