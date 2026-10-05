@@ -33,15 +33,20 @@ _FRAGMENTS: dict[str, list[str]] = {
 }
 
 
-def expand_variants(command: str, max_variants: int = 1) -> list[str]:
+def expand_variants(command: str, max_variants: int = 1, stats=None) -> list[str]:
     """
     명령을 [기본] + 옵션 조합 변형들로 확장(최대 max_variants 개).
     max_variants<=1 이면 변형 없이 [기본]만 반환(결정적 기본 동작).
+
+    stats(VariantStats)가 주어지면 실행 결과 학습으로 변형 순서를 재정렬한다
+    (성공률 높은 조합 먼저). 기본 명령은 항상 첫 번째로 유지.
     """
     if max_variants <= 1 or not command.strip():
         return [command]
     base_bin = binary_of(command, strip_path=True)
     frags = _FRAGMENTS.get(base_bin, [])
+    if stats is not None:
+        frags = stats.rank(base_bin, frags)
     existing = set(command.split())
     out = [command]
     for frag in frags:
@@ -54,3 +59,14 @@ def expand_variants(command: str, max_variants: int = 1) -> list[str]:
         if variant not in out:
             out.append(variant)
     return out
+
+
+def fragment_of(base_command: str, variant: str) -> str:
+    """변형 명령에서 기본 명령 대비 추가된 fragment 문자열을 추출(학습 기록용).
+    기본 명령 자체면 빈 문자열."""
+    base = base_command.rstrip()
+    if variant == base_command or variant == base:
+        return ""
+    if variant.startswith(base):
+        return variant[len(base):].strip()
+    return ""

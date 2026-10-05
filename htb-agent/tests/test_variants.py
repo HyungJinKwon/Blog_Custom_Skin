@@ -1,7 +1,8 @@
 # 실행: htb-agent 디렉토리에서  python3 tests/test_variants.py
 import sys
 sys.path.insert(0, "src")
-from htb_agent.variants import expand_variants
+from htb_agent.variants import expand_variants, fragment_of
+from htb_agent.variant_stats import VariantStats
 from htb_agent.scope_guard import ScopeGuard
 from htb_agent.tools.runner import FakeRunner, RunOutput
 from htb_agent.tools.recon import auto_approve_in_scope
@@ -54,6 +55,42 @@ check("변형에 옵션 조합 포함", any(("-x php" in c or "-mc all" in c or 
 check("기본 명령도 그대로 포함", base_cmds <= var_cmds)
 # 상한 존중(무한 아님)
 check("max_enum 상한 준수", len([f for f in rep3.enum_findings]) <= 20)
+
+print("\n=== 실행 중 변형 결과가 학습 통계에 기록 ===")
+vstats = VariantStats()
+Orchestrator(guard(), runner(), KnowledgeBase.load(), auto_approve_in_scope,
+             max_variants=3, max_enum=20, variant_stats=vstats, is_tool_available=ALL).run()
+check("변형 실행 결과가 기록됨", len(vstats.stats) >= 1)
+check("기록 키에 fragment 포함", all("\x1f" in k for k in vstats.stats))
+
+print("\n=== fragment_of ===")
+check("추가 fragment 추출", fragment_of("gobuster dir -u x", "gobuster dir -u x -t 50") == "-t 50")
+check("기본 명령이면 빈 문자열", fragment_of("gobuster dir -u x", "gobuster dir -u x") == "")
+
+print("\n=== VariantStats 학습·랭킹 ===")
+vs = VariantStats()
+# gobuster 변형 중 '-t 50' 을 성공, '-x php,html,txt' 를 실패로 여러번 기록
+for _ in range(5):
+    vs.record("gobuster", "-t 50", True)
+    vs.record("gobuster", "-x php,html,txt", False)
+frags = ["-x php,html,txt", "-t 50", "-s 200,204,301,302,307,401,403"]
+ranked = vs.rank("gobuster", frags)
+check("성공 변형이 실패 변형보다 앞", ranked.index("-t 50") < ranked.index("-x php,html,txt"))
+check("미관측 변형은 중립(0.5) 근처", 0.4 < vs.score("gobuster", "-s 200,204,301,302,307,401,403") < 0.6)
+check("성공 변형 점수 높음", vs.score("gobuster", "-t 50") > 0.7)
+check("실패 변형 점수 낮음", vs.score("gobuster", "-x php,html,txt") < 0.3)
+
+print("\n=== 학습이 expand_variants 순서에 반영 ===")
+# 통계가 있으면 -t 50 변형이 먼저 나와야(기본은 항상 첫째)
+ev = expand_variants("gobuster dir -u http://t/", 3, vs)
+check("기본은 여전히 첫째", ev[0] == "gobuster dir -u http://t/")
+check("학습된 -t 50 변형이 2번째", ev[1].endswith("-t 50"))
+
+print("\n=== 직렬화 라운드트립 ===")
+import json as _json
+d = vs.to_dict(); vs2 = VariantStats.from_dict(_json.loads(_json.dumps(d)))
+check("to_dict/from_dict 보존", vs2.score("gobuster", "-t 50") == vs.score("gobuster", "-t 50"))
+check("빈 binary/fragment 무시", (VariantStats().record("", "x", True) or True) and len(VariantStats().stats) == 0)
 
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

@@ -37,7 +37,7 @@ from .vuln import VulnKB, VulnMatch, extract_vuln_ids
 from .flag import FlagHit, scan as scan_flags
 from .crack import scan_hashes as crack_scan
 from .world import WorldModel
-from .variants import expand_variants
+from .variants import expand_variants, fragment_of
 from .state import SessionState, StateStore, host_to_dict, host_from_dict
 from .tools.runner import Runner
 from .tools.recon import ReconExecutor, ReconReport, auto_approve_in_scope, Approver
@@ -251,6 +251,7 @@ class Orchestrator:
                  platform_name: str = "Hack The Box",
                  category: str = "",
                  revshell_port: int = 4444,
+                 variant_stats=None,
                  is_tool_available: Callable[[str], bool] | None = None):
         self.guard = guard
         self.runner = runner
@@ -275,6 +276,7 @@ class Orchestrator:
         self.platform_name = platform_name
         self.category = category
         self.revshell_port = revshell_port
+        self.variant_stats = variant_stats   # 실행 결과 기반 변형 학습(없으면 미학습)
         self.enricher = enricher
         # 도구 설치 여부 판단(주입 가능 — 테스트에서 대체)
         self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
@@ -474,8 +476,9 @@ class Orchestrator:
                         report.manual_suggestions.append(
                             cmd + f"   # [{_PHASE_LABEL.get(phase, phase)}] {rec.rule_name}")
                         continue
-                    # 실행 가능한 명령은 옵션 조합(경우의 수) 변형까지 시도
-                    for vcmd in expand_variants(cmd, self.max_variants):
+                    # 실행 가능한 명령은 옵션 조합(경우의 수) 변형까지 시도.
+                    # variant_stats 가 있으면 학습된 성공률로 변형 순서를 재정렬한다.
+                    for vcmd in expand_variants(cmd, self.max_variants, self.variant_stats):
                         if vcmd in seen:
                             continue
                         seen.add(vcmd)
@@ -483,8 +486,22 @@ class Orchestrator:
                             report.manual_suggestions.append(vcmd + "   # (상한 초과 — 수동)")
                             continue
                         self._attempt(report, report.enum_findings, vcmd, phase)
+                        self._record_variant_outcome(cmd, vcmd, report.enum_findings)
                         attempted += 1
         return attempted
+
+    def _record_variant_outcome(self, base_cmd: str, vcmd: str,
+                                findings: list[EnumFinding]) -> None:
+        """실행된 변형의 결과(성공/실패)를 학습 통계에 기록. base 명령(fragment 없음)은
+        학습 대상 아님. 성공 = 실행됐고 쓸만한 출력이 있음(요약 비어있지 않음)."""
+        if self.variant_stats is None or not findings:
+            return
+        frag = fragment_of(base_cmd, vcmd)
+        if not frag:
+            return
+        f = findings[-1]
+        success = bool(f.ran and f.output)
+        self.variant_stats.record(binary_of(vcmd, strip_path=True), frag, success)
 
     def _expand(self, tmpl: str, target: str) -> list[tuple[str, bool]]:
         """볼트가 있으면 자격증명으로 플레이스홀더를 채워 확장, 없으면 {t}만 치환."""
