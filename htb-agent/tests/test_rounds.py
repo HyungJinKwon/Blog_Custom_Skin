@@ -47,14 +47,31 @@ check("라운드1 gobuster 실행", any("gobuster" in c for c in cmds))
 check("라운드2 적응해 nuclei 제안(새 명령)", any("nuclei" in c for c in cmds))
 check("중복 명령 재실행 안 함", len(cmds) == len(set(cmds)))
 
-print("\n=== max_rounds=1 → 단일 단계 1라운드만 ===")
-# 단일 단계(enum)로 제한 + max_rounds=1 → round1 gobuster 만, 적응 라운드 없음
+print("\n=== max_rounds=1 + max_sweeps=1 → 단일 라운드만 ===")
+# 단일 단계(enum)·단일 스윕·max_rounds=1 → round1 gobuster 만, 적응 라운드 없음
 orc = Orchestrator(guard(), runner(), EMPTY_KB, auto_approve_in_scope,
                    llm_router=LLMRouter(FakeProvider(adaptive)), max_rounds=1,
-                   phases=[("enum", "열거")], is_tool_available=lambda b: True)
+                   max_sweeps=1, phases=[("enum", "열거")], is_tool_available=lambda b: True)
 rep = orc.run()
 cmds = [f.command for f in rep.llm_findings]
 check("1라운드: gobuster만", any("gobuster" in c for c in cmds) and not any("nuclei" in c for c in cmds))
+
+print("\n=== A1 재진입 스윕: max_rounds=1 이어도 다음 스윕서 적응 ===")
+# max_rounds=1 이라도 max_sweeps=2 면 스윕2에서 gobuster 관측 반영→nuclei 제안
+orc = Orchestrator(guard(), runner(), EMPTY_KB, auto_approve_in_scope,
+                   llm_router=LLMRouter(FakeProvider(adaptive)), max_rounds=1,
+                   max_sweeps=2, phases=[("enum", "열거")], is_tool_available=lambda b: True)
+rep = orc.run()
+cmds = [f.command for f in rep.llm_findings]
+check("스윕2에서 nuclei 적응 제안", any("nuclei" in c for c in cmds))
+
+print("\n=== 상태 정체 시 스윕 조기 종료(무한 아님) ===")
+# 항상 같은 명령 → 스윕1 후 성장 없음 → 스윕2 돌아도 중복뿐, 1건만
+same2 = LLMRouter(FakeProvider("curl -i http://{t}/"))
+orc = Orchestrator(guard(), runner(), EMPTY_KB, auto_approve_in_scope,
+                   llm_router=same2, max_rounds=5, max_sweeps=3, is_tool_available=lambda b: True)
+rep = orc.run()
+check("정체 시 중복 없이 1건", len(rep.llm_findings) == 1)
 
 print("\n=== 새 명령 없으면 조기 종료 ===")
 # 항상 같은 명령 → 라운드2에서 0건 추가 → 조기 종료(중복 1건만)
