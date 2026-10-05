@@ -101,7 +101,10 @@ assassin 10.129.1.5 --config config/config.example.json
 > 초기 침투용 리버스쉘 페이로드를 **별도 명령 없이 자동 생성**해 리포트·라이트업·
 > JSON/HTML 에 포함합니다(생성만 — 실제 셸 획득은 권한 확인 대상에서 사용자가 직접,
 > 리스너 포트는 `--lport`, 기본 4444).
-> **AWS/S3 열거**는 `cloud` 지식팩 + 도구(awscli·s3scanner·cloud_enum)로 제안됩니다.
+> **AWS/S3 열거 자동 준비**: 풀이 중 호스트명/도메인이 확보되면 **버킷명 후보 +
+> 비인증 점검 명령(aws s3 ls --no-sign-request·curl·s3scanner·cloud_enum·자격증명 확인)을
+> 자동 생성**해 리포트·라이트업·JSON/HTML 에 포함합니다(생성만 — AWS 엔드포인트는
+> 타겟 범위 밖이라 실행은 사용자가 권한 확인 자산에서 직접). 단독 실행: `assassin --cloud acme.htb`.
 
 > **데모(네트워크·실도구 없이 전체 흐름 보기)**: `python3 scripts/demo.py`
 > (라이트업 저장: `python3 scripts/demo.py --write out/`). 실전 운영·트러블슈팅은
@@ -117,7 +120,7 @@ assassin 10.129.1.5 --config config/config.example.json
 | 관측 | nmap·HTTP(쿠키·보안헤더·로그인폼·CMS)·gobuster/ffuf/feroxbuster/nikto/whatweb·smb·ldap·dns/snmp 파싱 |
 | 식별 | Linux vs Windows-AD 증거기반 판정(확신도) · 플랫폼 프로파일(HTB/Dreamhack/CTF) |
 | 지능 | 지식베이스(사용자 학습·자가학습으로 성장) · 단계 순서 오케스트레이터 · 옵션 조합 변형(경우의 수) · LLM(Claude/Ollama/**하이브리드**, 플랫폼·카테고리 인식) · **권위출처 자가학습(`--learn`)** |
-| 목표 | CVE/CWE 탐지·매핑 + **자동 수집(NVD)** · user.txt/root.txt·CTF 단일 플래그 · **리버스쉘 생성(`--revshell`) + 풀이 중 자동 준비(공격자 IP 확보 시)** · AWS/S3 열거 |
+| 목표 | CVE/CWE 탐지·매핑 + **자동 수집(NVD)** · user.txt/root.txt·CTF 단일 플래그 · **리버스쉘 생성(`--revshell`) + 자동 준비(공격자 IP 확보 시)** · **AWS/S3 열거 자동 준비(`--cloud`, 호스트명 확보 시 버킷후보+점검 생성)** |
 | 운영 | 중단/재개 · 크리덴셜 볼트(해시 PtH) · 감사 로그 · 설정 파일 · 도구 설치 스크립트 · **환경 자가진단(`--doctor`)** |
 | 산출 | 라이트업 자동 생성(htb-ctf-writeup-v5 / Tistory 13섹션) · **결과 내보내기(JSON·HTML 대시보드)** |
 
@@ -139,7 +142,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 37 스위트 725 테스트
+cd htb-agent && python3 tests/run_all.py     # 37 스위트 747 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

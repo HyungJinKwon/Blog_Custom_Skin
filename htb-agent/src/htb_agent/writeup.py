@@ -179,6 +179,21 @@ def _revshell_block(report) -> str:
     return "\n".join(lines)
 
 
+def _cloud_block(report) -> str:
+    """자동 준비된 AWS/S3 열거(버킷 후보+점검)를 라이트업에 삽입(생성 전용)."""
+    checks = getattr(report, "cloud_checks", None)
+    if not checks:
+        return ""
+    cands = getattr(report, "cloud_candidates", [])
+    lines = ["", "**AWS/S3 열거 (자동 준비 · 생성만, AWS 는 범위 밖·직접 실행):**", ""]
+    if cands:
+        lines.append(f"- 버킷 후보({len(cands)}): " + ", ".join(f"`{c}`" for c in cands[:12])
+                     + (" …" if len(cands) > 12 else ""))
+    for c in checks:
+        lines.append(f"- {c.name}: `{c.command}`")
+    return "\n".join(lines)
+
+
 def _collect_commands(report) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     if report.recon:
@@ -263,6 +278,7 @@ def generate_writeup(report, machine_name: str = "<머신명>",
         foothold.append(f"- {s}")
     foothold_block = "\n".join(foothold) or "- _(수동 분석 필요)_"
     foothold_block += _revshell_block(report)
+    foothold_block += _cloud_block(report)
 
     md = f"""# {machine_name} — HTB 라이트업
 
@@ -460,7 +476,7 @@ def generate_tistory(report, machine_name: str = "<머신명>",
 {_shell_cmd_map(os_class)}
 
 ## 10. 침투 / 권한 상승 (수동)
-{(chr(10).join('- ' + s for s in report.manual_suggestions) or "- _(수동 분석 필요)_") + _revshell_block(report)}
+{(chr(10).join('- ' + s for s in report.manual_suggestions) or "- _(수동 분석 필요)_") + _revshell_block(report) + _cloud_block(report)}
 
 ## 11. 블루팀 탐지 지표 (SIEM / IDS / 패킷)
 {_blue_team(report.host)}

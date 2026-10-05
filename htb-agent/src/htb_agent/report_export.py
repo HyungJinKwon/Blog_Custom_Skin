@@ -90,6 +90,11 @@ def to_dict(report) -> dict:
             "payloads": [{"name": s.name, "payload": s.payload}
                          for s in getattr(report, "revshells", [])],
         },
+        "cloud": {
+            "candidates": list(getattr(report, "cloud_candidates", [])),
+            "checks": [{"name": c.name, "command": c.command}
+                       for c in getattr(report, "cloud_checks", [])],
+        },
     }
 
 
@@ -230,6 +235,22 @@ def _html_revshell(report) -> str:
     return head + "<ul>" + rows + "</ul>"
 
 
+def _html_cloud(report) -> str:
+    checks = getattr(report, "cloud_checks", None)
+    if not checks:
+        return "<p class='muted'>호스트명/도메인 미확보 — 생략</p>"
+    cands = getattr(report, "cloud_candidates", [])
+    head = (f"<p class='muted'>버킷 후보 {len(cands)}개 · 생성만, AWS 는 범위 밖·"
+            "권한 확인 자산에서 직접 실행</p>")
+    cand_html = ""
+    if cands:
+        cand_html = ("<p>버킷 후보: "
+                     + ", ".join(f"<code>{_esc(c)}</code>" for c in cands) + "</p>")
+    rows = "".join(
+        f"<li><b>{_esc(c.name)}</b>: <code>{_esc(c.command)}</code></li>" for c in checks)
+    return head + cand_html + "<ul>" + rows + "</ul>"
+
+
 def to_html(report, machine_name: str = "") -> str:
     prof = report.profile
     os_line = f"{prof.os_class.value} ({prof.tag}) · 확신도 {prof.confidence}%" if prof else "-"
@@ -263,6 +284,9 @@ def to_html(report, machine_name: str = "") -> str:
 
 <h2>리버스쉘 (자동 준비 · 생성만, 실행 안 함)</h2>
 {_html_revshell(report)}
+
+<h2>AWS/S3 열거 (자동 준비 · 생성만, 범위 밖·실행 안 함)</h2>
+{_html_cloud(report)}
 
 <h2>수동 제안 (승인/입력 후 실행)</h2>
 {_html_list(report.manual_suggestions)}

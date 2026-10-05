@@ -41,6 +41,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--learn", metavar="TOPIC", default=None,
                    help="권위 출처 자가학습(도구·공격기법·개념·프로토콜)을 지식베이스에 저장. "
                         "예: --learn kerberoasting / burp / http. 목록: --learn list")
+    p.add_argument("--cloud", metavar="NAME", default=None,
+                   help="AWS/S3 열거 자동 준비(생성 안 실행). 호스트명/도메인에서 버킷명 "
+                        "후보+비인증 점검 생성. 예: --cloud acme.htb. 권한 확인 자산 전용")
     p.add_argument("target", nargs="?", default=None,
                    help="대상(IP 또는 호스트명/URL). HTB=허용대역 내 IP, "
                    "CTF/Dreamhack=챌린지 host:port/URL")
@@ -167,6 +170,12 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         print(revshell.render(lhost, lport))
         return 0
 
+    # AWS/S3 열거 자동 준비(스캔·실행 안 함) — 버킷 후보+점검 생성
+    if args.cloud:
+        from . import cloud
+        print(cloud.render([args.cloud]))
+        return 0
+
     # 권위 출처 자가학습(스캔 안 함) — 지식베이스에 노트 저장(P1 유지)
     if args.learn:
         from . import learn
@@ -184,7 +193,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         return 0 if res.refs else 2
 
     if not args.target:
-        parser.error("target 이 필요합니다 (또는 --doctor / --revshell / --learn). 예: assassin 10.129.1.5")
+        parser.error("target 이 필요합니다 (또는 --doctor / --revshell / --cloud / --learn). 예: assassin 10.129.1.5")
 
     # 0) 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값)
     from .config import load_config, pick, Config, ConfigError
