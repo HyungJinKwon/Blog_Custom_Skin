@@ -101,6 +101,8 @@ class LLMRouter:
         self.provider = provider
         self.default_tier = default_tier
         self.max_items = max_items
+        # 최근 suggest 의 명령별 메타(B4 구조화 출력: 근거·기대신호). cmd -> {rationale,expected}
+        self.last_meta: dict[str, dict] = {}
         # 누적 사용량/비용 집계
         self.calls = 0
         self.total_prompt = 0
@@ -179,32 +181,88 @@ class LLMRouter:
             lines.append("참고(지식베이스 제안):\n  " + "\n  ".join(context["kb"]))
         if context.get("notes"):
             lines.append("참고(사용자 노트):\n  " + "\n  ".join(context["notes"]))
-        lines.append("\n위 관측에 근거해 다음 열거 명령을 제안하라(명령만, 한 줄에 하나).")
+        lines.append(
+            "\n위 관측에 근거해 다음 명령을 제안하라. 가능하면 JSON 배열로:\n"
+            '[{"command":"<명령>","rationale":"<왜>","expected_signal":"<무엇을 확인>"}]\n'
+            "JSON 이 어려우면 명령만 한 줄에 하나씩. 설명/서론 금지.")
         return "\n\n".join(lines)
 
     @staticmethod
-    def _parse(text: str, target: str, limit: int) -> list[str]:
-        out: list[str] = []
+    def _clean_cmd(cmd: str, target: str) -> str:
+        """명령 문자열 정리(펜스·불릿·번호 제거, {t} 치환). 부적합하면 ''."""
+        line = (cmd or "").strip().strip("`").strip()
+        if not line or line.startswith("#") or line.startswith("```"):
+            return ""
+        line = re.sub(r"^\d+[\.\)]\s*", "", line)   # 번호 제거
+        line = re.sub(r"^[-*]\s*", "", line)         # 불릿 제거
+        line = line.replace("{t}", target)
+        # 남은 플레이스홀더(크리덴셜 등)가 있으면 자동실행 후보에서 제외
+        if "{" in line and "}" in line:
+            return ""
+        if len(line) > 300 or not re.search(r"[A-Za-z]", line):
+            return ""
+        return line
+
+    def _parse(self, text: str, target: str, limit: int) -> list[str]:
+        """B4: JSON 배열(객체/문자열) 우선 파싱(근거·기대신호는 last_meta 로), 실패 시
+        기존 라인 기반 폴백. 명령 문자열 리스트를 반환(다운스트림은 그대로)."""
+        self.last_meta = {}
+        items = self._extract_json(text)
+        if items is not None:
+            out: list[str] = []
+            for it in items:
+                if isinstance(it, str):
+                    cmd, rat, exp = it, "", ""
+                elif isinstance(it, dict):
+                    cmd = it.get("command") or it.get("cmd") or ""
+                    rat = it.get("rationale") or it.get("why") or ""
+                    exp = (it.get("expected_signal") or it.get("expected")
+                           or it.get("expect") or "")
+                else:
+                    continue
+                cmd = self._clean_cmd(cmd, target)
+                if not cmd or cmd in out:
+                    continue
+                out.append(cmd)
+                if rat or exp:
+                    self.last_meta[cmd] = {"rationale": str(rat), "expected": str(exp)}
+                if len(out) >= limit:
+                    break
+            if out:
+                return out
+        # 폴백: 라인 기반
+        out = []
         seen: set[str] = set()
         for raw in text.splitlines():
-            line = raw.strip().strip("`").strip()
-            if not line or line.startswith("#") or line.startswith("```"):
-                continue
-            line = re.sub(r"^\d+[\.\)]\s*", "", line)   # 번호 제거
-            line = re.sub(r"^[-*]\s*", "", line)         # 불릿 제거
-            line = line.replace("{t}", target)
-            # 남은 플레이스홀더(크리덴셜 등)가 있으면 자동실행 후보에서 제외
-            if "{" in line and "}" in line:
-                continue
-            if len(line) > 300 or not re.search(r"[A-Za-z]", line):
-                continue
-            if line in seen:
+            line = self._clean_cmd(raw, target)
+            if not line or line in seen:
                 continue
             seen.add(line)
             out.append(line)
             if len(out) >= limit:
                 break
         return out
+
+    @staticmethod
+    def _extract_json(text: str):
+        """텍스트에서 JSON 배열을 추출(코드펜스 허용). 실패 시 None."""
+        import json
+        if not text:
+            return None
+        s = text.strip()
+        # ```json ... ``` 펜스 제거
+        m = re.search(r"```(?:json)?\s*(.+?)```", s, re.S)
+        if m:
+            s = m.group(1).strip()
+        # 첫 '[' ~ 마지막 ']' 구간만 취함(앞뒤 잡설 허용)
+        i, j = s.find("["), s.rfind("]")
+        if i == -1 or j == -1 or j < i:
+            return None
+        try:
+            data = json.loads(s[i:j + 1])
+        except (ValueError, TypeError):
+            return None
+        return data if isinstance(data, list) else None
 
 
 class HybridRouter:
@@ -229,6 +287,7 @@ class HybridRouter:
         self.strong = strong
         self.default_tier = default_tier
         self.max_items = max_items
+        self.last_meta: dict[str, dict] = {}   # 선택된 라우터의 명령별 메타(B4)
 
     @property
     def calls(self) -> int:
@@ -250,6 +309,7 @@ class HybridRouter:
                          max_items: int | None = None) -> list[str]:
         tier = tier or self.default_tier
         primary, secondary = self._route(tier)
+        self.last_meta = {}
         for router in (primary, secondary):
             if router is None:
                 continue
@@ -258,6 +318,7 @@ class HybridRouter:
             except Exception:   # 한 백엔드 실패는 폴백으로 흡수
                 out = []
             if out:
+                self.last_meta = getattr(router, "last_meta", {})
                 return out
         return []
 
