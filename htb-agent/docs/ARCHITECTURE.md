@@ -84,7 +84,7 @@ LLM 이 제안한 명령도 '신뢰하지 않는 데이터'로 간주되어 이 
 | | `world.py` | 월드 모델 — 구조화 상태(hosts/services/creds/loot/flags/vulns/access_level) 단일 상태원. 파이프라인·LLM 컨텍스트·리포트의 출처 |
 | | `orchestrator.py` | 단계 순서 상태머신(유한) + 월드 모델 갱신 |
 | | `variants.py` | 도구별 옵션 조합 변형(경우의 수) 생성 |
-| | `llm/` | Claude/Ollama 프로바이더 + 티어링 + 캐싱·비용 · **HybridRouter**(단계 난이도→로컬/강력 라우팅+상호 폴백) · **분석가 역할**(analyze: 상태→가설·공격경로·집중·확신도, 명령 생성 유도) · **구조화 출력**(JSON 배열 command/rationale/expected_signal 우선 파싱, 라인 폴백) |
+| | `llm/` | Claude/Ollama 프로바이더 + 티어링 + 캐싱·비용 · **HybridRouter**(단계 난이도→로컬/강력 라우팅+상호 폴백) · **분석가 역할**(analyze: 상태→가설·공격경로·집중·확신도, 명령 생성 유도) · **구조화 출력**(JSON 배열 command/rationale/expected_signal 우선 파싱, 라인 폴백) · **적응형 tier**(저확신/빈결과 시 강력 모델 승격) |
 | | `learn.py` | 권위 출처 자가학습(--learn, 허용도메인·캐시·P1 유지) → 지식베이스 노트 |
 | **실행** | `tools/runner.py` | Subprocess(실제) / Fake(테스트) |
 | | `tools/recon.py` | 유한 폴백 포트스캔 |
@@ -140,7 +140,7 @@ assassin 10.129.1.5 --resume                   # 중단 지점 재개
 ## 7. 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py        # 40 스위트 868 테스트
+cd htb-agent && python3 tests/run_all.py        # 40 스위트 873 테스트
 ```
 
 네트워크·도구 없이도 **러너 주입**으로 전 로직 검증하며, 통합 테스트는 `main()` 을

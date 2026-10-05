@@ -531,6 +531,18 @@ class Orchestrator:
         terms += list(report.detected_cve)
         return terms
 
+    @staticmethod
+    def _low_confidence(report: OrchestrationReport) -> bool:
+        """B6: 분석가 산출의 '확신도' 가 낮으면(하/low) True. 적응형 tier 상향 근거."""
+        text = (getattr(report, "analysis", "") or "")
+        for ln in text.splitlines():
+            low = ln.lower()
+            if "확신도" in ln or "confidence" in low:
+                if "하" in ln or "low" in low:
+                    return True
+                return False
+        return False
+
     def _run_analyst(self, report: OrchestrationReport, prof: ProfileResult,
                      host: NmapHost, target: str) -> None:
         """B3 분석가 — 상태를 읽고 가설·공격경로·다음집중·확신도를 산출해
@@ -586,9 +598,19 @@ class Orchestrator:
                               if self.flag_prefixes else ""),
         }
         try:
-            from .llm.base import tier_for_phase
+            from .llm.base import tier_for_phase, Tier
+            base_tier = tier_for_phase(phase)
+            # B6 적응형 tier: 분석 확신도 '하' 면 처음부터 강력 모델로 상향
+            if self._low_confidence(report) and base_tier != Tier.STRONG:
+                base_tier = Tier.STRONG
+                self.audit.event("tier_escalate", reason="low_confidence", phase=phase)
             cmds = self.llm_router.suggest_commands(
-                context, target, tier=tier_for_phase(phase), max_items=budget)
+                context, target, tier=base_tier, max_items=budget)
+            # B6: 저단계 모델이 쓸만한 명령을 못 내면(빈 결과) 강력 모델로 1회 승격 재시도
+            if not cmds and base_tier != Tier.STRONG:
+                self.audit.event("tier_escalate", reason="empty_result", phase=phase)
+                cmds = self.llm_router.suggest_commands(
+                    context, target, tier=Tier.STRONG, max_items=budget)
         except Exception as e:  # LLM 백엔드 오류는 전체를 깨지 않는다
             report.manual_suggestions.append(f"(LLM 제안 실패: {e})")
             return 0
