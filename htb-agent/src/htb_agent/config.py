@@ -28,6 +28,7 @@ class Config:
     max_enum: int | None = None
     max_llm: int | None = None
     max_rounds: int | None = None
+    max_sweeps: int | None = None
     max_variants: int | None = None
     knowledge_dir: str | None = None
     state_dir: str | None = None
@@ -46,6 +47,7 @@ class Config:
             max_enum=d.get("max_enum"),
             max_llm=d.get("max_llm"),
             max_rounds=d.get("max_rounds"),
+            max_sweeps=d.get("max_sweeps"),
             max_variants=d.get("max_variants"),
             knowledge_dir=d.get("knowledge_dir", d.get("knowledge")),
             state_dir=d.get("state_dir"),

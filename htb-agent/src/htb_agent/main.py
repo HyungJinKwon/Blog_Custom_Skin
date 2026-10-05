@@ -91,6 +91,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="enum 자동실행 최대 개수 (기본 6, 무한확장 방지)")
     p.add_argument("--max-rounds", type=int, default=None,
                    help="ENUM/LLM 반복 라운드 수 (기본 2, 무한루프 방지)")
+    p.add_argument("--max-sweeps", type=int, default=None,
+                   help="단계 재진입 스윕 수 (기본 2). 새 관측·크리덴셜로 이전 단계 "
+                        "재시도. 상태 정체 시 조기종료(유한)")
     p.add_argument("--variants", type=int, default=None,
                    help="명령당 옵션 조합 변형 수 (기본 2, 1=변형끔). 경우의 수 시도")
     p.add_argument("--knowledge", default=None,
@@ -236,6 +239,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     max_attempts = pick(args.max_attempts, cfg.max_attempts, 4)
     max_enum = pick(args.max_enum, cfg.max_enum, 6)
     max_rounds = pick(args.max_rounds, cfg.max_rounds, 2)
+    max_sweeps = pick(args.max_sweeps, cfg.max_sweeps, 2)
     max_variants = pick(args.variants, cfg.max_variants, 2)
     knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, "knowledge")
     llm_kind = pick(args.llm, cfg.llm_backend, "none")
@@ -336,6 +340,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 max_enum=max_enum,
                                 recon_max_attempts=max_attempts,
                                 max_rounds=max_rounds,
+                                max_sweeps=max_sweeps,
                                 max_variants=max_variants,
                                 llm_router=llm_router, vuln_kb=vuln_kb,
                                 vault=vault if vault.creds else None,

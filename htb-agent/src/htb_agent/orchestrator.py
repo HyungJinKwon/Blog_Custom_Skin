@@ -226,6 +226,7 @@ class Orchestrator:
                  max_enum: int = 6,
                  recon_max_attempts: int = 4,
                  max_rounds: int = 2,
+                 max_sweeps: int = 2,
                  max_variants: int = 1,
                  llm_router: LLMRouter | None = None,
                  max_llm: int = 5,
@@ -250,6 +251,7 @@ class Orchestrator:
         self.max_enum = max_enum
         self.recon_max_attempts = recon_max_attempts
         self.max_rounds = max(1, max_rounds)
+        self.max_sweeps = max(1, max_sweeps)
         self.max_variants = max(1, max_variants)
         self.llm_router = llm_router
         self.max_llm = max_llm
@@ -318,23 +320,33 @@ class Orchestrator:
         self.audit.event("profile", os=prof.os_class.value, confidence=prof.confidence,
                          is_dc=prof.is_domain_controller)
 
-        # ── PHASE 3: 모의해킹 단계 '순서대로' 진행 ──
+        # ── PHASE 3: 모의해킹 단계 '순서대로' 진행 (유한 반복·재진입 스윕) ──
         # enum → access → privesc → lateral 순. 각 단계는 KB(해당 phase)+LLM 적응
-        # 라운드를 돌리되, 전역 상한(max_enum·max_llm)·라운드 상한·조기종료로 유한.
+        # 라운드를 돌린다. 한 스윕(전 단계 1회 통과) 뒤 '월드 상태가 성장'하면
+        # (새 관측·크리덴셜·서비스로 이전 단계가 다시 유효해지면) 다음 스윕을 돈다.
+        # 전역 상한(max_enum·max_llm)·명령 중복제거(seen_cmds)·상태정체 조기종료로 유한.
         seen_cmds: set[str] = set()
         phases_run: list[str] = []
-        for key, label in self.phases:
-            phase_before = len(report.enum_findings) + len(report.llm_findings)
-            for _rnd in range(self.max_rounds):
-                added = self._enum_round(report, host, prof, target, seen_cmds,
-                                         self.max_enum - len(report.enum_findings), key)
-                if self.llm_router is not None:
-                    added += self._llm_round(report, host, prof, target, seen_cmds,
-                                             self.max_llm - len(report.llm_findings), key)
-                if added == 0:
-                    break
-            if len(report.enum_findings) + len(report.llm_findings) > phase_before:
-                phases_run.append(key)
+        sweeps_run = 0
+        for sweep in range(self.max_sweeps):
+            before_fp = self._world_fingerprint(report)
+            for key, label in self.phases:
+                phase_before = len(report.enum_findings) + len(report.llm_findings)
+                for _rnd in range(self.max_rounds):
+                    added = self._enum_round(report, host, prof, target, seen_cmds,
+                                             self.max_enum - len(report.enum_findings), key)
+                    if self.llm_router is not None:
+                        added += self._llm_round(report, host, prof, target, seen_cmds,
+                                                 self.max_llm - len(report.llm_findings), key)
+                    if added == 0:
+                        break
+                if (len(report.enum_findings) + len(report.llm_findings) > phase_before
+                        and key not in phases_run):
+                    phases_run.append(key)
+            sweeps_run += 1
+            # 이번 스윕에서 상태가 더 자라지 않았으면(새 관측·예산 소진) 조기 종료 — 유한
+            if self._world_fingerprint(report) == before_fp:
+                break
 
         # ── PHASE 3.7: VULN (CVE/CWE 탐지 + 매핑) ──
         self._run_vuln(report, host, target)
@@ -383,6 +395,7 @@ class Orchestrator:
         report.status = "done"
         flag_state = f"user={'O' if report.user_flag else 'X'} root={'O' if report.root_flag else 'X'}"
         report.message += (f"OS={prof.os_class.value}({prof.tag}), "
+                           f"스윕 {sweeps_run}회, "
                            f"진행단계 {'→'.join(phases_run) or '없음'}, "
                            f"KB enum {len(report.enum_findings)}건, "
                            f"LLM {len(report.llm_findings)}건, 플래그[{flag_state}]")
@@ -599,6 +612,19 @@ class Orchestrator:
                              cve_candidates=len(plan.cve_candidates))
         except Exception as e:   # noqa: BLE001 — 준비 실패가 전체를 깨지 않도록
             self.audit.event("privesc_error", error=str(e))
+
+    def _world_fingerprint(self, report: OrchestrationReport) -> tuple:
+        """스윕 간 '상태 성장' 판정용 지문. 관측·크리덴셜·서비스·권한이 늘면 달라진다.
+        스윕 후 지문이 그대로면 더 진전이 없다는 뜻이라 반복을 조기 종료한다(유한)."""
+        w = self.world
+        return (
+            len(report.enum_findings),
+            len(report.llm_findings),
+            len(w.creds) if w else 0,
+            len(w.services) if w else 0,
+            len(w.loot) if w else 0,
+            w.access_level if w else "none",
+        )
 
     def _prepare_crack(self, report: OrchestrationReport) -> None:
         """enum/LLM 출력·크리덴셜 볼트에서 해시를 수집해 크래킹 명령을 자동 준비한다.
