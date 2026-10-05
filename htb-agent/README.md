@@ -112,6 +112,11 @@ assassin 10.129.1.5 --config config/config.example.json
 > 라이트업·JSON/HTML 에 포함합니다(생성만 — 획득한 대상 셸에서 사용자가 직접 실행).
 > 단독 실행: `assassin --privesc linux`.
 
+> **해시 크래킹 자동 준비**: 실행 출력·크리덴셜에서 **해시(Kerberoast/AS-REP/
+> NetNTLMv2/유닉스 crypt/NT 등)를 자동 수집·식별해 john·hashcat 명령(올바른
+> 모드/포맷·워드리스트)을 자동 생성**합니다(생성만 — 크래킹은 사용자 환경에서 실행).
+> 단독 실행: `assassin --crack '$krb5tgs$23$...'`.
+
 > **데모(네트워크·실도구 없이 전체 흐름 보기)**: `python3 scripts/demo.py`
 > (라이트업 저장: `python3 scripts/demo.py --write out/`). 실전 운영·트러블슈팅은
 > **[docs/OPERATIONS.md](docs/OPERATIONS.md)** 참고.
@@ -127,7 +132,7 @@ assassin 10.129.1.5 --config config/config.example.json
 | 식별 | Linux vs Windows-AD 증거기반 판정(확신도) · 플랫폼 프로파일(HTB/Dreamhack/CTF) |
 | 지능 | 지식베이스(사용자 학습·자가학습으로 성장) · 단계 순서 오케스트레이터 · 옵션 조합 변형(경우의 수) · LLM(Claude/Ollama/**하이브리드**, 플랫폼·카테고리 인식) · **권위출처 자가학습(`--learn`)** |
 | 목표 | CVE/CWE 탐지·매핑 + **자동 수집(NVD)** · user.txt/root.txt·CTF 단일 플래그 · **리버스쉘 생성(`--revshell`) + 자동 준비(공격자 IP 확보 시)** · **AWS/S3 열거 자동 준비(`--cloud`, 호스트명 확보 시 버킷후보+점검 생성)** |
-| 공격 | **리버스쉘·AWS/S3·권한상승 자동 준비(생성 전용)** — 공격자 IP/호스트명/OS 확보 시 페이로드·열거·LPE 체크리스트 자동 생성(`--revshell`/`--cloud`/`--privesc`) |
+| 공격 | **리버스쉘·AWS/S3·권한상승·해시크래킹 자동 준비(생성 전용)** — 공격자 IP/호스트명/OS/해시 확보 시 페이로드·열거·LPE 체크리스트·john/hashcat 명령 자동 생성(`--revshell`/`--cloud`/`--privesc`/`--crack`) |
 | 운영 | 중단/재개 · 크리덴셜 볼트(해시 PtH) · 감사 로그 · 설정 파일 · 도구 설치 스크립트 · **환경 자가진단(`--doctor`)** |
 | 산출 | 라이트업 자동 생성(htb-ctf-writeup-v5 / Tistory 13섹션) · **결과 내보내기(JSON·HTML 대시보드)** |
 
@@ -149,7 +154,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 38 스위트 779 테스트
+cd htb-agent && python3 tests/run_all.py     # 39 스위트 814 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

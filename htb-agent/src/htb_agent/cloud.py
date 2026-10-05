@@ -73,10 +73,14 @@ def _base_tokens(names: list[str]) -> list[str]:
 
 
 def bucket_candidates(names: list[str], limit: int = 30) -> list[str]:
-    """기저 토큰 × 접미 조합으로 버킷명 후보 생성(네이밍 규칙·중복·상한 적용)."""
+    """기저 토큰 × 접미 조합으로 버킷명 후보 생성(네이밍 규칙·중복·상한 적용).
+
+    접미를 바깥 루프로 돌려 **모든 기저의 '맨이름(접미 없음)'이 먼저** 나오도록
+    한다(한 기저가 상한을 독식해 다른 기저가 누락되는 것을 방지)."""
+    bases = _base_tokens(names)
     out: list[str] = []
-    for base in _base_tokens(names):
-        for suf in _SUFFIXES:
+    for suf in _SUFFIXES:
+        for base in bases:
             cand = base + suf
             if _BUCKET_RE.match(cand) and cand not in out:
                 out.append(cand)

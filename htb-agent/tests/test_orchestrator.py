@@ -133,6 +133,29 @@ check("Windows 플레이북 생성됨", len(rep.privesc_steps) >= 7)
 check("whoami /priv 포함", any("whoami /priv" in s.command for s in rep.privesc_steps))
 check("AD 단계 포함", any(s.category == "AD" for s in rep.privesc_steps))
 
+print("\n=== 해시 크래킹 자동 준비(출력에서 해시 수집 · 생성만) ===")
+# 어떤 enum 명령 출력에 Kerberoast TGS 해시가 섞여 나오는 상황을 모사
+def hash_responder(cmd):
+    if cmd.startswith("nmap"):
+        return RunOutput(cmd, stdout=LINUX_WEB)
+    if cmd.startswith("curl"):
+        return RunOutput(cmd, stdout="HTTP/1.1 200 OK\r\nServer: Apache\r\n\r\n"
+                         "leak: $krb5tgs$23$*svc$DOM*$deadbeefcafe0011")
+    return RunOutput(cmd, stdout="ok")
+r = FakeRunner(hash_responder)
+orc = Orchestrator(guard(), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS)
+rep = orc.run()
+check("해시 크래킹 작업 자동 생성", len(rep.crack_jobs) >= 1)
+check("Kerberoast 식별", any(any("Kerberoast" in g.name for g in j.guesses) for j in rep.crack_jobs))
+check("hashcat 13100 명령", any(any("13100" in c.command for c in j.commands) for j in rep.crack_jobs))
+check("summary 에 해시 크래킹 노출", "해시 크래킹" in rep.summary())
+
+print("\n=== 해시 없으면 크래킹 생략 ===")
+r = FakeRunner(responder(LINUX_WEB))
+orc = Orchestrator(guard(), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS)
+rep = orc.run()
+check("해시 없음 → 크래킹 작업 없음", rep.crack_jobs == [])
+
 print("\n=== RECON 실패 → 에스컬레이션(enum 진입 안 함) ===")
 r = FakeRunner(responder(DOWN))
 orc = Orchestrator(guard("10.129.1.9"), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS)

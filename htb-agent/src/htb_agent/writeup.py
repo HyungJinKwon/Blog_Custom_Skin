@@ -179,6 +179,20 @@ def _revshell_block(report) -> str:
     return "\n".join(lines)
 
 
+def _crack_block(report) -> str:
+    """자동 준비된 해시 크래킹 작업을 라이트업에 삽입(생성 전용)."""
+    jobs = getattr(report, "crack_jobs", None)
+    if not jobs:
+        return ""
+    lines = ["", "**해시 크래킹 (자동 준비 · 생성만, 사용자 환경에서 실행):**", ""]
+    for j in jobs:
+        gnames = ", ".join(g.name for g in j.guesses) or "미상"
+        lines.append(f"- 해시 `{j.hash[:48]}{'…' if len(j.hash) > 48 else ''}` — 식별: {gnames}")
+        for c in j.commands:
+            lines.append(f"    - [{c.tool}] `{c.command}`")
+    return "\n".join(lines)
+
+
 def _privesc_block(report) -> str:
     """자동 준비된 권한상승 플레이북을 라이트업에 삽입(생성 전용)."""
     steps = getattr(report, "privesc_steps", None)
@@ -297,6 +311,7 @@ def generate_writeup(report, machine_name: str = "<머신명>",
     foothold_block = "\n".join(foothold) or "- _(수동 분석 필요)_"
     foothold_block += _revshell_block(report)
     foothold_block += _cloud_block(report)
+    foothold_block += _crack_block(report)
 
     md = f"""# {machine_name} — HTB 라이트업
 
@@ -493,7 +508,7 @@ def generate_tistory(report, machine_name: str = "<머신명>",
 {_shell_cmd_map(os_class)}
 
 ## 10. 침투 / 권한 상승 (수동)
-{(chr(10).join('- ' + s for s in report.manual_suggestions) or "- _(수동 분석 필요)_") + _revshell_block(report) + _cloud_block(report) + _privesc_block(report)}
+{(chr(10).join('- ' + s for s in report.manual_suggestions) or "- _(수동 분석 필요)_") + _revshell_block(report) + _cloud_block(report) + _crack_block(report) + _privesc_block(report)}
 
 ## 11. 블루팀 탐지 지표 (SIEM / IDS / 패킷)
 {_blue_team(report.host)}
