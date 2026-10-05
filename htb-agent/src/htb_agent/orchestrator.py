@@ -513,6 +513,24 @@ class Orchestrator:
             return False, "전제 미충족: 크리덴셜/해시 등 이동수단 필요"
         return True, ""
 
+    def _note_terms(self, host: NmapHost, prof: ProfileResult,
+                    phase: str, report: OrchestrationReport) -> list[str]:
+        """B5: 노트 관련도 랭킹용 쿼리 용어 — 서비스·OS·단계·탐지 취약점에서 수집."""
+        terms: list[str] = []
+        if host is not None:
+            for p in host.ports:
+                if p.state == "open" and p.service:
+                    terms.append(p.service)
+                    prod = getattr(p, "product", "") or ""
+                    if prod:
+                        terms.append(prod.split()[0])
+        if prof is not None:
+            terms.append(prof.os_class.value)
+        terms.append(_PHASE_LABEL.get(phase, phase))
+        terms.append(phase)
+        terms += list(report.detected_cve)
+        return terms
+
     def _run_analyst(self, report: OrchestrationReport, prof: ProfileResult,
                      host: NmapHost, target: str) -> None:
         """B3 분석가 — 상태를 읽고 가설·공격경로·다음집중·확신도를 산출해
@@ -556,7 +574,9 @@ class Orchestrator:
             "analysis": report.analysis,
             "open_ports": [str(p) for p in host.ports if p.state == "open"],
             "kb": [f"{r.rule_name}: {', '.join(r.suggestions)}" for r in recs[:5]],
-            "notes": self.kb.notes[:3],
+            # B5(경량 RAG): 현재 서비스·OS·단계·취약점에 관련도 높은 노트만 주입
+            "notes": self.kb.relevant_notes(
+                self._note_terms(host, prof, phase, report), 3),
             "findings": prior[-10:],
             # 플랫폼 인식 — LLM 프롬프트가 HTB/Jeopardy·카테고리에 맞게 조립된다
             "platform": self.platform_name,

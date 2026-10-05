@@ -60,5 +60,29 @@ with tempfile.TemporaryDirectory() as d:
     kb3 = KnowledgeBase.load(base_dir=d)   # 깨지지 않아야
     check("깨진/불완전 규칙 무시하고 로드", len(kb3.rules) >= 1)
 
+print("\n=== B5 관련도 기반 노트 랭킹(경량 RAG) ===")
+kb_n = KnowledgeBase(rules=[], notes=[
+    "SMB 널세션과 공유 열거: smbclient -N -L 로 익명 접근 점검",
+    "Kerberoasting: SPN 계정 TGS 해시 획득 후 오프라인 크랙",
+    "웹 디렉토리 퍼징과 LFI/SSRF 점검 노트",
+])
+# 'smb' 질의 → SMB 노트가 1순위
+top = kb_n.relevant_notes(["smb", "kerberoasting"], limit=2)
+check("관련 노트 우선(SMB 1순위)", "SMB 널세션" in top[0])
+check("상한 준수(매칭 2개)", len(top) == 2)
+# 매칭 1개면 1개만 반환(패딩 안 함)
+one = kb_n.relevant_notes(["smb"], limit=3)
+check("매칭 1개 → 1개만", len(one) == 1 and "SMB 널세션" in one[0])
+# 'kerberos' 질의 → Kerberoasting 노트 포함
+k = kb_n.relevant_notes(["kerberos", "spn"], limit=1)
+check("kerberos 질의 → Kerberoast 노트", "Kerberoasting" in k[0])
+# 매칭 없으면 앞 N개 폴백
+fb = kb_n.relevant_notes(["무관단어xyz"], limit=2)
+check("매칭 없음 → 앞 N개 폴백", len(fb) == 2 and fb[0] == kb_n.notes[0])
+# 빈 용어 → 폴백
+check("빈 용어 → 앞 N개", kb_n.relevant_notes([], limit=1) == kb_n.notes[:1])
+# 노트 없으면 빈 리스트
+check("노트 없음 → 빈 리스트", KnowledgeBase(rules=[], notes=[]).relevant_notes(["smb"]) == [])
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

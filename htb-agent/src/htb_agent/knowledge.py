@@ -160,6 +160,24 @@ class KnowledgeBase:
         auto_runnable = _PLACEHOLDER.search(cmd) is None
         return cmd, auto_runnable
 
+    def relevant_notes(self, terms: list[str], limit: int = 3) -> list[str]:
+        """B5(경량 RAG): 쿼리 용어와의 키워드 겹침으로 노트를 관련도 랭킹해 상위 N개.
+        임베딩 없이 소문자 단어 집합 교집합으로 점수화한다(각 용어 1회만 가산).
+        매칭이 전혀 없으면 기존처럼 앞 N개로 폴백(동작 보존)."""
+        if not self.notes:
+            return []
+        q = {t.lower() for t in terms if t and len(t) >= 2}
+        if not q:
+            return self.notes[:limit]
+        scored: list[tuple[int, int, str]] = []
+        for i, note in enumerate(self.notes):
+            low = note.lower()
+            score = sum(1 for t in q if t in low)
+            scored.append((score, -i, note))   # -i: 동점 시 원래 순서 유지
+        scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        top = [n for s, _, n in scored if s > 0][:limit]
+        return top if top else self.notes[:limit]
+
 
 def _load_rule_dir(path: str) -> list[Rule]:
     out: list[Rule] = []
