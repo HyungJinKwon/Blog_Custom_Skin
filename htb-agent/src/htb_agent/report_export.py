@@ -100,6 +100,14 @@ def to_dict(report) -> dict:
                       for s in getattr(report, "privesc_steps", [])],
             "cve_candidates": list(getattr(report, "privesc_cve_candidates", [])),
         },
+        "crack": [
+            {"hash": j.hash,
+             "guesses": [{"name": g.name, "hashcat_mode": g.hashcat_mode,
+                          "john_format": g.john_format} for g in j.guesses],
+             "commands": [{"tool": c.tool, "name": c.name, "command": c.command}
+                          for c in j.commands]}
+            for j in getattr(report, "crack_jobs", [])
+        ],
     }
 
 
@@ -272,6 +280,20 @@ def _html_privesc(report) -> str:
     return html
 
 
+def _html_crack(report) -> str:
+    jobs = getattr(report, "crack_jobs", None)
+    if not jobs:
+        return "<p class='muted'>크래킹 대상 해시 미확보 — 생략</p>"
+    blocks = ["<p class='muted'>생성만 · 사용자 환경에서 실행</p>"]
+    for j in jobs:
+        gnames = ", ".join(g.name for g in j.guesses) or "미상"
+        rows = "".join(f"<li><b>{_esc(c.tool)}</b>: <code>{_esc(c.command)}</code></li>"
+                       for c in j.commands)
+        blocks.append(f"<p><code>{_esc(j.hash[:64])}</code> — {_esc(gnames)}</p>"
+                      f"<ul>{rows}</ul>")
+    return "".join(blocks)
+
+
 def to_html(report, machine_name: str = "") -> str:
     prof = report.profile
     os_line = f"{prof.os_class.value} ({prof.tag}) · 확신도 {prof.confidence}%" if prof else "-"
@@ -311,6 +333,9 @@ def to_html(report, machine_name: str = "") -> str:
 
 <h2>권한 상승 플레이북 (자동 준비 · 대상 셸에서 실행 · 생성만)</h2>
 {_html_privesc(report)}
+
+<h2>해시 크래킹 (자동 준비 · 사용자 환경에서 실행 · 생성만)</h2>
+{_html_crack(report)}
 
 <h2>수동 제안 (승인/입력 후 실행)</h2>
 {_html_list(report.manual_suggestions)}

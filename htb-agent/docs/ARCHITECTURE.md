@@ -81,6 +81,7 @@ LLM 이 제안한 명령도 '신뢰하지 않는 데이터'로 간주되어 이 
 | | `revshell.py` | 리버스쉘 페이로드 생성(--revshell + 풀이 중 공격자 IP 확보 시 자동 준비, 생성 전용·인젝션 검증) |
 | | `cloud.py` | AWS/S3 열거 자동 준비(--cloud + 호스트명/도메인 확보 시 버킷후보·비인증점검 생성, 생성 전용·AWS 는 범위 밖) |
 | | `privesc.py` | 권한상승 플레이북 자동 준비(--privesc + OS 식별 시 열거·점검·LPE후보 생성, 생성 전용·대상 셸 실행) |
+| | `crack.py` | 해시 크래킹 자동 준비(--crack + 출력/볼트에서 해시 수집·식별→john/hashcat 명령 생성, 생성 전용) |
 | **운영** | `state.py` | 세션 상태 영속(중단/재개) |
 | | `creds.py` | 크리덴셜 볼트(수동제안 → 실행 승격) |
 | | `audit.py` | 실행 트랜스크립트(JSONL) |
@@ -126,7 +127,7 @@ assassin 10.129.1.5 --resume                   # 중단 지점 재개
 ## 7. 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py        # 38 스위트 779 테스트
+cd htb-agent && python3 tests/run_all.py        # 39 스위트 814 테스트
 ```
 
 네트워크·도구 없이도 **러너 주입**으로 전 로직 검증하며, 통합 테스트는 `main()` 을

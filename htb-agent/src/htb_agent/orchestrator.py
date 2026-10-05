@@ -35,6 +35,7 @@ from .audit import NullAudit
 from .llm.router import LLMRouter
 from .vuln import VulnKB, VulnMatch, extract_vuln_ids
 from .flag import FlagHit, scan as scan_flags
+from .crack import scan_hashes as crack_scan
 from .variants import expand_variants
 from .state import SessionState, StateStore, host_to_dict, host_from_dict
 from .tools.runner import Runner
@@ -86,6 +87,8 @@ class OrchestrationReport:
     # 자동 준비된 권한상승 플레이북(OS 식별 시 — 생성만, 대상 셸에서 사용자 실행)
     privesc_steps: list = field(default_factory=list)      # list[privesc.PrivescStep]
     privesc_cve_candidates: list = field(default_factory=list)  # list[str]
+    # 자동 준비된 해시 크래킹 작업(출력/볼트에서 해시 수집 시 — 생성만, 사용자 실행)
+    crack_jobs: list = field(default_factory=list)         # list[crack.CrackJob]
     message: str = ""
 
     @property
@@ -193,6 +196,16 @@ class OrchestrationReport:
                     lines.append(ui.dim("      " + s.note))
             for c in self.privesc_cve_candidates:
                 lines.append("  " + ui.mark_warn(ui.warn("LPE 후보: ") + c))
+        if self.crack_jobs:
+            lines.append("\n" + ui.heading(
+                "해시 크래킹 (자동 준비 — 생성만, 사용자 환경에서 실행)", "🔑"))
+            for j in self.crack_jobs:
+                gnames = ", ".join(g.name for g in j.guesses) or "미상"
+                lines.append("  " + ui.accent2("해시: ") + ui.dim(j.hash[:64]
+                             + ("…" if len(j.hash) > 64 else "")))
+                lines.append("    " + ui.dim(f"식별: {gnames}"))
+                for c in j.commands:
+                    lines.append("    " + ui.accent2(f"[{c.tool}] ") + c.command)
         if self.manual_suggestions:
             lines.append("\n" + ui.heading(
                 "수동 제안 (크리덴셜 등 필요 — 승인/입력 후 실행)", "✋"))
@@ -255,6 +268,7 @@ class Orchestrator:
             raise ScopeViolation("타겟 미바인딩 — bind_target() 먼저 호출하세요.")
         target = str(self.guard.bound_target or self.guard.bound_host)
         report = OrchestrationReport(target=target, flag_kind=self.flag_kind)
+        self._found_hashes: list[str] = []   # 실행 원시출력에서 수집한 크래킹 대상 해시
         self.audit.event("session_start", target=target, resume=self.resume,
                          ranges=[str(n) for n in self.guard.allowed_target_cidrs])
 
@@ -345,6 +359,11 @@ class Orchestrator:
         # OS 에 맞는 포스트-익스플로잇 권한상승 열거·점검 체크리스트를 자동 생성.
         # 대상 셸 안에서 실행하는 명령이라 에이전트는 준비만(생성 전용) 한다.
         self._prepare_privesc(report, prof)
+
+        # ── PHASE 3.97: 해시 크래킹 자동 준비 (출력/볼트에서 해시 수집 시) ──
+        # 캡처된 해시를 식별해 john/hashcat 명령을 자동 생성. 크래킹은 무겁고
+        # 워드리스트가 필요해 에이전트는 준비만(생성 전용) 한다.
+        self._prepare_crack(report)
 
         # ── PHASE 4: REPORT ──
         report.status = "done"
@@ -543,9 +562,13 @@ class Orchestrator:
         attacker_ip = ""
         if self.guard.attacker_ips:
             attacker_ip = str(list(self.guard.attacker_ips)[0])
+        # 탐지 CVE(출력 추출) + 버전매칭 CVE 를 합쳐 LPE 후보 승격에 반영
+        cve_pool = list(report.detected_cve)
+        for m in report.vuln_matches:
+            cve_pool.extend(m.cve)
         try:
             from . import privesc
-            plan = privesc.build(os_class, attacker_ip, report.detected_cve)
+            plan = privesc.build(os_class, attacker_ip, cve_pool)
             report.privesc_steps = plan.steps
             report.privesc_cve_candidates = plan.cve_candidates
             self.audit.event("privesc_prepared", os=os_class,
@@ -553,6 +576,34 @@ class Orchestrator:
                              cve_candidates=len(plan.cve_candidates))
         except Exception as e:   # noqa: BLE001 — 준비 실패가 전체를 깨지 않도록
             self.audit.event("privesc_error", error=str(e))
+
+    def _prepare_crack(self, report: OrchestrationReport) -> None:
+        """enum/LLM 출력·크리덴셜 볼트에서 해시를 수집해 크래킹 명령을 자동 준비한다.
+        생성 전용 — 크래킹은 사용자 환경에서 실행. 해시가 없으면 조용히 생략."""
+        # 실행 원시출력에서 수집한 해시(요약 전 — _attempt 에서 스캔) + 요약출력 보강
+        hashes: list[str] = list(getattr(self, "_found_hashes", []))
+        for f in report.enum_findings + report.llm_findings:
+            if f.output:
+                hashes.extend(crack_scan(f.output))
+        for p in report.host.ports if report.host else []:
+            for sc in p.scripts.values():
+                hashes.extend(crack_scan(sc))
+        # 크리덴셜 볼트의 NT 해시(PtH)도 크래킹 후보
+        if self.vault is not None:
+            for c in self.vault.creds:
+                nt = getattr(c, "nt_hash", None)
+                if nt:
+                    # PtH NT 해시는 'LM:NT' 형식일 수 있어 NT 부분만 사용
+                    hashes.append(nt.split(":")[-1])
+        if not hashes:
+            return
+        try:
+            from . import crack
+            report.crack_jobs = crack.prepare(hashes)
+            if report.crack_jobs:
+                self.audit.event("crack_prepared", jobs=len(report.crack_jobs))
+        except Exception as e:   # noqa: BLE001 — 준비 실패가 전체를 깨지 않도록
+            self.audit.event("crack_error", error=str(e))
 
     def _attempt(self, report: OrchestrationReport, findings: list[EnumFinding],
                  cmd: str, phase: str = "enum") -> None:
@@ -598,3 +649,8 @@ class Orchestrator:
                 report.flags.append(hit)
                 finding.note = (finding.note + " " if finding.note else "") + f"🚩 {hit.kind} flag"
                 self.audit.event("flag_found", kind=hit.kind, value=hit.value, cmd=cmd)
+        # 해시 스캔 — 원시출력(요약 전)에서 크래킹 대상 해시 수집(크래킹 자동 준비용)
+        for hv in crack_scan(out.stdout):
+            if hv not in self._found_hashes:
+                self._found_hashes.append(hv)
+                self.audit.event("hash_found", cmd=cmd, hash=hv[:24])
