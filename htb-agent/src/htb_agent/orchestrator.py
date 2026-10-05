@@ -36,6 +36,7 @@ from .llm.router import LLMRouter
 from .vuln import VulnKB, VulnMatch, extract_vuln_ids
 from .flag import FlagHit, scan as scan_flags
 from .crack import scan_hashes as crack_scan
+from .creds_harvest import harvest as harvest_creds, is_safe_for_cmd
 from .world import WorldModel
 from .variants import expand_variants, fragment_of
 from .state import SessionState, StateStore, host_to_dict, host_from_dict
@@ -503,6 +504,25 @@ class Orchestrator:
         success = bool(f.ran and f.output)
         self.variant_stats.record(binary_of(vcmd, strip_path=True), frag, success)
 
+    def _harvest_creds(self, stdout: str, cmd: str, finding: EnumFinding) -> None:
+        """출력에서 고신뢰 평문 자격을 수확한다. 월드엔 모두 반영(권한레벨 상승 →
+        A1 재진입 활성화), 실행 볼트엔 셸-안전한 값만 추가(인젝션 차단). 중복은 무시."""
+        pairs = harvest_creds(stdout)
+        if not pairs:
+            return
+        from .creds import Credential
+        for user, pw in pairs:
+            if self.world is not None:
+                self.world.add_cred(f"{user}:{pw}")
+            self.audit.event("cred_harvested", cmd=cmd, user=user)
+            note = f"🔑 크리덴셜 발견: {user}"
+            finding.note = (finding.note + " " if finding.note else "") + note
+            # 실행 볼트 추가는 셸-안전한 값만(신뢰불가 출처 → 명령 인젝션 방지)
+            if (self.vault is not None and is_safe_for_cmd(user)
+                    and is_safe_for_cmd(pw)):
+                self.vault.add(Credential(username=user, password=pw,
+                                          source="harvested"))
+
     def _expand(self, tmpl: str, target: str) -> list[tuple[str, bool]]:
         """볼트가 있으면 자격증명으로 플레이스홀더를 채워 확장, 없으면 {t}만 치환."""
         if self.vault is not None:
@@ -835,3 +855,6 @@ class Orchestrator:
                 self.audit.event("hash_found", cmd=cmd, hash=hv[:24])
                 if self.world is not None:
                     self.world.add_loot(f"해시: {hv[:40]}{'…' if len(hv) > 40 else ''}")
+        # 크리덴셜 자동 수확 — 원시출력에서 고신뢰 평문 자격 추출. 월드엔 모두 반영,
+        # 실행 볼트엔 셸-안전한 값만(신뢰불가 출처 인젝션 차단). A1 재진입을 활성화.
+        self._harvest_creds(out.stdout, cmd, finding)

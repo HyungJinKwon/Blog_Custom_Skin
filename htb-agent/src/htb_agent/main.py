@@ -348,7 +348,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 max_sweeps=max_sweeps,
                                 max_variants=max_variants,
                                 llm_router=llm_router, vuln_kb=vuln_kb,
-                                vault=vault if vault.creds else None,
+                                vault=vault,   # 항상 전달(수확 자격 수용 — 빈 볼트도 안전)
                                 flag_kind=profile.flag_kind,
                                 flag_prefixes=flag_prefixes,
                                 enricher=enricher,
