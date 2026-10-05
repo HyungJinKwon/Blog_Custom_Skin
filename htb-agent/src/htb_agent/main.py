@@ -56,6 +56,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="허용 타겟 CIDR (반복 가능). 생략 시 플랫폼 기본(HTB만 대역 강제)")
     p.add_argument("--attacker-ip", action="append", dest="attacker_ips",
                    help="공격자 VPN IP (반복 가능). 생략 시 tun0 자동탐지")
+    p.add_argument("--lport", type=int, default=4444,
+                   help="리버스쉘 리스너 포트(자동 준비 페이로드용, 기본 4444)")
     p.add_argument("--cred", action="append", dest="creds",
                    help="자격증명 'user:pass' / 'user:pass:domain' / "
                         "'user:pass:domain:nthash' (반복 가능). Pass-the-Hash 는 "
@@ -312,6 +314,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 enricher=enricher,
                                 platform_name=profile.name,
                                 category=(args.category or ""),
+                                revshell_port=args.lport,
                                 state_store=store, resume=args.resume, audit=audit)
     report = orchestrator.run()
     print("\n" + report.summary())

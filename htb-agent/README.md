@@ -97,6 +97,10 @@ assassin 10.129.1.5 --config config/config.example.json
 
 > **리버스쉘 페이로드 생성**(실행 안 함): `assassin --revshell 10.10.14.5:4444`
 > (bash/nc/python3/php/powershell/socat 등 + 리스너·안정화 힌트).
+> **자동 준비**: 풀이 실행 중 공격자 IP(tun0 자동탐지 또는 `--attacker-ip`)가 확보되면
+> 초기 침투용 리버스쉘 페이로드를 **별도 명령 없이 자동 생성**해 리포트·라이트업·
+> JSON/HTML 에 포함합니다(생성만 — 실제 셸 획득은 권한 확인 대상에서 사용자가 직접,
+> 리스너 포트는 `--lport`, 기본 4444).
 > **AWS/S3 열거**는 `cloud` 지식팩 + 도구(awscli·s3scanner·cloud_enum)로 제안됩니다.
 
 > **데모(네트워크·실도구 없이 전체 흐름 보기)**: `python3 scripts/demo.py`
@@ -113,7 +117,7 @@ assassin 10.129.1.5 --config config/config.example.json
 | 관측 | nmap·HTTP(쿠키·보안헤더·로그인폼·CMS)·gobuster/ffuf/feroxbuster/nikto/whatweb·smb·ldap·dns/snmp 파싱 |
 | 식별 | Linux vs Windows-AD 증거기반 판정(확신도) · 플랫폼 프로파일(HTB/Dreamhack/CTF) |
 | 지능 | 지식베이스(사용자 학습·자가학습으로 성장) · 단계 순서 오케스트레이터 · 옵션 조합 변형(경우의 수) · LLM(Claude/Ollama/**하이브리드**, 플랫폼·카테고리 인식) · **권위출처 자가학습(`--learn`)** |
-| 목표 | CVE/CWE 탐지·매핑 + **자동 수집(NVD)** · user.txt/root.txt·CTF 단일 플래그 · **리버스쉘 생성(`--revshell`)** · AWS/S3 열거 |
+| 목표 | CVE/CWE 탐지·매핑 + **자동 수집(NVD)** · user.txt/root.txt·CTF 단일 플래그 · **리버스쉘 생성(`--revshell`) + 풀이 중 자동 준비(공격자 IP 확보 시)** · AWS/S3 열거 |
 | 운영 | 중단/재개 · 크리덴셜 볼트(해시 PtH) · 감사 로그 · 설정 파일 · 도구 설치 스크립트 · **환경 자가진단(`--doctor`)** |
 | 산출 | 라이트업 자동 생성(htb-ctf-writeup-v5 / Tistory 13섹션) · **결과 내보내기(JSON·HTML 대시보드)** |
 
@@ -135,7 +139,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 37 스위트 718 테스트
+cd htb-agent && python3 tests/run_all.py     # 37 스위트 725 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

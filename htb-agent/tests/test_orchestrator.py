@@ -77,6 +77,27 @@ rep = orc.run()
 check("미설치 도구 건너뜀", any("미설치" in f.note for f in rep.enum_findings))
 check("미설치 시 실행 안 함", all(not f.ran for f in rep.enum_findings))
 
+print("\n=== 리버스쉘 자동 준비(공격자 IP 확보 시 · 생성만) ===")
+g = guard()
+g.add_attacker_ip("10.10.14.5")
+r = FakeRunner(responder(LINUX_WEB))
+orc = Orchestrator(g, r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS,
+                   revshell_port=9001)
+rep = orc.run()
+check("리버스쉘 자동 생성됨", len(rep.revshells) >= 10)
+check("LHOST=공격자IP", rep.revshell_lhost == "10.10.14.5")
+check("LPORT=지정포트", rep.revshell_lport == 9001)
+check("bash 페이로드 치환", any("/dev/tcp/10.10.14.5/9001" in s.payload for s in rep.revshells))
+check("자동 생성은 실행 아님(ran 플래그 무관)",
+      all(hasattr(s, "payload") for s in rep.revshells))
+check("summary 에 리버스쉘 노출", "리버스쉘" in rep.summary())
+
+print("\n=== 공격자 IP 없으면 리버스쉘 생략 ===")
+r = FakeRunner(responder(LINUX_WEB))
+orc = Orchestrator(guard(), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS)
+rep = orc.run()
+check("공격자IP 없음 → 리버스쉘 없음", rep.revshells == [])
+
 print("\n=== RECON 실패 → 에스컬레이션(enum 진입 안 함) ===")
 r = FakeRunner(responder(DOWN))
 orc = Orchestrator(guard("10.129.1.9"), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS)

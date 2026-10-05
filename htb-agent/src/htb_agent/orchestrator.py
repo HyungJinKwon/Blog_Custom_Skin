@@ -76,6 +76,10 @@ class OrchestrationReport:
     flags: list[FlagHit] = field(default_factory=list)
     flag_kind: str = "boot2root"     # boot2root(user/root) | single(CTF flag)
     enriched: list = field(default_factory=list)   # list[enrich.CveInfo]
+    # 자동 준비된 리버스쉘 페이로드(공격자 IP 확보 시 자동 생성 — 생성만, 실행 안 함)
+    revshells: list = field(default_factory=list)   # list[revshell.RevShell]
+    revshell_lhost: str = ""
+    revshell_lport: int = 0
     message: str = ""
 
     @property
@@ -153,6 +157,17 @@ class OrchestrationReport:
                 for f in self.flags:
                     if f.kind == "unknown":
                         lines.append(ui.dim(f"  (미분류) {f.value} ← {f.source}"))
+        if self.revshells:
+            from .revshell import listener_hints
+            lines.append("\n" + ui.heading(
+                "리버스쉘 (자동 준비 — 초기 침투용 · 생성만, 에이전트는 실행 안 함)", "🐚"))
+            lines.append(ui.dim(
+                f"  LHOST={self.revshell_lhost}  LPORT={self.revshell_lport}"
+                "  ·  권한 확인 대상에서 사용자가 직접 실행"))
+            lines.append("  " + ui.accent2("리스너: ") + listener_hints(self.revshell_lport)[0])
+            for s in self.revshells:
+                lines.append("  " + ui.accent2(f"[{s.name}]"))
+                lines.append("    " + s.payload)
         if self.manual_suggestions:
             lines.append("\n" + ui.heading(
                 "수동 제안 (크리덴셜 등 필요 — 승인/입력 후 실행)", "✋"))
@@ -182,6 +197,7 @@ class Orchestrator:
                  enricher=None,
                  platform_name: str = "Hack The Box",
                  category: str = "",
+                 revshell_port: int = 4444,
                  is_tool_available: Callable[[str], bool] | None = None):
         self.guard = guard
         self.runner = runner
@@ -204,6 +220,7 @@ class Orchestrator:
         self.flag_prefixes = flag_prefixes
         self.platform_name = platform_name
         self.category = category
+        self.revshell_port = revshell_port
         self.enricher = enricher
         # 도구 설치 여부 판단(주입 가능 — 테스트에서 대체)
         self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
@@ -288,6 +305,11 @@ class Orchestrator:
                                          cves=[e.id for e in report.enriched])
                 except Exception as e:   # noqa: BLE001 — 수집 실패는 진행 방해 금지
                     self.audit.event("enrich_error", error=str(e))
+
+        # ── PHASE 3.9: 리버스쉘 자동 준비 (공격자 IP 확보 시) ──
+        # 초기 침투에 바로 쓰도록 페이로드를 '자동 생성'해 리포트에 포함한다.
+        # 생성만 — 실행(셸 획득)은 사용자가 권한 확인 대상에서 직접(안전 경계 유지).
+        self._prepare_revshells(report)
 
         # ── PHASE 4: REPORT ──
         report.status = "done"
@@ -433,6 +455,25 @@ class Orchestrator:
         report.detected_cwe = hits.cwes
         if self.vuln_kb is not None:
             report.vuln_matches = self.vuln_kb.match(banners, target)
+
+    def _prepare_revshells(self, report: OrchestrationReport) -> None:
+        """공격자 IP(VPN tun0 등)가 확보되면 리버스쉘 페이로드를 자동 생성해
+        리포트에 담는다. 생성 전용 — 실행은 하지 않는다(안전 경계 유지).
+        공격자 IP 가 없으면(미탐지) 조용히 생략한다."""
+        attacker_ips = list(self.guard.attacker_ips or [])
+        if not attacker_ips:
+            return
+        lhost = str(attacker_ips[0])
+        lport = self.revshell_port
+        try:
+            from . import revshell
+            report.revshells = revshell.generate(lhost, lport)
+            report.revshell_lhost = lhost
+            report.revshell_lport = lport
+            self.audit.event("revshell_prepared", lhost=lhost, lport=lport,
+                             count=len(report.revshells))
+        except Exception as e:   # noqa: BLE001 — 생성 실패가 전체를 깨지 않도록
+            self.audit.event("revshell_error", error=str(e))
 
     def _attempt(self, report: OrchestrationReport, findings: list[EnumFinding],
                  cmd: str, phase: str = "enum") -> None:
