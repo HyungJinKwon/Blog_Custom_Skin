@@ -80,6 +80,9 @@ class OrchestrationReport:
     revshells: list = field(default_factory=list)   # list[revshell.RevShell]
     revshell_lhost: str = ""
     revshell_lport: int = 0
+    # 자동 준비된 AWS/S3 열거(호스트명/도메인 확보 시 — 생성만, AWS 는 범위 밖·실행 안 함)
+    cloud_candidates: list = field(default_factory=list)   # list[str] 버킷 후보
+    cloud_checks: list = field(default_factory=list)       # list[cloud.CloudCheck]
     message: str = ""
 
     @property
@@ -168,6 +171,16 @@ class OrchestrationReport:
             for s in self.revshells:
                 lines.append("  " + ui.accent2(f"[{s.name}]"))
                 lines.append("    " + s.payload)
+        if self.cloud_checks:
+            lines.append("\n" + ui.heading(
+                "AWS/S3 열거 (자동 준비 — 생성만, AWS 는 범위 밖·실행 안 함)", "☁️"))
+            if self.cloud_candidates:
+                lines.append(ui.dim(
+                    f"  버킷 후보({len(self.cloud_candidates)}): "
+                    + ", ".join(self.cloud_candidates[:12])
+                    + (" …" if len(self.cloud_candidates) > 12 else "")))
+            for c in self.cloud_checks:
+                lines.append("  " + ui.accent2(f"[{c.name}] ") + c.command)
         if self.manual_suggestions:
             lines.append("\n" + ui.heading(
                 "수동 제안 (크리덴셜 등 필요 — 승인/입력 후 실행)", "✋"))
@@ -310,6 +323,11 @@ class Orchestrator:
         # 초기 침투에 바로 쓰도록 페이로드를 '자동 생성'해 리포트에 포함한다.
         # 생성만 — 실행(셸 획득)은 사용자가 권한 확인 대상에서 직접(안전 경계 유지).
         self._prepare_revshells(report)
+
+        # ── PHASE 3.95: AWS/S3 열거 자동 준비 (호스트명/도메인 확보 시) ──
+        # 버킷 후보·비인증 점검을 자동 생성. AWS 엔드포인트는 타겟 범위 밖이라
+        # 실행하지 않고 준비만 한다(리버스쉘과 동일한 '생성 전용' 안전 경계).
+        self._prepare_cloud(report)
 
         # ── PHASE 4: REPORT ──
         report.status = "done"
@@ -474,6 +492,30 @@ class Orchestrator:
                              count=len(report.revshells))
         except Exception as e:   # noqa: BLE001 — 생성 실패가 전체를 깨지 않도록
             self.audit.event("revshell_error", error=str(e))
+
+    def _prepare_cloud(self, report: OrchestrationReport) -> None:
+        """호스트명/도메인이 확보되면 AWS/S3 열거(버킷 후보+점검)를 자동 준비한다.
+        생성 전용 — AWS 엔드포인트는 타겟 범위 밖이라 실행하지 않는다. 버킷명 후보를
+        만들 이름(호스트명/도메인)이 없으면(IP 뿐) 조용히 생략한다."""
+        names: list[str] = []
+        if self.hosts_map:
+            names.extend(self.hosts_map.values())
+            names.extend(self.hosts_map.keys())
+        if self.guard.bound_host:
+            names.append(str(self.guard.bound_host))
+        names.append(report.target)
+        try:
+            from . import cloud
+            prep = cloud.generate(names)
+            if not prep.candidates:
+                return
+            report.cloud_candidates = prep.candidates
+            report.cloud_checks = prep.checks
+            self.audit.event("cloud_prepared", keyword=prep.keyword,
+                             candidates=len(prep.candidates),
+                             checks=len(prep.checks))
+        except Exception as e:   # noqa: BLE001 — 준비 실패가 전체를 깨지 않도록
+            self.audit.event("cloud_error", error=str(e))
 
     def _attempt(self, report: OrchestrationReport, findings: list[EnumFinding],
                  cmd: str, phase: str = "enum") -> None:

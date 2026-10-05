@@ -98,6 +98,24 @@ orc = Orchestrator(guard(), r, kb, auto_approve_in_scope, is_tool_available=ALL_
 rep = orc.run()
 check("공격자IP 없음 → 리버스쉘 없음", rep.revshells == [])
 
+print("\n=== AWS/S3 열거 자동 준비(호스트명 확보 시 · 생성만) ===")
+r = FakeRunner(responder(LINUX_WEB))
+orc = Orchestrator(guard(), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS,
+                   hosts_map={"10.129.1.5": "acme.htb"})
+rep = orc.run()
+check("버킷 후보 자동 생성", len(rep.cloud_candidates) >= 1)
+check("acme 기저 후보 포함", "acme" in rep.cloud_candidates)
+check("비인증 S3 점검 명령 준비", any("--no-sign-request" in c.command for c in rep.cloud_checks))
+check("자격증명 확인 명령 준비", any("get-caller-identity" in c.command for c in rep.cloud_checks))
+check("summary 에 AWS/S3 노출", "AWS/S3" in rep.summary())
+
+print("\n=== 호스트명 없으면(IP뿐) AWS/S3 생략 ===")
+r = FakeRunner(responder(LINUX_WEB))
+orc = Orchestrator(guard(), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS)
+rep = orc.run()
+check("IP뿐 → 버킷 후보 없음", rep.cloud_candidates == [])
+check("IP뿐 → 점검 명령 없음", rep.cloud_checks == [])
+
 print("\n=== RECON 실패 → 에스컬레이션(enum 진입 안 함) ===")
 r = FakeRunner(responder(DOWN))
 orc = Orchestrator(guard("10.129.1.9"), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS)

@@ -2,10 +2,11 @@
 # 리버스쉘 생성기 + AWS/S3 지식 배선.
 import io
 import json
+import re
 import sys
 from contextlib import redirect_stdout, redirect_stderr
 sys.path.insert(0, "src")
-from htb_agent import ui, revshell
+from htb_agent import ui, revshell, cloud
 from htb_agent.main import build_parser, main
 from htb_agent.knowledge import KnowledgeBase
 
@@ -87,6 +88,34 @@ check("S3 제안은 수동(플레이스홀더)", not all(auto))  # {bucket} 있�
 # JSON 유효
 json.load(open("knowledge/rules/cloud-aws.json", encoding="utf-8"))
 check("cloud-aws.json 유효", True)
+
+print("\n=== cloud: 버킷 후보·점검 자동 생성 ===")
+prep = cloud.generate(["dev.acme.htb", "10.10.10.5"])
+check("후보 생성(>=1)", len(prep.candidates) >= 1)
+check("기저 토큰에서 htb/TLD 제외", "htb" not in prep.candidates)
+check("bare acme 후보", "acme" in prep.candidates)
+check("접미 조합(backup 등)", any(c.endswith("-backup") for c in prep.candidates))
+check("비인증 S3 명령", any("--no-sign-request" in c.command for c in prep.checks))
+check("자격증명 명령", any("get-caller-identity" in c.command for c in prep.checks))
+check("cloud_enum 키워드", any("cloud_enum -k" in c.command for c in prep.checks))
+# 버킷명 네이밍 규칙(셸 메타문자 없음 → 인젝션 방지)
+check("후보는 소문자/숫자/하이픈만", all(re.fullmatch(r"[a-z0-9-]+", c) for c in prep.candidates))
+# IP 뿐이면 후보 없음
+check("IP뿐 → 후보 없음", cloud.generate(["10.10.10.5"]).candidates == [])
+check("빈 입력 → 후보 없음", cloud.generate([]).candidates == [])
+
+print("\n=== --cloud CLI ===")
+pp2 = build_parser()
+a2 = pp2.parse_args(["--cloud", "acme.htb"])
+check("--cloud 파싱(target 선택적)", a2.cloud == "acme.htb" and a2.target is None)
+buf2 = io.StringIO()
+with redirect_stdout(buf2):
+    code2 = main(["--cloud", "acme.htb"])
+out2 = buf2.getvalue()
+check("종료코드 0", code2 == 0)
+check("버킷 후보 출력", "acme" in out2)
+check("비인증 명령 출력", "--no-sign-request" in out2)
+check("실행 안 함 명시", "실행" in out2)
 
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
