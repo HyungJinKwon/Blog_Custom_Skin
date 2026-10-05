@@ -98,6 +98,7 @@ LLM 이 제안한 명령도 '신뢰하지 않는 데이터'로 간주되어 이 
 | | `crack.py` | 해시 크래킹 자동 준비(--crack + 출력/볼트에서 해시 수집·식별→john/hashcat 명령 생성, 생성 전용) |
 | **운영** | `state.py` | 세션 상태 영속(중단/재개) |
 | | `creds.py` | 크리덴셜 볼트(수동제안 → 실행 승격) |
+| | `creds_harvest.py` | 실행 출력에서 평문 자격 자동 수확(고신뢰 패턴·셸-안전 값만 볼트 투입, 월드 반영→A1 재진입 활성화) |
 | | `audit.py` | 실행 트랜스크립트(JSONL) |
 | | `config.py` | 설정 파일(JSON/YAML, CLI>config>기본) |
 | | `environment.py` · `main.py` | Kali 프리플라이트 · CLI 진입점(ASSASSIN) |
@@ -141,7 +142,7 @@ assassin 10.129.1.5 --resume                   # 중단 지점 재개
 ## 7. 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py        # 40 스위트 885 테스트
+cd htb-agent && python3 tests/run_all.py        # 41 스위트 903 테스트
 ```
 
 네트워크·도구 없이도 **러너 주입**으로 전 로직 검증하며, 통합 테스트는 `main()` 을
