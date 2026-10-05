@@ -44,6 +44,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cloud", metavar="NAME", default=None,
                    help="AWS/S3 열거 자동 준비(생성 안 실행). 호스트명/도메인에서 버킷명 "
                         "후보+비인증 점검 생성. 예: --cloud acme.htb. 권한 확인 자산 전용")
+    p.add_argument("--privesc", metavar="OS", default=None,
+                   choices=["linux", "windows", "windows_ad"],
+                   help="권한상승 플레이북 자동 준비(생성 안 실행). OS 별 열거·점검·LPE "
+                        "체크리스트 생성. 예: --privesc linux. 획득한 대상 셸에서 직접 실행")
     p.add_argument("target", nargs="?", default=None,
                    help="대상(IP 또는 호스트명/URL). HTB=허용대역 내 IP, "
                    "CTF/Dreamhack=챌린지 host:port/URL")
@@ -176,6 +180,14 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         print(cloud.render([args.cloud]))
         return 0
 
+    # 권한상승 플레이북 자동 준비(스캔·실행 안 함) — OS별 체크리스트 생성
+    if args.privesc:
+        from . import privesc
+        default_atk = (args.attacker_ips[0] if args.attacker_ips
+                       else (detect_vpn_ips() or [""])[0])
+        print(privesc.render(args.privesc, default_atk or ""))
+        return 0
+
     # 권위 출처 자가학습(스캔 안 함) — 지식베이스에 노트 저장(P1 유지)
     if args.learn:
         from . import learn
@@ -193,7 +205,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         return 0 if res.refs else 2
 
     if not args.target:
-        parser.error("target 이 필요합니다 (또는 --doctor / --revshell / --cloud / --learn). 예: assassin 10.129.1.5")
+        parser.error("target 이 필요합니다 (또는 --doctor / --revshell / --cloud / --privesc / --learn). 예: assassin 10.129.1.5")
 
     # 0) 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값)
     from .config import load_config, pick, Config, ConfigError

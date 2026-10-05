@@ -95,6 +95,11 @@ def to_dict(report) -> dict:
             "checks": [{"name": c.name, "command": c.command}
                        for c in getattr(report, "cloud_checks", [])],
         },
+        "privesc": {
+            "steps": [{"category": s.category, "command": s.command, "note": s.note}
+                      for s in getattr(report, "privesc_steps", [])],
+            "cve_candidates": list(getattr(report, "privesc_cve_candidates", [])),
+        },
     }
 
 
@@ -251,6 +256,22 @@ def _html_cloud(report) -> str:
     return head + cand_html + "<ul>" + rows + "</ul>"
 
 
+def _html_privesc(report) -> str:
+    steps = getattr(report, "privesc_steps", None)
+    if not steps:
+        return "<p class='muted'>OS 미식별 — 생략</p>"
+    rows = "".join(
+        f"<li><b>{_esc(s.category)}</b>: <code>{_esc(s.command)}</code>"
+        + (f" <span class='muted'>{_esc(s.note)}</span>" if s.note else "")
+        + "</li>" for s in steps)
+    html = "<p class='muted'>대상 셸에서 직접 실행 · 생성만</p><ul>" + rows + "</ul>"
+    cands = getattr(report, "privesc_cve_candidates", [])
+    if cands:
+        html += ("<p><b>LPE CVE 후보:</b></p><ul>"
+                 + "".join(f"<li>{_esc(c)}</li>" for c in cands) + "</ul>")
+    return html
+
+
 def to_html(report, machine_name: str = "") -> str:
     prof = report.profile
     os_line = f"{prof.os_class.value} ({prof.tag}) · 확신도 {prof.confidence}%" if prof else "-"
@@ -287,6 +308,9 @@ def to_html(report, machine_name: str = "") -> str:
 
 <h2>AWS/S3 열거 (자동 준비 · 생성만, 범위 밖·실행 안 함)</h2>
 {_html_cloud(report)}
+
+<h2>권한 상승 플레이북 (자동 준비 · 대상 셸에서 실행 · 생성만)</h2>
+{_html_privesc(report)}
 
 <h2>수동 제안 (승인/입력 후 실행)</h2>
 {_html_list(report.manual_suggestions)}
