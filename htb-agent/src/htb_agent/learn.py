@@ -217,6 +217,8 @@ class ReferenceLearner:
     def match_sources(self, topic: str) -> list[tuple[str, str]]:
         """주제 키워드에 맞는 출처(부분일치·별칭 포함)."""
         key = topic.strip().lower()
+        if not key:                       # 빈/공백 주제가 전체를 매칭하는 것 방지
+            return []
         if key in SOURCES:
             return SOURCES[key]
         hits: list[tuple[str, str]] = []

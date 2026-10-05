@@ -37,6 +37,15 @@ check("bash 페이로드 치환", any("/dev/tcp/10.10.14.5/4444" in s.payload fo
 check("python3 포함", any(s.name == "python3" and "10.10.14.5" in s.payload for s in sh))
 check("powershell 포함", any("powershell" in s.name for s in sh))
 check("플레이스홀더 잔여 없음", not any("{ip}" in s.payload or "{port}" in s.payload for s in sh))
+# format-escape 아티팩트({{·}}로 렌더되는 버그) 방지 + 중괄호 균형
+def _balanced(p):
+    bal = 0
+    for ch in p:
+        bal += 1 if ch == "{" else (-1 if ch == "}" else 0)
+        if bal < 0:
+            return False
+    return bal == 0
+check("중괄호 균형(awk/powershell 등)", all(_balanced(s.payload) for s in sh))
 check("only 필터", [s.name for s in revshell.generate("1.2.3.4", 9, only=["bash -i"])] == ["bash -i"])
 check("리스너 힌트 포트 반영", any("4444" in h for h in revshell.listener_hints(4444)))
 

