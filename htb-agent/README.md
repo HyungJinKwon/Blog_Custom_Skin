@@ -109,15 +109,15 @@ assassin 10.129.1.5 --config config/config.example.json
 
 | 분류 | 내용 |
 |---|---|
-| 안전 | Target-Binding 범위강제 · 명령 검증(문법·base64·해시·포트·파괴명령) · 승인 게이트 |
-| 관측 | nmap·HTTP·gobuster/ffuf/feroxbuster/nikto/whatweb·smbclient/smbmap/netexec·ldapsearch·dig/snmpwalk 파싱 |
-| 식별 | Linux vs Windows-AD 증거기반 판정(확신도) |
-| 지능 | 지식베이스(사용자 학습으로 성장) · 단계 순서 오케스트레이터 · 옵션 조합 변형(경우의 수) · LLM(Claude/Ollama, 캐싱·비용) |
-| 목표 | CVE/CWE 탐지·매핑 · user.txt/root.txt 플래그 캡처 |
-| 운영 | 중단/재개 · 크리덴셜 볼트 · 감사 로그 · 설정 파일 · 도구 설치 스크립트 |
-| 산출 | 라이트업 자동 생성(htb-ctf-writeup-v5 / Tistory 13섹션) |
+| 안전 | Target-Binding 범위강제 · 명령 검증(문법·base64·해시·포트·파괴명령) · 승인 게이트(스마트/auto/manual) |
+| 관측 | nmap·HTTP(쿠키·보안헤더·로그인폼·CMS)·gobuster/ffuf/feroxbuster/nikto/whatweb·smb·ldap·dns/snmp 파싱 |
+| 식별 | Linux vs Windows-AD 증거기반 판정(확신도) · 플랫폼 프로파일(HTB/Dreamhack/CTF) |
+| 지능 | 지식베이스(사용자 학습·자가학습으로 성장) · 단계 순서 오케스트레이터 · 옵션 조합 변형(경우의 수) · LLM(Claude/Ollama/**하이브리드**, 플랫폼·카테고리 인식) · **권위출처 자가학습(`--learn`)** |
+| 목표 | CVE/CWE 탐지·매핑 + **자동 수집(NVD)** · user.txt/root.txt·CTF 단일 플래그 · **리버스쉘 생성(`--revshell`)** · AWS/S3 열거 |
+| 운영 | 중단/재개 · 크리덴셜 볼트(해시 PtH) · 감사 로그 · 설정 파일 · 도구 설치 스크립트 · **환경 자가진단(`--doctor`)** |
+| 산출 | 라이트업 자동 생성(htb-ctf-writeup-v5 / Tistory 13섹션) · **결과 내보내기(JSON·HTML 대시보드)** |
 
-원칙: 승인제 · **외부 라이트업 미참조(사용자 자료만)** · 무한루프 금지 · 증거기반(〔확인〕/〔추정〕).
+원칙: 승인제 · **외부 라이트업 미참조(사용자 자료·권위 출처만)** · 무한루프 금지 · 증거기반(〔확인〕/〔추정〕).
 
 > 기본 동봉 학습 규칙: `knowledge/rules/htb-startingpoint-tier0.json` — 사용자가 제공한
 > HTB Starting Point Tier 0(Meow·Fawn·Dancing·Redeemer·Explosion·Preignition·Mongod·Synced)
