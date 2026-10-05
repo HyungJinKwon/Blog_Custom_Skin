@@ -113,6 +113,8 @@ class LLMRouter:
             lines.append(f"현재 모의해킹 단계: {context['phase']} — 이 단계에 맞는 명령만 제안하라.")
         if context.get("profile"):
             lines.append(f"OS 판정:\n{context['profile']}")
+        if context.get("state"):
+            lines.append("현재 상태(월드 모델):\n  " + "\n  ".join(context["state"]))
         if context.get("open_ports"):
             lines.append("열린 포트/서비스:\n  " + "\n  ".join(context["open_ports"]))
         if context.get("findings"):
