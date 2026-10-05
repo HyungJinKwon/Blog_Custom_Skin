@@ -71,6 +71,7 @@ class OrchestrationReport:
     profile: ProfileResult | None = None
     world: "object | None" = None     # world.WorldModel — 구조화 상태(단일 상태원)
     analysis: str = ""                # LLM 분석가(B3) — 가설·공격경로·다음집중·확신도
+    phase_status: dict = field(default_factory=dict)   # A2 단계 게이팅 상태(phase→상태)
     enum_findings: list[EnumFinding] = field(default_factory=list)
     llm_findings: list[EnumFinding] = field(default_factory=list)
     manual_suggestions: list[str] = field(default_factory=list)
@@ -127,14 +128,16 @@ class OrchestrationReport:
         all_findings = self.enum_findings + self.llm_findings
         for key, label in PENTEST_PHASES:
             group = [f for f in all_findings if f.phase == key]
-            if group:
-                lines.append("\n" + ui.rule(f"단계: {label}", 60))
-                for f in group:
-                    mark = ui.mark_run() if f.ran else ui.dim("·")
-                    note = ui.dim(f"  — {f.note}") if f.note else ""
-                    lines.append(f"  {mark} {f.command}{note}")
-                    if f.output:
-                        lines.append("      " + ui.dim(f.output))
+            st_label = self.phase_status.get(key, "")
+            if group or st_label:
+                suffix = ("  " + ui.dim(f"[{st_label}]")) if st_label else ""
+                lines.append("\n" + ui.rule(f"단계: {label}{suffix}", 60))
+            for f in group:
+                mark = ui.mark_run() if f.ran else ui.dim("·")
+                note = ui.dim(f"  — {f.note}") if f.note else ""
+                lines.append(f"  {mark} {f.command}{note}")
+                if f.output:
+                    lines.append("      " + ui.dim(f.output))
         if self.detected_cve or self.detected_cwe or self.vuln_matches:
             lines.append("\n" + ui.heading(
                 "VULN  (탐지된 취약점 — 수동 검증/익스플로잇 필요)", "🛑"))
@@ -340,18 +343,23 @@ class Orchestrator:
             # 이후 명령 생성(_llm_round)을 유도한다. 매 스윕 상태가 자랐을 때만 갱신.
             self._run_analyst(report, prof, host, target)
             for key, label in self.phases:
+                # A2 단계 게이팅: 전제(권한레벨/크리덴셜) 미충족 단계는 KB 가이드(수동
+                # 제안)는 남기되 투기적 LLM 라운드는 건너뛴다(상태가 자라면 다음 스윕서 활성).
+                met, reason = self._prereq_met(key)
                 phase_before = len(report.enum_findings) + len(report.llm_findings)
                 for _rnd in range(self.max_rounds):
                     added = self._enum_round(report, host, prof, target, seen_cmds,
                                              self.max_enum - len(report.enum_findings), key)
-                    if self.llm_router is not None:
+                    if met and self.llm_router is not None:
                         added += self._llm_round(report, host, prof, target, seen_cmds,
                                                  self.max_llm - len(report.llm_findings), key)
                     if added == 0:
                         break
-                if (len(report.enum_findings) + len(report.llm_findings) > phase_before
-                        and key not in phases_run):
+                grew = len(report.enum_findings) + len(report.llm_findings) > phase_before
+                if grew and key not in phases_run:
                     phases_run.append(key)
+                report.phase_status[key] = ("대기(" + reason + ")" if not met
+                                            else ("진행" if grew else "점검함"))
             sweeps_run += 1
             # 이번 스윕에서 상태가 더 자라지 않았으면(새 관측·예산 소진) 조기 종료 — 유한
             if self._world_fingerprint(report) == before_fp:
@@ -484,6 +492,26 @@ class Orchestrator:
             return self.vault.expand(tmpl, target)
         cmd, auto = self.kb.format_suggestion(tmpl, target)
         return [(cmd, auto)]
+
+    def _prereq_met(self, phase: str) -> tuple[bool, str]:
+        """A2: 단계 전제조건 판정. 월드 모델의 권한레벨·크리덴셜로 결정한다.
+        enum/access 는 항상 가능. privesc/lateral 은 발판(쉘)·크리덴셜이 있어야
+        투기적 LLM 제안이 의미있다(없으면 KB 수동 가이드만 남긴다)."""
+        w = self.world
+        if w is None or phase in ("enum", "access"):
+            return True, ""
+        has_foothold = w.has_access("user")
+        has_cred = bool(w.creds)
+        has_secret = bool(w.loot) or has_cred   # 해시/자격 등 측면이동 수단
+        if phase == "privesc":
+            if has_foothold or has_cred:
+                return True, ""
+            return False, "전제 미충족: user 쉘 또는 크리덴셜 필요"
+        if phase == "lateral":
+            if has_foothold or has_secret:
+                return True, ""
+            return False, "전제 미충족: 크리덴셜/해시 등 이동수단 필요"
+        return True, ""
 
     def _run_analyst(self, report: OrchestrationReport, prof: ProfileResult,
                      host: NmapHost, target: str) -> None:

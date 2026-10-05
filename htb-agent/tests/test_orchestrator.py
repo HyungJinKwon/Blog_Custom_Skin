@@ -174,6 +174,26 @@ rep = orc.run()
 check("크리덴셜 상태 반영", len(rep.world.creds) >= 1)
 check("권한레벨 credentialed 이상", rep.world.has_access("credentialed"))
 
+print("\n=== A2 단계 게이팅: 전제 미충족 시 대기 ===")
+r = FakeRunner(responder(LINUX_WEB))
+orc = Orchestrator(guard(), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS)
+rep = orc.run()
+check("enum 은 전제 불필요", not rep.phase_status.get("enum", "").startswith("대기"))
+check("크리덴셜 없으면 privesc 대기", rep.phase_status.get("privesc", "").startswith("대기"))
+check("이동수단 없으면 lateral 대기", rep.phase_status.get("lateral", "").startswith("대기"))
+# _prereq_met 직접 검증
+met_e, _ = orc._prereq_met("enum"); check("enum 전제 True", met_e)
+met_p, reason_p = orc._prereq_met("privesc")
+check("privesc 전제 False+사유", (not met_p) and "크리덴셜" in reason_p)
+
+print("\n=== A2: 크리덴셜 있으면 privesc 전제 충족 ===")
+r = FakeRunner(responder(LINUX_WEB))
+orc = Orchestrator(guard(), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS,
+                   vault=CredentialVault([Credential(username="u", password="p")]))
+rep = orc.run()
+check("크리덴셜 → privesc 전제 충족(대기 아님)", not rep.phase_status.get("privesc", "").startswith("대기"))
+check("_prereq_met privesc True", orc._prereq_met("privesc")[0])
+
 print("\n=== RECON 실패 → 에스컬레이션(enum 진입 안 함) ===")
 r = FakeRunner(responder(DOWN))
 orc = Orchestrator(guard("10.129.1.9"), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS)
