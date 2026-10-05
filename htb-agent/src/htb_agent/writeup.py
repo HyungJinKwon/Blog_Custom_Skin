@@ -179,6 +179,24 @@ def _revshell_block(report) -> str:
     return "\n".join(lines)
 
 
+def _privesc_block(report) -> str:
+    """자동 준비된 권한상승 플레이북을 라이트업에 삽입(생성 전용)."""
+    steps = getattr(report, "privesc_steps", None)
+    if not steps:
+        return "- _(수동 분석: SUID/sudo, 커널, 서비스 오구성, AD 공격경로 등)_"
+    lines = ["", "**권한상승 플레이북 (자동 준비 · 대상 셸에서 실행 · 생성만):**", ""]
+    for s in steps:
+        note = f"  — {s.note}" if s.note else ""
+        lines.append(f"- [{s.category}] `{s.command}`{note}")
+    cands = getattr(report, "privesc_cve_candidates", [])
+    if cands:
+        lines.append("")
+        lines.append("**LPE CVE 후보:**")
+        for c in cands:
+            lines.append(f"- {c}")
+    return "\n".join(lines)
+
+
 def _cloud_block(report) -> str:
     """자동 준비된 AWS/S3 열거(버킷 후보+점검)를 라이트업에 삽입(생성 전용)."""
     checks = getattr(report, "cloud_checks", None)
@@ -326,8 +344,7 @@ def generate_writeup(report, machine_name: str = "<머신명>",
 - user.txt: {_flag_line(report, "user", username)}
 
 ## 6. 권한 상승 (Privilege Escalation)
-
-- _(수동 분석: SUID/sudo, 커널, 서비스 오구성, AD 공격경로 등)_
+{_privesc_block(report)}
 - root.txt: {_flag_line(report, "root", "관리자 권한 획득 후")}
 
 ## 7. 블루팀 탐지 지표 (Blue Team)
@@ -476,7 +493,7 @@ def generate_tistory(report, machine_name: str = "<머신명>",
 {_shell_cmd_map(os_class)}
 
 ## 10. 침투 / 권한 상승 (수동)
-{(chr(10).join('- ' + s for s in report.manual_suggestions) or "- _(수동 분석 필요)_") + _revshell_block(report) + _cloud_block(report)}
+{(chr(10).join('- ' + s for s in report.manual_suggestions) or "- _(수동 분석 필요)_") + _revshell_block(report) + _cloud_block(report) + _privesc_block(report)}
 
 ## 11. 블루팀 탐지 지표 (SIEM / IDS / 패킷)
 {_blue_team(report.host)}

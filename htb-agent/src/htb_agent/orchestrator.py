@@ -83,6 +83,9 @@ class OrchestrationReport:
     # 자동 준비된 AWS/S3 열거(호스트명/도메인 확보 시 — 생성만, AWS 는 범위 밖·실행 안 함)
     cloud_candidates: list = field(default_factory=list)   # list[str] 버킷 후보
     cloud_checks: list = field(default_factory=list)       # list[cloud.CloudCheck]
+    # 자동 준비된 권한상승 플레이북(OS 식별 시 — 생성만, 대상 셸에서 사용자 실행)
+    privesc_steps: list = field(default_factory=list)      # list[privesc.PrivescStep]
+    privesc_cve_candidates: list = field(default_factory=list)  # list[str]
     message: str = ""
 
     @property
@@ -181,6 +184,15 @@ class OrchestrationReport:
                     + (" …" if len(self.cloud_candidates) > 12 else "")))
             for c in self.cloud_checks:
                 lines.append("  " + ui.accent2(f"[{c.name}] ") + c.command)
+        if self.privesc_steps:
+            lines.append("\n" + ui.heading(
+                "권한 상승 플레이북 (자동 준비 — 대상 셸에서 실행 · 생성만)", "⬆️"))
+            for s in self.privesc_steps:
+                lines.append("  " + ui.accent2(f"[{s.category}] ") + s.command)
+                if s.note:
+                    lines.append(ui.dim("      " + s.note))
+            for c in self.privesc_cve_candidates:
+                lines.append("  " + ui.mark_warn(ui.warn("LPE 후보: ") + c))
         if self.manual_suggestions:
             lines.append("\n" + ui.heading(
                 "수동 제안 (크리덴셜 등 필요 — 승인/입력 후 실행)", "✋"))
@@ -328,6 +340,11 @@ class Orchestrator:
         # 버킷 후보·비인증 점검을 자동 생성. AWS 엔드포인트는 타겟 범위 밖이라
         # 실행하지 않고 준비만 한다(리버스쉘과 동일한 '생성 전용' 안전 경계).
         self._prepare_cloud(report)
+
+        # ── PHASE 3.96: 권한상승 플레이북 자동 준비 (OS 식별 시) ──
+        # OS 에 맞는 포스트-익스플로잇 권한상승 열거·점검 체크리스트를 자동 생성.
+        # 대상 셸 안에서 실행하는 명령이라 에이전트는 준비만(생성 전용) 한다.
+        self._prepare_privesc(report, prof)
 
         # ── PHASE 4: REPORT ──
         report.status = "done"
@@ -516,6 +533,26 @@ class Orchestrator:
                              checks=len(prep.checks))
         except Exception as e:   # noqa: BLE001 — 준비 실패가 전체를 깨지 않도록
             self.audit.event("cloud_error", error=str(e))
+
+    def _prepare_privesc(self, report: OrchestrationReport, prof: ProfileResult) -> None:
+        """OS 식별 결과로 권한상승 플레이북을 자동 준비한다. 생성 전용 — 획득한
+        대상 셸에서 사용자가 직접 실행한다(에이전트는 셸 없음). OS 미상이면 생략."""
+        os_class = prof.os_class.value if prof else "unknown"
+        if os_class not in ("linux", "windows", "windows_ad"):
+            return
+        attacker_ip = ""
+        if self.guard.attacker_ips:
+            attacker_ip = str(list(self.guard.attacker_ips)[0])
+        try:
+            from . import privesc
+            plan = privesc.build(os_class, attacker_ip, report.detected_cve)
+            report.privesc_steps = plan.steps
+            report.privesc_cve_candidates = plan.cve_candidates
+            self.audit.event("privesc_prepared", os=os_class,
+                             steps=len(plan.steps),
+                             cve_candidates=len(plan.cve_candidates))
+        except Exception as e:   # noqa: BLE001 — 준비 실패가 전체를 깨지 않도록
+            self.audit.event("privesc_error", error=str(e))
 
     def _attempt(self, report: OrchestrationReport, findings: list[EnumFinding],
                  cmd: str, phase: str = "enum") -> None:
