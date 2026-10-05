@@ -147,5 +147,42 @@ rep = orc.run()
 check("JSON 명령 실행됨", any("curl" in f.command for f in rep.llm_findings))
 check("근거가 비고에 반영", any("근거:" in (f.note or "") for f in rep.llm_findings))
 
+print("\n=== B6 적응형 tier: 빈 결과 → 강력 모델 승격 재시도 ===")
+from htb_agent.llm.base import Tier
+# cheap/standard 는 빈 응답, strong 에서만 명령 반환 → 승격되어야 명령이 나옴
+def tier_gated(system, user, tier):
+    if "분석가" in system:
+        return "가설: x\n공격경로: y\n다음집중: z\n확신도: 중"
+    return "curl -i http://{t}/" if tier == Tier.STRONG else ""
+orc = Orchestrator(guard(), runner(), EMPTY_KB, auto_approve_in_scope,
+                   llm_router=LLMRouter(FakeProvider(tier_gated)), max_rounds=1,
+                   max_sweeps=1, phases=[("enum", "열거")], is_tool_available=lambda b: True)
+rep = orc.run()
+check("빈 결과 → strong 승격으로 명령 확보", any("curl" in f.command for f in rep.llm_findings))
+
+print("\n=== B6 적응형 tier: 저확신 → 처음부터 강력 ===")
+# 분석가가 확신도 '하' → 첫 호출부터 strong. strong 일 때만 명령 반환해 확인
+calls = {"standard": 0, "strong": 0}
+def conf_gated(system, user, tier):
+    if "분석가" in system:
+        return "가설: x\n공격경로: y\n다음집중: z\n확신도: 하(근거 약함)"
+    calls[tier.value if hasattr(tier, "value") else str(tier)] = \
+        calls.get(tier.value if hasattr(tier, "value") else str(tier), 0) + 1
+    return "nmap -sV {t}" if tier == Tier.STRONG else ""
+orc = Orchestrator(guard(), runner(), EMPTY_KB, auto_approve_in_scope,
+                   llm_router=LLMRouter(FakeProvider(conf_gated)), max_rounds=1,
+                   max_sweeps=1, phases=[("enum", "열거")], is_tool_available=lambda b: True)
+rep = orc.run()
+check("저확신 → strong 명령 확보", any("nmap" in f.command for f in rep.llm_findings))
+
+print("\n=== B6 _low_confidence 판정 ===")
+from htb_agent.orchestrator import OrchestrationReport
+r_lo = OrchestrationReport(target="t"); r_lo.analysis = "확신도: 하 — 근거 부족"
+r_mid = OrchestrationReport(target="t"); r_mid.analysis = "확신도: 중"
+r_none = OrchestrationReport(target="t")
+check("확신도 하 → True", Orchestrator._low_confidence(r_lo))
+check("확신도 중 → False", not Orchestrator._low_confidence(r_mid))
+check("분석 없음 → False", not Orchestrator._low_confidence(r_none))
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
