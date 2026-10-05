@@ -39,6 +39,8 @@ print("\n=== match_sources ===")
 check("정확 일치", learn.ReferenceLearner().match_sources("burp"))
 check("부분 일치(kerberos→kerberos/kerberoasting)", len(learn.ReferenceLearner().match_sources("kerberos")) >= 1)
 check("미지원 주제 빈 결과", learn.ReferenceLearner().match_sources("nonsense-topic-xyz") == [])
+check("빈 주제 → 전체매칭 방지", learn.ReferenceLearner().match_sources("") == [])
+check("공백 주제 → 전체매칭 방지", learn.ReferenceLearner().match_sources("   ") == [])
 
 print("\n=== learn (주입 fetcher, 온라인 모사) ===")
 CANNED = ("<html><body><h1>Kerberoasting</h1><p>Adversaries may abuse a valid "
