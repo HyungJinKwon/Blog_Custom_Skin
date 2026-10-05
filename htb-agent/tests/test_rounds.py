@@ -113,5 +113,39 @@ orc = Orchestrator(guard(), runner(), EMPTY_KB, auto_approve_in_scope,
 rep = orc.run()
 check("LLM 없음 → analysis 빈 문자열", rep.analysis == "")
 
+print("\n=== B4 구조화(JSON) 출력 파싱 ===")
+r = LLMRouter(FakeProvider(""))
+# JSON 배열(객체) — command/rationale/expected_signal
+js = r._parse('[{"command":"nmap -sV {t}","rationale":"버전 식별","expected_signal":"서비스 배너"},'
+              '{"command":"curl -i http://{t}/","rationale":"헤더 확인"}]', "10.0.0.1", 5)
+check("JSON 객체 배열 파싱", js == ["nmap -sV 10.0.0.1", "curl -i http://10.0.0.1/"])
+check("근거 메타 수집", r.last_meta.get("nmap -sV 10.0.0.1", {}).get("rationale") == "버전 식별")
+check("기대신호 메타 수집", r.last_meta.get("nmap -sV 10.0.0.1", {}).get("expected") == "서비스 배너")
+# JSON 문자열 배열
+js2 = r._parse('["id", "whoami"]', "t", 5)
+check("JSON 문자열 배열 파싱", js2 == ["id", "whoami"])
+# ```json 펜스 허용
+js3 = r._parse('```json\n[{"command":"ls -la"}]\n```', "t", 5)
+check("코드펜스 JSON 파싱", js3 == ["ls -la"])
+# 플레이스홀더 남으면 제외
+js4 = r._parse('[{"command":"nxc smb {t} -u {user} -p {pass}"}]', "t", 5)
+check("JSON 내 플레이스홀더 명령 제외", js4 == [])
+# 라인 폴백(JSON 아님)
+lf = r._parse("nmap -sC {t}\ncurl http://{t}/", "9.9.9.9", 5)
+check("비-JSON 라인 폴백", lf == ["nmap -sC 9.9.9.9", "curl http://9.9.9.9/"])
+check("폴백 시 메타 비움", r.last_meta == {})
+
+print("\n=== B4 근거가 finding 비고에 반영 ===")
+def json_prov(system, user, tier):
+    if "분석가" in system:
+        return "가설: x\n공격경로: y\n다음집중: z\n확신도: 중"
+    return '[{"command":"curl -i http://{t}/","rationale":"응답 헤더로 기술스택 식별"}]'
+orc = Orchestrator(guard(), runner(), EMPTY_KB, auto_approve_in_scope,
+                   llm_router=LLMRouter(FakeProvider(json_prov)), max_rounds=1,
+                   max_sweeps=1, phases=[("enum", "열거")], is_tool_available=lambda b: True)
+rep = orc.run()
+check("JSON 명령 실행됨", any("curl" in f.command for f in rep.llm_findings))
+check("근거가 비고에 반영", any("근거:" in (f.note or "") for f in rep.llm_findings))
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

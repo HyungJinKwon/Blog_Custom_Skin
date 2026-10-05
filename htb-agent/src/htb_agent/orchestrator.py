@@ -544,6 +544,7 @@ class Orchestrator:
         except Exception as e:  # LLM 백엔드 오류는 전체를 깨지 않는다
             report.manual_suggestions.append(f"(LLM 제안 실패: {e})")
             return 0
+        meta = getattr(self.llm_router, "last_meta", {}) or {}
         attempted = 0
         for cmd in cmds:
             if cmd in seen:
@@ -552,6 +553,11 @@ class Orchestrator:
             if attempted >= budget:
                 break
             self._attempt(report, report.llm_findings, cmd, phase)
+            # B4: 구조화 출력의 근거(rationale)를 finding 비고에 덧붙임
+            rat = (meta.get(cmd) or {}).get("rationale", "")
+            if rat and report.llm_findings:
+                f = report.llm_findings[-1]
+                f.note = (f.note + " · " if f.note else "") + "근거: " + rat
             attempted += 1
         return attempted
 
