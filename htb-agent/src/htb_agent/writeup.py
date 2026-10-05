@@ -211,6 +211,15 @@ def _privesc_block(report) -> str:
     return "\n".join(lines)
 
 
+def _analysis_block(report) -> str:
+    """LLM 분석가(B3) 판단을 라이트업에 삽입(가설·경로·집중·확신도)."""
+    text = getattr(report, "analysis", "")
+    if not text:
+        return ""
+    body = "\n".join("> " + ln for ln in text.splitlines() if ln.strip())
+    return "\n**분석 (LLM — 가설·공격경로·집중):**\n\n" + body + "\n"
+
+
 def _cloud_block(report) -> str:
     """자동 준비된 AWS/S3 열거(버킷 후보+점검)를 라이트업에 삽입(생성 전용)."""
     checks = getattr(report, "cloud_checks", None)
@@ -339,6 +348,7 @@ def generate_writeup(report, machine_name: str = "<머신명>",
 ## 2. 열거 (Enumeration)
 
 {_enum_section(report)}
+{_analysis_block(report)}
 
 ## 3. 취약점 분석 (Vulnerability Analysis)
 
@@ -488,6 +498,7 @@ def generate_tistory(report, machine_name: str = "<머신명>",
 
 ## 4. 공격 시나리오 요약
 {_scenario_table(report)}
+{_analysis_block(report)}
 
 ## 5. 정찰 명령 해설 (바이너리 / 옵션 / 파라미터)
 {_cmd_explanations(report)}
