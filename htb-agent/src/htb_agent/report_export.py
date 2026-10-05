@@ -71,6 +71,7 @@ def to_dict(report) -> dict:
             "confidence": prof.confidence if prof else 0,
             "is_domain_controller": prof.is_domain_controller if prof else False,
         },
+        "world": report.world.to_dict() if getattr(report, "world", None) else None,
         "open_ports": host.open_ports if host else [],
         "ports": [_port_dict(p) for p in host.ports] if host else [],
         "enum_findings": [_finding_dict(f) for f in report.enum_findings],

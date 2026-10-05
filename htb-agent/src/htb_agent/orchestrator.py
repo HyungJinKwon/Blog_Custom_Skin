@@ -36,6 +36,7 @@ from .llm.router import LLMRouter
 from .vuln import VulnKB, VulnMatch, extract_vuln_ids
 from .flag import FlagHit, scan as scan_flags
 from .crack import scan_hashes as crack_scan
+from .world import WorldModel
 from .variants import expand_variants
 from .state import SessionState, StateStore, host_to_dict, host_from_dict
 from .tools.runner import Runner
@@ -68,6 +69,7 @@ class OrchestrationReport:
     recon: ReconReport | None = None
     host: NmapHost | None = None
     profile: ProfileResult | None = None
+    world: "object | None" = None     # world.WorldModel — 구조화 상태(단일 상태원)
     enum_findings: list[EnumFinding] = field(default_factory=list)
     llm_findings: list[EnumFinding] = field(default_factory=list)
     manual_suggestions: list[str] = field(default_factory=list)
@@ -112,6 +114,9 @@ class OrchestrationReport:
         if self.profile:
             lines.append("\n" + ui.heading("PROFILE", "🧭"))
             lines.append(self.profile.summary())
+        if self.world is not None:
+            lines.append("\n" + ui.heading("STATE  (월드 모델 — 구조화 상태)", "🗺️"))
+            lines.append(self.world.summary())
         # 모의해킹 단계 순서대로 그룹화 출력
         all_findings = self.enum_findings + self.llm_findings
         for key, label in PENTEST_PHASES:
@@ -268,6 +273,14 @@ class Orchestrator:
             raise ScopeViolation("타겟 미바인딩 — bind_target() 먼저 호출하세요.")
         target = str(self.guard.bound_target or self.guard.bound_host)
         report = OrchestrationReport(target=target, flag_kind=self.flag_kind)
+        # 구조화 상태(월드 모델) — 파이프라인·LLM·리포트의 단일 상태원
+        self.world = WorldModel(target=target,
+                                hostname=(self.hosts_map or {}).get(target, ""))
+        report.world = self.world
+        if self.vault is not None:
+            for c in self.vault.creds:
+                sec = c.password or c.nt_hash or ""
+                self.world.add_cred(f"{c.username}:{sec}" if sec else c.username)
         self._found_hashes: list[str] = []   # 실행 원시출력에서 수집한 크래킹 대상 해시
         self.audit.event("session_start", target=target, resume=self.resume,
                          ranges=[str(n) for n in self.guard.allowed_target_cidrs])
@@ -301,6 +314,7 @@ class Orchestrator:
         # ── PHASE 2: PROFILE ──
         prof = profile_from_nmap(host)
         report.profile = prof
+        self.world.set_profile(host, prof)   # 호스트/서비스/OS 상태 반영
         self.audit.event("profile", os=prof.os_class.value, confidence=prof.confidence,
                          is_dc=prof.is_domain_controller)
 
@@ -462,6 +476,8 @@ class Orchestrator:
         context = {
             "phase": _PHASE_LABEL.get(phase, phase),
             "profile": prof.summary(),
+            # 구조화 상태(월드 모델) — 원시 로그 대신 정돈된 사실을 LLM 에 제공
+            "state": self.world.context_lines() if self.world is not None else [],
             "open_ports": [str(p) for p in host.ports if p.state == "open"],
             "kb": [f"{r.rule_name}: {', '.join(r.suggestions)}" for r in recs[:5]],
             "notes": self.kb.notes[:3],
@@ -509,6 +525,13 @@ class Orchestrator:
         report.detected_cwe = hits.cwes
         if self.vuln_kb is not None:
             report.vuln_matches = self.vuln_kb.match(banners, target)
+        # 월드 모델에 확인 취약점 반영(단일 상태원)
+        if self.world is not None:
+            for cve in report.detected_cve + report.detected_cwe:
+                self.world.add_vuln(cve)
+            for m in report.vuln_matches:
+                ids = " ".join(m.cve + m.cwe)
+                self.world.add_vuln(f"{m.name}" + (f" ({ids})" if ids else ""))
 
     def _prepare_revshells(self, report: OrchestrationReport) -> None:
         """공격자 IP(VPN tun0 등)가 확보되면 리버스쉘 페이로드를 자동 생성해
@@ -649,8 +672,12 @@ class Orchestrator:
                 report.flags.append(hit)
                 finding.note = (finding.note + " " if finding.note else "") + f"🚩 {hit.kind} flag"
                 self.audit.event("flag_found", kind=hit.kind, value=hit.value, cmd=cmd)
+                if self.world is not None:
+                    self.world.add_flag(hit.kind, hit.value)
         # 해시 스캔 — 원시출력(요약 전)에서 크래킹 대상 해시 수집(크래킹 자동 준비용)
         for hv in crack_scan(out.stdout):
             if hv not in self._found_hashes:
                 self._found_hashes.append(hv)
                 self.audit.event("hash_found", cmd=cmd, hash=hv[:24])
+                if self.world is not None:
+                    self.world.add_loot(f"해시: {hv[:40]}{'…' if len(hv) > 40 else ''}")

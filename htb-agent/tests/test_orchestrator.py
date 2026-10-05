@@ -156,6 +156,24 @@ orc = Orchestrator(guard(), r, kb, auto_approve_in_scope, is_tool_available=ALL_
 rep = orc.run()
 check("해시 없음 → 크래킹 작업 없음", rep.crack_jobs == [])
 
+print("\n=== 월드 모델(구조화 상태) 채워짐 ===")
+r = FakeRunner(responder(LINUX_WEB))
+orc = Orchestrator(guard(), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS)
+rep = orc.run()
+check("report.world 존재", rep.world is not None)
+check("서비스 상태 채워짐", len(rep.world.services) >= 2)
+check("OS 상태 반영", rep.world.os_class == "linux")
+check("summary 에 STATE 노출", "월드 모델" in rep.summary())
+
+print("\n=== 크리덴셜 → 권한레벨 credentialed ===")
+from htb_agent.creds import CredentialVault, Credential
+vault = CredentialVault([Credential(username="admin", password="pass")])
+r = FakeRunner(responder(LINUX_WEB))
+orc = Orchestrator(guard(), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS, vault=vault)
+rep = orc.run()
+check("크리덴셜 상태 반영", len(rep.world.creds) >= 1)
+check("권한레벨 credentialed 이상", rep.world.has_access("credentialed"))
+
 print("\n=== RECON 실패 → 에스컬레이션(enum 진입 안 함) ===")
 r = FakeRunner(responder(DOWN))
 orc = Orchestrator(guard("10.129.1.9"), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS)
