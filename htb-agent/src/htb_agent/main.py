@@ -298,6 +298,11 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     from .creds import CredentialVault, Credential
     store = None if args.no_save else StateStore(state_dir)
     vault = CredentialVault.from_cli(args.creds)
+    # 실행 결과 기반 변형 학습(세션 넘어 누적) — <state-dir>/variant_stats.json
+    from .variant_stats import VariantStats
+    import os as _osvs
+    vstats_path = _osvs.path.join(state_dir, "variant_stats.json")
+    variant_stats = VariantStats() if args.no_save else VariantStats.load(vstats_path)
     if args.resume and store and store.exists(args.target):
         prior = store.load(args.target)
         if prior:
@@ -350,8 +355,11 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 platform_name=profile.name,
                                 category=(args.category or ""),
                                 revshell_port=args.lport,
+                                variant_stats=variant_stats,
                                 state_store=store, resume=args.resume, audit=audit)
     report = orchestrator.run()
+    if not args.no_save:
+        variant_stats.save(vstats_path)   # 학습 결과 영속화(다음 실행에 반영)
     print("\n" + report.summary())
     if llm_router is not None and llm_router.calls:
         print("\n" + llm_router.cost_summary())
