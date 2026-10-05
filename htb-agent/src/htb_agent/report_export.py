@@ -84,6 +84,12 @@ def to_dict(report) -> dict:
         "user_flag": report.user_flag,
         "root_flag": report.root_flag,
         "manual_suggestions": list(report.manual_suggestions),
+        "revshell": {
+            "lhost": getattr(report, "revshell_lhost", ""),
+            "lport": getattr(report, "revshell_lport", 0),
+            "payloads": [{"name": s.name, "payload": s.payload}
+                         for s in getattr(report, "revshells", [])],
+        },
     }
 
 
@@ -213,6 +219,17 @@ def _html_list(items) -> str:
     return "<ul>" + "".join(f"<li><code>{_esc(s)}</code></li>" for s in items) + "</ul>"
 
 
+def _html_revshell(report) -> str:
+    shells = getattr(report, "revshells", None)
+    if not shells:
+        return "<p class='muted'>공격자 IP 미확보 — 생략</p>"
+    head = (f"<p class='muted'>LHOST={_esc(report.revshell_lhost)} "
+            f"LPORT={report.revshell_lport} · 생성만, 권한 확인 대상에서 직접 실행</p>")
+    rows = "".join(
+        f"<li><b>{_esc(s.name)}</b>: <code>{_esc(s.payload)}</code></li>" for s in shells)
+    return head + "<ul>" + rows + "</ul>"
+
+
 def to_html(report, machine_name: str = "") -> str:
     prof = report.profile
     os_line = f"{prof.os_class.value} ({prof.tag}) · 확신도 {prof.confidence}%" if prof else "-"
@@ -243,6 +260,9 @@ def to_html(report, machine_name: str = "") -> str:
 
 <h2>플래그</h2>
 {_html_flags(report)}
+
+<h2>리버스쉘 (자동 준비 · 생성만, 실행 안 함)</h2>
+{_html_revshell(report)}
 
 <h2>수동 제안 (승인/입력 후 실행)</h2>
 {_html_list(report.manual_suggestions)}

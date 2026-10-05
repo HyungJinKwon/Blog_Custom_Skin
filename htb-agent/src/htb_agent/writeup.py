@@ -165,6 +165,20 @@ def _port_table(host) -> str:
     return "\n".join(rows)
 
 
+def _revshell_block(report) -> str:
+    """자동 준비된 리버스쉘 페이로드를 라이트업 침투 섹션에 삽입(생성 전용)."""
+    shells = getattr(report, "revshells", None)
+    if not shells:
+        return ""
+    from .revshell import listener_hints
+    lines = ["", f"**리버스쉘 (자동 준비 · LHOST={report.revshell_lhost} "
+             f"LPORT={report.revshell_lport} · 생성만, 권한 확인 대상에서 직접 실행):**", ""]
+    lines.append(f"- 리스너: `{listener_hints(report.revshell_lport)[0]}`")
+    for s in shells:
+        lines.append(f"- {s.name}: `{s.payload}`")
+    return "\n".join(lines)
+
+
 def _collect_commands(report) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     if report.recon:
@@ -248,6 +262,7 @@ def generate_writeup(report, machine_name: str = "<머신명>",
     for s in report.manual_suggestions:
         foothold.append(f"- {s}")
     foothold_block = "\n".join(foothold) or "- _(수동 분석 필요)_"
+    foothold_block += _revshell_block(report)
 
     md = f"""# {machine_name} — HTB 라이트업
 
@@ -445,7 +460,7 @@ def generate_tistory(report, machine_name: str = "<머신명>",
 {_shell_cmd_map(os_class)}
 
 ## 10. 침투 / 권한 상승 (수동)
-{chr(10).join('- ' + s for s in report.manual_suggestions) or "- _(수동 분석 필요)_"}
+{(chr(10).join('- ' + s for s in report.manual_suggestions) or "- _(수동 분석 필요)_") + _revshell_block(report)}
 
 ## 11. 블루팀 탐지 지표 (SIEM / IDS / 패킷)
 {_blue_team(report.host)}
