@@ -70,6 +70,7 @@ class OrchestrationReport:
     host: NmapHost | None = None
     profile: ProfileResult | None = None
     world: "object | None" = None     # world.WorldModel — 구조화 상태(단일 상태원)
+    analysis: str = ""                # LLM 분석가(B3) — 가설·공격경로·다음집중·확신도
     enum_findings: list[EnumFinding] = field(default_factory=list)
     llm_findings: list[EnumFinding] = field(default_factory=list)
     manual_suggestions: list[str] = field(default_factory=list)
@@ -117,6 +118,11 @@ class OrchestrationReport:
         if self.world is not None:
             lines.append("\n" + ui.heading("STATE  (월드 모델 — 구조화 상태)", "🗺️"))
             lines.append(self.world.summary())
+        if self.analysis:
+            lines.append("\n" + ui.heading("ANALYSIS  (LLM 분석 — 가설·경로·집중)", "🧠"))
+            for ln in self.analysis.splitlines():
+                if ln.strip():
+                    lines.append("  " + ui.dim(ln.strip()))
         # 모의해킹 단계 순서대로 그룹화 출력
         all_findings = self.enum_findings + self.llm_findings
         for key, label in PENTEST_PHASES:
@@ -330,6 +336,9 @@ class Orchestrator:
         sweeps_run = 0
         for sweep in range(self.max_sweeps):
             before_fp = self._world_fingerprint(report)
+            # B3 분석가: 스윕 시작 시 현재 상태를 읽고 가설·경로·집중을 산출해
+            # 이후 명령 생성(_llm_round)을 유도한다. 매 스윕 상태가 자랐을 때만 갱신.
+            self._run_analyst(report, prof, host, target)
             for key, label in self.phases:
                 phase_before = len(report.enum_findings) + len(report.llm_findings)
                 for _rnd in range(self.max_rounds):
@@ -476,6 +485,30 @@ class Orchestrator:
         cmd, auto = self.kb.format_suggestion(tmpl, target)
         return [(cmd, auto)]
 
+    def _run_analyst(self, report: OrchestrationReport, prof: ProfileResult,
+                     host: NmapHost, target: str) -> None:
+        """B3 분석가 — 상태를 읽고 가설·공격경로·다음집중·확신도를 산출해
+        report.analysis 에 저장(이후 명령 생성 컨텍스트로 주입). LLM 없으면 no-op."""
+        if self.llm_router is None or not hasattr(self.llm_router, "analyze"):
+            return
+        prior = [f"{f.command} => {f.output}"
+                 for f in (report.enum_findings + report.llm_findings) if f.output]
+        context = {
+            "platform": self.platform_name,
+            "profile": prof.summary() if prof else "",
+            "open_ports": [str(p) for p in host.ports if p.state == "open"],
+            "state": self.world.context_lines() if self.world is not None else [],
+            "findings": prior[-10:],
+        }
+        try:
+            text = self.llm_router.analyze(context, target)
+        except Exception as e:   # 분석 실패는 전체를 깨지 않는다
+            self.audit.event("analyst_error", error=str(e))
+            return
+        if text:
+            report.analysis = text
+            self.audit.event("analyst", chars=len(text))
+
     def _llm_round(self, report: OrchestrationReport, host: NmapHost,
                    prof: ProfileResult, target: str,
                    seen: set[str], budget: int, phase: str = "enum") -> int:
@@ -491,6 +524,8 @@ class Orchestrator:
             "profile": prof.summary(),
             # 구조화 상태(월드 모델) — 원시 로그 대신 정돈된 사실을 LLM 에 제공
             "state": self.world.context_lines() if self.world is not None else [],
+            # B3 분석가의 판단 — 명령 생성을 유도(가설·경로·집중)
+            "analysis": report.analysis,
             "open_ports": [str(p) for p in host.ports if p.state == "open"],
             "kb": [f"{r.rule_name}: {', '.join(r.suggestions)}" for r in recs[:5]],
             "notes": self.kb.notes[:3],

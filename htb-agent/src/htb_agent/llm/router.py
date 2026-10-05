@@ -53,6 +53,30 @@ _CAT_LABELS = {
 }
 
 
+# 분석가(Analyst) 역할 — 명령 생성과 분리된 '추론' 담당(B3). 관측·상태를 읽고
+# 가설·유력 공격경로·다음 집중대상·확신도를 낸다. 이 분석이 명령 생성을 유도한다.
+_SYSTEM_ANALYST = """\
+당신은 권한이 확인된 {platform} 대상의 침투 테스트/CTF 분석가다. 주어진 '관측
+결과'와 '현재 상태(월드 모델)'에만 근거해 상황을 분석한다. 명령을 나열하지 말고,
+공격자 관점의 '판단'을 간결하게 제시하라.
+
+규칙(엄수):
+- 특정 문제/머신의 공개 라이트업을 인용하지 말고, 주어진 관측에서만 추론하라.
+- 확정 사실과 추정을 구분하라(〔확인〕/〔추정〕).
+- 과장 금지 — 근거가 약하면 약하다고 하라.
+
+다음 4개 항목으로만, 각 1~3줄로 간결히 답하라(항목 제목 유지):
+가설: (관측을 설명하는 가장 유력한 1~2개 가설)
+공격경로: (초기침투→권한상승으로 이어질 유력 경로)
+다음집중: (지금 가장 가치 높은 열거/검증 대상)
+확신도: (상/중/하 + 한 줄 근거)"""
+
+
+def build_analyst_prompt(context: dict) -> str:
+    platform = context.get("platform") or "Hack The Box"
+    return _SYSTEM_ANALYST.replace("{platform}", platform)
+
+
 def build_system_prompt(context: dict, max_items: int) -> str:
     """관측 컨텍스트(플랫폼/카테고리)에 맞춰 시스템 프롬프트를 조립."""
     platform = context.get("platform") or "Hack The Box"
@@ -106,6 +130,36 @@ class LLMRouter:
                                          resp.cache_creation_tokens)
         return self._parse(resp.text, target, limit)
 
+    def analyze(self, context: dict, target: str, tier: Tier | None = None) -> str:
+        """관측·상태를 읽고 상황 분석(가설·경로·집중·확신도)을 반환(B3 분석가).
+        명령 생성과 분리된 추론 단계 — 결과는 후속 명령 생성 컨텍스트로 주입된다."""
+        system = build_analyst_prompt(context)
+        user = self._analyst_user_prompt(context, target)
+        resp = self.provider.complete(system, user, tier or self.default_tier)
+        self.calls += 1
+        self.total_prompt += resp.prompt_tokens
+        self.total_completion += resp.completion_tokens
+        self.total_cache_read += resp.cache_read_tokens
+        self.total_cost += estimate_cost(resp.model, resp.prompt_tokens,
+                                         resp.completion_tokens,
+                                         resp.cache_read_tokens,
+                                         resp.cache_creation_tokens)
+        return resp.text.strip()
+
+    @staticmethod
+    def _analyst_user_prompt(context: dict, target: str) -> str:
+        lines = [f"타겟: {target}"]
+        if context.get("state"):
+            lines.append("현재 상태(월드 모델):\n  " + "\n  ".join(context["state"]))
+        if context.get("profile"):
+            lines.append(f"OS 판정:\n{context['profile']}")
+        if context.get("open_ports"):
+            lines.append("열린 포트/서비스:\n  " + "\n  ".join(context["open_ports"]))
+        if context.get("findings"):
+            lines.append("관측(명령→결과):\n  " + "\n  ".join(context["findings"]))
+        lines.append("\n위 상황을 분석하라(4개 항목, 간결히).")
+        return "\n\n".join(lines)
+
     @staticmethod
     def _user_prompt(context: dict, target: str) -> str:
         lines = [f"타겟: {target}"]
@@ -115,6 +169,8 @@ class LLMRouter:
             lines.append(f"OS 판정:\n{context['profile']}")
         if context.get("state"):
             lines.append("현재 상태(월드 모델):\n  " + "\n  ".join(context["state"]))
+        if context.get("analysis"):
+            lines.append("분석가 판단(이 판단을 반영해 명령을 고르라):\n" + context["analysis"])
         if context.get("open_ports"):
             lines.append("열린 포트/서비스:\n  " + "\n  ".join(context["open_ports"]))
         if context.get("findings"):
@@ -204,6 +260,20 @@ class HybridRouter:
             if out:
                 return out
         return []
+
+    def analyze(self, context: dict, target: str, tier: Tier | None = None) -> str:
+        """분석(B3)은 강력 모델 우선(추론 품질), 실패 시 로컬 폴백."""
+        primary, secondary = self._route(Tier.STRONG)
+        for router in (primary, secondary):
+            if router is None:
+                continue
+            try:
+                out = router.analyze(context, target, tier or Tier.STRONG)
+            except Exception:
+                out = ""
+            if out:
+                return out
+        return ""
 
     def cost_summary(self) -> str:
         parts = []

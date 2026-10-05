@@ -29,8 +29,11 @@ def runner():
 # KB 최소화: 빈 KB 로 LLM 효과만 관찰
 EMPTY_KB = KnowledgeBase(rules=[], notes=[])
 
-# 적응형 FakeProvider: 이전 관측(findings)에 'adminpanel' 명령 결과가 보이면 다른 명령 제안
+# 적응형 FakeProvider: 이전 관측(findings)에 gobuster 결과가 보이면 다른 명령 제안.
+# B3 분석가 호출(system 에 '분석가')은 명령이 아닌 중립 분석을 반환해 명령 감지를 오염시키지 않음.
 def adaptive(system, user, tier):
+    if "분석가" in system:          # B3 분석가 호출 — 중립 분석(명령어 토큰 미포함)
+        return "가설: 웹 서비스 중심\n공격경로: 웹→초기침투\n다음집중: 디렉토리 열거\n확신도: 중"
     if "nuclei" in user:            # 라운드3 이상 — 더 제안 안 함(종료 유도)
         return "nuclei -u http://{t}"
     if "gobuster" in user:          # 라운드2: 이전에 gobuster 가 돌았음 → 새 명령
@@ -87,6 +90,28 @@ orc = Orchestrator(guard(), runner(), EMPTY_KB, auto_approve_in_scope,
                    llm_router=multi, max_rounds=5, max_llm=2, is_tool_available=lambda b: True)
 rep = orc.run()
 check("LLM 총 상한 2 준수", len(rep.llm_findings) <= 2)
+
+print("\n=== B3 분석가: report.analysis 산출 + 명령 생성에 주입 ===")
+# 분석가 호출(system '분석가')엔 분석을, 명령 호출엔 analysis 반영 여부로 분기
+def analyst_aware(system, user, tier):
+    if "분석가" in system:
+        return "가설: SSH 약자격 의심\n공격경로: SSH→user\n다음집중: 자격 추측\n확신도: 중"
+    # 명령 생성: 분석가 판단이 user 프롬프트에 주입됐는지 확인되면 특정 명령
+    if "SSH 약자격" in user:
+        return "hydra -l root ssh://{t}"
+    return "curl -i http://{t}/"
+orc = Orchestrator(guard(), runner(), EMPTY_KB, auto_approve_in_scope,
+                   llm_router=LLMRouter(FakeProvider(analyst_aware)), max_rounds=1,
+                   max_sweeps=1, phases=[("enum", "열거")], is_tool_available=lambda b: True)
+rep = orc.run()
+check("report.analysis 채워짐", "가설:" in rep.analysis)
+check("분석가 판단이 명령 생성에 주입됨", any("hydra" in f.command for f in rep.llm_findings))
+
+print("\n=== LLM 없으면 분석 생략(비파괴) ===")
+orc = Orchestrator(guard(), runner(), EMPTY_KB, auto_approve_in_scope,
+                   is_tool_available=lambda b: True)
+rep = orc.run()
+check("LLM 없음 → analysis 빈 문자열", rep.analysis == "")
 
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
