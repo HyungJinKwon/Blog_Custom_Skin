@@ -97,6 +97,7 @@ LLM 이 제안한 명령도 '신뢰하지 않는 데이터'로 간주되어 이 
 | | `web_search.py` | **인터넷 검색 학습**(--web-learn): 미해석 공백을 웹 검색으로 학습→KB 반영. **HTB 라이트업 가드**(공식·제3자 전부 차단, 사용자 ingest 만 예외) · 일반 기법/문서 허용 · **교차검증**(신뢰등급 A/B 또는 독립 출처 상호확인, 보안 관련성 게이트) · 검색 차단 시 Wikipedia API 폴백 · 신뢰불가 데이터(노트 저장만) |
 | | `diagnostics.py` | **실패 진단**(사람 보고용): 404/403/401/429·연결거부·타임아웃·DNS·도구부재를 분류해 '대상 응답' vs '환경/도구/네트워크'로 구분. 환경 실패는 경로 포기 근거 아님(오판 방지). 리포트 BLOCKERS 섹션. 자동 재공격 아님 |
 | | `provenance.py` | **플래그 출처 검증**(ctf-abacus류): 플래그를 만든 명령을 실행 트레이스로 분류 — 공략 유래 vs 로컬/지식/불명. 암기·검색·추측과 실제 공략을 구분해 사람에게 보고(점수 변경 없음) |
+| | `repetition.py` | **반복·정체 감지**(AutoPentester류 Repetition Identifier): 실행 트레이스에서 같은 서명 명령·같은 실패 범주 반복·정체를 감지해 리포트 REPETITION 섹션으로 사람에게 보고. 다음 명령 자동 변경 없음(효율·깊이우선함정 완화) |
 | **실행** | `tools/runner.py` | Subprocess(실제) / Fake(테스트) |
 | | `tools/recon.py` | 유한 폴백 포트스캔 |
 | | `tools/registry.py` + `scripts/install_tools.sh` | 도구 목록·가용성 + 일괄 설치 |
@@ -153,7 +154,7 @@ assassin 10.129.1.5 --resume                   # 중단 지점 재개
 ## 7. 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py        # 45 스위트 1065 테스트
+cd htb-agent && python3 tests/run_all.py        # 46 스위트 1078 테스트
 ```
 
 네트워크·도구 없이도 **러너 주입**으로 전 로직 검증하며, 통합 테스트는 `main()` 을
