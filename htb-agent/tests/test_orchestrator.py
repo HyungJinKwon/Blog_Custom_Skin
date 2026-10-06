@@ -250,6 +250,31 @@ check("병렬: 예외 명령은 미실행 표기", any(not f.ran for f in rep2.e
 check("병렬: 예외 유발 enum 명령이 실제 호출됨",
       any(not c.startswith("nmap") for c in rr2.calls))
 
+print("\n=== 자율 지식 획득(learn_gaps) — 관측 기술 자동 학습 ===")
+import os as _os, tempfile as _tmp
+from htb_agent import learn as _learn
+with _tmp.TemporaryDirectory() as _d:
+    _lr = _learn.ReferenceLearner(cache_dir=_os.path.join(_d, "learned"),
+                                  fetch_fn=lambda u: "<p>authoritative reference body</p>",
+                                  enabled=True)
+    _kb2 = KnowledgeBase.load()
+    rgl = Orchestrator(guard(), FakeRunner(responder(LINUX_WEB)), _kb2,
+                       auto_approve_in_scope, is_tool_available=ALL_TOOLS,
+                       learner=_lr, learn_gaps=True, max_gap_learn=6).run()
+    check("learn_gaps: done 유지", rgl.status == "done")
+    # OpenSSH/Apache → ssh/exploit-public-app 로 해석·학습 기록
+    check("관측 기술 자동 학습 기록", len(rgl.acquired_knowledge) >= 1)
+    check("학습이 KB 에 즉시 반영(노트 증가)", len(_kb2.notes) > len(KnowledgeBase.load().notes))
+# learn_gaps 비활성(기본) → 학습 없음
+rno = Orchestrator(guard(), FakeRunner(responder(LINUX_WEB)), kb,
+                   auto_approve_in_scope, is_tool_available=ALL_TOOLS).run()
+check("기본(비활성): 자율학습 없음", rno.acquired_knowledge == [])
+# learner 없이 learn_gaps=True → 크래시 없이 미해석 공백만 기록 가능
+rnl = Orchestrator(guard(), FakeRunner(responder(LINUX_WEB)), KnowledgeBase.load(),
+                   auto_approve_in_scope, is_tool_available=ALL_TOOLS,
+                   learner=None, learn_gaps=True).run()
+check("learner 없이도 안전(done)", rnl.status == "done" and rnl.acquired_knowledge == [])
+
 print("\n=== RECON 실패 → 에스컬레이션(enum 진입 안 함) ===")
 r = FakeRunner(responder(DOWN))
 orc = Orchestrator(guard("10.129.1.9"), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS)

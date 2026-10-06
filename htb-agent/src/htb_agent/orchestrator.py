@@ -94,6 +94,9 @@ class OrchestrationReport:
     privesc_cve_candidates: list = field(default_factory=list)  # list[str]
     # 자동 준비된 해시 크래킹 작업(출력/볼트에서 해시 수집 시 — 생성만, 사용자 실행)
     crack_jobs: list = field(default_factory=list)         # list[crack.CrackJob]
+    # 자율 지식 획득(모르는 기술 → 권위 출처에서 자동 학습, P1 유지)
+    acquired_knowledge: list = field(default_factory=list)  # "용어 → 주제 (출처)"
+    knowledge_gaps: list = field(default_factory=list)      # 미해석 공백(수동 조사 필요)
     message: str = ""
 
     @property
@@ -125,6 +128,13 @@ class OrchestrationReport:
             for ln in self.analysis.splitlines():
                 if ln.strip():
                     lines.append("  " + ui.dim(ln.strip()))
+        if self.acquired_knowledge or self.knowledge_gaps:
+            lines.append("\n" + ui.heading(
+                "LEARN  (자율 지식 획득 — 권위 출처만, P1 유지)", "🎓"))
+            for a in self.acquired_knowledge:
+                lines.append("  " + ui.ok("학습") + " " + a)
+            for g in self.knowledge_gaps:
+                lines.append("  " + ui.dim("미해석 공백(수동 조사): ") + g)
         # 모의해킹 단계 순서대로 그룹화 출력
         all_findings = self.enum_findings + self.llm_findings
         for key, label in PENTEST_PHASES:
@@ -254,6 +264,9 @@ class Orchestrator:
                  revshell_port: int = 4444,
                  variant_stats=None,
                  max_parallel: int = 1,
+                 learner=None,
+                 learn_gaps: bool = False,
+                 max_gap_learn: int = 6,
                  is_tool_available: Callable[[str], bool] | None = None):
         self.guard = guard
         self.runner = runner
@@ -281,6 +294,11 @@ class Orchestrator:
         self.variant_stats = variant_stats   # 실행 결과 기반 변형 학습(없으면 미학습)
         self.max_parallel = max(1, max_parallel)   # 열거 동시 실행 수(1=순차)
         self.enricher = enricher
+        # 자율 지식 획득 — 모르는 기술을 권위 출처에서 자동 학습(learner 주입 시)
+        self.learner = learner
+        self.learn_gaps = learn_gaps
+        self.max_gap_learn = max(0, max_gap_learn)
+        self._acquired_topics: set[str] = set()   # 세션 내 중복 학습 방지
         # 도구 설치 여부 판단(주입 가능 — 테스트에서 대체)
         self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
 
@@ -344,6 +362,9 @@ class Orchestrator:
         sweeps_run = 0
         for sweep in range(self.max_sweeps):
             before_fp = self._world_fingerprint(report)
+            # 자율 지식 획득: 스윕 시작 시 관측된 기술 중 '모르는 것'을 권위 출처에서
+            # 자동 학습해 KB 에 즉시 반영한다(이후 분석가·명령생성이 바로 활용). P1 유지.
+            self._acquire_knowledge(report, host, prof)
             # B3 분석가: 스윕 시작 시 현재 상태를 읽고 가설·경로·집중을 산출해
             # 이후 명령 생성(_llm_round)을 유도한다. 매 스윕 상태가 자랐을 때만 갱신.
             self._run_analyst(report, prof, host, target)
@@ -582,6 +603,34 @@ class Orchestrator:
         terms.append(phase)
         terms += list(report.detected_cve)
         return terms
+
+    def _acquire_knowledge(self, report: OrchestrationReport, host: NmapHost,
+                           prof: ProfileResult) -> None:
+        """자율 지식 획득 — 관측된 기술 용어 중 '모르는 것'을 감지해 권위 출처에서
+        자동 학습(allowlist·P1 가드 내장)하고, 현재 KB 에 즉시 반영한다. 매핑 불가
+        용어는 지어내지 않고 report.knowledge_gaps 에 기록(수동 조사 안내)."""
+        if not self.learn_gaps:
+            return
+        from . import knowledge_gaps as kg
+        terms = self._note_terms(host, prof, "enum", report)
+        # 분석가가 지목한 기술 키워드도 공백 후보로(있으면) — 상태 성장 반영
+        remaining = self.max_gap_learn - len(self._acquired_topics)
+        if remaining <= 0 and self.learner is not None:
+            # 예산 소진 — 미해석 공백만 계속 기록
+            out = kg.acquire(terms, self.kb, None, self._acquired_topics, 0)
+        else:
+            out = kg.acquire(terms, self.kb, self.learner,
+                             self._acquired_topics, max(0, remaining))
+        for line in out.acquired:
+            if line not in report.acquired_knowledge:
+                report.acquired_knowledge.append(line)
+                self.audit.event("knowledge_acquired", detail=line)
+                if self.world is not None:
+                    self.world.add_loot(f"자율학습: {line}")
+        for term in out.unresolved:
+            if term not in report.knowledge_gaps:
+                report.knowledge_gaps.append(term)
+                self.audit.event("knowledge_gap", term=term)
 
     @staticmethod
     def _low_confidence(report: OrchestrationReport) -> bool:

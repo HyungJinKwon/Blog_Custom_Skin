@@ -86,6 +86,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="완전 수동: 모든 명령을 실행 전 확인(승인제 최대)")
     p.add_argument("--no-enrich", action="store_true",
                    help="CVE/CWE 자동 수집(NVD/GitHub) 비활성")
+    p.add_argument("--learn-gaps", action="store_true", dest="learn_gaps",
+                   help="자율 지식 획득: 풀이 중 모르는 기술을 권위 출처에서 자동 학습해 "
+                        "KB 에 즉시 반영(allowlist·P1 유지). autonomous 모드에선 기본 활성")
+    p.add_argument("--no-learn-gaps", action="store_true", dest="no_learn_gaps",
+                   help="자율 지식 획득 비활성(autonomous 모드에서도 끔)")
     p.add_argument("--offline", action="store_true",
                    help="오프라인: 네트워크 수집 금지(캐시만 사용)")
     p.add_argument("--enrich-cache", default=None,
@@ -373,6 +378,19 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                 else (ui.info("캐시만(오프라인)") if args.offline
                       else ui.ok("자동(NVD/GitHub) · 캐시 " + enrich_cache))), 10) + "\n")
 
+    # 6.7) 자율 지식 획득기 — 모르는 기술을 권위 출처에서 자동 학습(allowlist·P1)
+    #      autonomous 기본 활성, --learn-gaps 로 명시 활성, --no-learn-gaps 로 끔.
+    learn_gaps = (args.learn_gaps or args.autonomous) and not args.no_learn_gaps
+    learner = None
+    if learn_gaps:
+        from .learn import ReferenceLearner
+        learner = ReferenceLearner(
+            cache_dir=_os.path.join(knowledge_dir, "notes", "learned"),
+            enabled=not args.offline)
+    print(ui.kv("자율학습", (ui.dim("비활성") if not learn_gaps
+                else (ui.info("공백기록만(오프라인)") if args.offline
+                      else ui.ok("자동(권위 출처 → KB 즉시 반영)"))), 10) + "\n")
+
     # 7) 오케스트레이션 (유한 단계: RECON→PROFILE→ENUM→(LLM)→REPORT)
     # 승인 모드: --auto(완전자동) / --manual(완전수동) / 기본=스마트(범위밖만 확인)
     from .approval import smart_approver
@@ -398,6 +416,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 revshell_port=args.lport,
                                 variant_stats=variant_stats,
                                 max_parallel=max_parallel,
+                                learner=learner, learn_gaps=learn_gaps,
                                 state_store=store, resume=args.resume, audit=audit)
     report = orchestrator.run()
     if not args.no_save:

@@ -13,3 +13,9 @@ dist/
 # CVE 자동수집 캐시(런타임)
 knowledge/cve_cache/
 **/cve_cache/
+
+# 런타임 학습 산출물(--learn / 자율 지식 획득) — 번들 시드(seed-*.md)는 추적,
+# 라이브/온디맨드로 수집되는 learned-*.md 는 추적하지 않음(환경별 상이·재생성 가능).
+knowledge/notes/learned/learned-*.md
+**/notes/learned/learned-*.md
+knowledge/notes/ingested/
