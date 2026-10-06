@@ -97,6 +97,27 @@ check("시드 노트 KB 로드(kerberoasting)", "학습 시드: kerberoasting" i
 seed_dir = "knowledge/notes/learned"
 check("시드 디렉토리 존재", _os.path.isdir(seed_dir) and len(_os.listdir(seed_dir)) >= 15)
 
+print("\n=== 완비 불변식: 모든 주제가 번들 시드를 가짐(동일 시작 보장) ===")
+# 핵심 설계 불변식 — 모든 사용자가 clone 즉시 '동일하게, 오프라인에서도' 전 주제
+# 지식을 갖고 시작한다. 라이브 수집(learn_all)은 그 위의 선택적 보강일 뿐,
+# 시작 지식이 환경(네트워크/수집이력)마다 달라지지 않도록 CI 로 강제한다.
+_seed_keys = {f[len("seed-"):-3] for f in _os.listdir(seed_dir)
+              if f.startswith("seed-") and f.endswith(".md")}
+_missing_seed = [t for t in learn.topics() if t not in _seed_keys]
+check(f"모든 SOURCES 주제가 seed-<주제>.md 보유 (누락: {_missing_seed or '없음'})",
+      not _missing_seed)
+# 시드 본문이 실제 KB 노트로 로드되어 RAG 가 참조 가능해야 한다(포인터만이 아님).
+_joined_all = " ".join(kb.notes)
+check("전 주제 시드가 KB 로 로드됨(학습 시드 헤더 수 ≥ 주제 수)",
+      _joined_all.count("학습 시드:") >= len(learn.topics()))
+# 각 시드는 권위 출처 URL 을 담아야 한다(검증가능성·P1).
+_seed_files = [_os.path.join(seed_dir, f) for f in _os.listdir(seed_dir)
+               if f.startswith("seed-") and f.endswith(".md")]
+_no_src = [p for p in _seed_files
+           if not any(dom in open(p, encoding="utf-8").read() for dom in learn.ALLOWED_DOMAINS)]
+check(f"모든 시드에 권위 출처 URL 표기 (누락: {[_os.path.basename(p) for p in _no_src] or '없음'})",
+      not _no_src)
+
 print("\n=== learn_all 일괄 사전 학습 ===")
 with tempfile.TemporaryDirectory() as d:
     lr = learn.ReferenceLearner(cache_dir=os.path.join(d, "learned"),
