@@ -131,8 +131,13 @@ class ReconExecutor:
             if not rec.approved:
                 rec.note = "미승인(범위밖/사용자 거부)"
                 continue
-            # 4) 실행
-            out: RunOutput = self.runner.run(cmd, timeout=timeout)
+            # 4) 실행 — 러너 예외를 흡수해 한 시도의 실패가 정찰 세션 전체를
+            #    중단시키지 않도록 한다(열거 경로의 _safe_run 과 동일한 보증).
+            try:
+                out: RunOutput = self.runner.run(cmd, timeout=timeout)
+            except Exception as e:   # noqa: BLE001
+                rec.note = f"러너 예외: {type(e).__name__}: {e}"
+                continue
             rec.ran = out.launched
             if not out.launched:
                 rec.note = f"실행 실패: {out.error}"
