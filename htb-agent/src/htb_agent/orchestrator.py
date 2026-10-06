@@ -181,6 +181,18 @@ class OrchestrationReport:
                 lines.append("  " + ui.warn("경로 재검토 후보(대상이 2회+ 거부): ")
                              + ", ".join(f"{c}×{n}" for c, n in repeated.items())
                              + ui.dim("  — 환경 문제는 제외됨. 포기 여부는 사람이 판단."))
+        from . import repetition as _rep
+        _rr = _rep.analyze(self.enum_findings + self.llm_findings, self.blockers)
+        if _rr.has_findings:
+            lines.append("\n" + ui.heading(
+                "REPETITION  (반복·정체 감지 — 사람 확인용. 자동 재계획 아님)", "🔁"))
+            for sig, n in _rr.repeated_cmds[:6]:
+                lines.append("  " + ui.warn(f"반복 명령 ×{n}: ") + ui.dim(sig))
+            for cat, n in _rr.repeated_failures[:6]:
+                lines.append("  " + ui.warn(f"같은 실패 ×{n}: ") + ui.dim(cat))
+            if _rr.stalled:
+                lines.append("  " + ui.warn("정체: ")
+                             + ui.dim("실행은 여러 번이나 유의미한 출력이 희박 — 다른 각도를 사람이 검토"))
         if self.flag_provenance:
             lines.append("\n" + ui.heading(
                 "PROVENANCE  (플래그 출처 검증 — 실행 트레이스 기반)", "🔎"))
