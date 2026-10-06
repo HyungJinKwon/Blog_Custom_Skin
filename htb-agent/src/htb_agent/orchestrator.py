@@ -40,7 +40,7 @@ from .creds_harvest import harvest as harvest_creds, is_safe_for_cmd
 from .world import WorldModel
 from .variants import expand_variants, fragment_of
 from .state import SessionState, StateStore, host_to_dict, host_from_dict
-from .tools.runner import Runner
+from .tools.runner import Runner, RunOutput
 from .tools.recon import ReconExecutor, ReconReport, auto_approve_in_scope, Approver
 
 
@@ -880,13 +880,22 @@ class Orchestrator:
         # 실행 볼트엔 셸-안전한 값만(신뢰불가 출처 인젝션 차단). A1 재진입을 활성화.
         self._harvest_creds(out.stdout, cmd, finding)
 
+    def _safe_run(self, cmd: str) -> "RunOutput":
+        """runner.run 을 예외로부터 보호. 어떤 러너 예외도 실패 RunOutput 으로 흡수해
+        한 명령의 실패가 라운드/배치 전체를 깨지 않도록 한다(병렬 map 보호 포함)."""
+        try:
+            return self.runner.run(cmd, timeout=180)
+        except Exception as e:   # noqa: BLE001
+            self.audit.event("run_exception", cmd=cmd, error=f"{type(e).__name__}: {e}")
+            return RunOutput(cmd, error=f"러너 예외: {type(e).__name__}: {e}", returncode=-1)
+
     def _attempt(self, report: OrchestrationReport, findings: list[EnumFinding],
                  cmd: str, phase: str = "enum") -> None:
         """순차 실행: 게이트 → (통과 시) 실행 → 결과 처리."""
         finding = self._gate(report, findings, cmd, phase)
         if finding is None:
             return
-        out = self.runner.run(finding.command, timeout=180)
+        out = self._safe_run(finding.command)
         self._process(report, finding, out)
 
     def _attempt_batch(self, report: OrchestrationReport, findings: list[EnumFinding],
@@ -904,8 +913,9 @@ class Orchestrator:
         from concurrent.futures import ThreadPoolExecutor
         workers = max(1, min(self.max_parallel, len(gated)))
         with ThreadPoolExecutor(max_workers=workers) as ex:
-            # map 은 입력 순서대로 결과를 돌려주므로 결정성 유지(I/O 만 병렬)
-            outs = list(ex.map(lambda f: self.runner.run(f.command, timeout=180), gated))
+            # map 은 입력 순서대로 결과를 돌려주므로 결정성 유지(I/O 만 병렬).
+            # _safe_run 이 각 작업 예외를 흡수 → 한 명령 실패가 배치 전체를 깨지 않음.
+            outs = list(ex.map(lambda f: self._safe_run(f.command), gated))
         for f, out in zip(gated, outs):
             self._process(report, f, out)
         return gated

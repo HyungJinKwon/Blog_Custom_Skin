@@ -35,6 +35,15 @@ class Runner(Protocol):
     def run(self, command: str, timeout: int = 120) -> RunOutput: ...
 
 
+def _as_text(v) -> str:
+    """bytes/str/None 을 안전하게 문자열로(타임아웃 부분출력 디코딩 방어)."""
+    if v is None:
+        return ""
+    if isinstance(v, bytes):
+        return v.decode("utf-8", "replace")
+    return str(v)
+
+
 class SubprocessRunner:
     """실제 Kali 용. shell 비경유(shell=False)."""
 
@@ -46,15 +55,18 @@ class SubprocessRunner:
         if not args:
             return RunOutput(command, error="빈 명령", returncode=-1)
         try:
-            p = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
-            return RunOutput(command, p.stdout, p.stderr, p.returncode)
+            p = subprocess.run(args, capture_output=True, text=True,
+                               errors="replace", timeout=timeout)
+            return RunOutput(command, p.stdout or "", p.stderr or "", p.returncode)
         except FileNotFoundError:
             return RunOutput(command, error=f"'{args[0]}' 미설치", returncode=-1)
         except subprocess.TimeoutExpired as e:
-            return RunOutput(command, e.stdout or "", e.stderr or "",
+            return RunOutput(command, _as_text(e.stdout), _as_text(e.stderr),
                              returncode=-1, timed_out=True)
         except OSError as e:
             return RunOutput(command, error=f"실행 오류: {e}", returncode=-1)
+        except Exception as e:   # noqa: BLE001 — 예상치 못한 실행 예외도 삼켜 파이프라인 보호
+            return RunOutput(command, error=f"예외: {type(e).__name__}: {e}", returncode=-1)
 
 
 class FakeRunner:

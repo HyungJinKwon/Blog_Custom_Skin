@@ -222,6 +222,28 @@ repp = orcp.run()
 check("병렬 플래그 스캔", any(f.value == "HTB{par_flag}" for f in repp.flags))
 check("병렬 크리덴셜 수확", any("u:Pw1" in c for c in repp.world.creds))
 
+print("\n=== 안정화: 러너 예외가 라운드를 깨지 않음(순차/병렬) ===")
+class RaisingRunner:
+    """nmap 은 정상 XML, 그 외(enum)는 예외를 던지는 러너 — 견고성 검증용."""
+    def __init__(self, xml):
+        self.xml = xml; self.calls = []
+    def run(self, command, timeout=120):
+        self.calls.append(command)
+        if command.startswith("nmap"):
+            return RunOutput(command, stdout=self.xml)
+        raise RuntimeError("boom (simulated runner failure)")
+# 순차
+rr = RaisingRunner(LINUX_WEB)
+rep = Orchestrator(guard(), rr, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS).run()
+check("순차: 러너 예외에도 done", rep.status == "done")
+check("순차: 예외 명령은 미실행 표기", any(not f.ran for f in rep.enum_findings))
+# 병렬
+rr2 = RaisingRunner(LINUX_WEB)
+rep2 = Orchestrator(guard(), rr2, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS,
+                    max_parallel=4).run()
+check("병렬: 러너 예외에도 done", rep2.status == "done")
+check("병렬: 배치가 통째로 깨지지 않음(여러 시도 기록)", len(rep2.enum_findings) >= 1)
+
 print("\n=== RECON 실패 → 에스컬레이션(enum 진입 안 함) ===")
 r = FakeRunner(responder(DOWN))
 orc = Orchestrator(guard("10.129.1.9"), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS)
