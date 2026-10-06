@@ -113,7 +113,7 @@ assassin 10.129.1.5 --config config/config.example.json
 > **인터넷 검색 학습**: `assassin <target> --web-learn` (autonomous 기본 활성) —
 > 카탈로그 밖 '미해석 공백'을 **넓은 인터넷 검색**으로 학습해 KB 에 반영한다. 단
 > **HTB 라이트업은 출처 불문(공식·제3자) 전부 차단**(HTB 라이트업은 오직 사용자
-> 본인 ingest 로만 유입). 일반 기법 아티클·공식 문서는 허용. 가져온 내용은 노트로만
+> 본인 ingest 로만 유입). 일반 기법 아티클·공식 문서는 허용하되 **교차검증**(출처 신뢰등급 A/B 또는 독립 출처 상호확인 + 보안 관련성) 통과분만 채택. 가져온 내용은 노트로만
 > 저장(실행 안 함, 신뢰불가 데이터). 오프라인에선 생략.
 
 > **자가학습**(권위 출처만, 라이트업 미참조): `assassin --learn kerberoasting`
@@ -181,7 +181,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 43 스위트 1020 테스트
+cd htb-agent && python3 tests/run_all.py     # 43 스위트 1035 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
