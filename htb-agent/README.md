@@ -105,6 +105,10 @@ assassin 10.129.1.5 --config config/config.example.json
 > 출처에서 한 번에 덧씌움(오프라인이면 출처 포인터만, 시작 지식은 번들 시드가 보장).
 > **내 자료 학습**: `assassin --ingest ./my-writeups/` — .md/.txt 파일/디렉터리를
 > 지식베이스 노트로 미리 학습(원문 보존, 사용자 자료 범주).
+> **자율 지식 획득**: `assassin <target> --learn-gaps` (autonomous 모드 기본 활성) —
+> 풀이 중 **모르는 기술/제품을 만나면 스스로 권위 출처에서 찾아 배워** KB 에 즉시
+> 반영한다(예: MongoDB 관측 → NoSQLi 지식 자동 연결·학습). 매핑 불가한 용어는
+> 지어내지 않고 '미해석 공백'으로 기록(수동 조사 안내). allowlist·P1 유지.
 
 > **자가학습**(권위 출처만, 라이트업 미참조): `assassin --learn kerberoasting`
 > (MITRE ATT&CK·OWASP·PortSwigger·RFC 등 허용 도메인 → 지식베이스 노트로 축적,
@@ -171,7 +175,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 41 스위트 958 테스트
+cd htb-agent && python3 tests/run_all.py     # 42 스위트 988 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
