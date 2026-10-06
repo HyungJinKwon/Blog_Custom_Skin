@@ -96,18 +96,24 @@ with tempfile.TemporaryDirectory() as d:
 
 print("\n=== 능동적 완전자동 모드 (--autonomous) ===")
 with tempfile.TemporaryDirectory() as d:
-    code, out, r = run_main(["10.129.1.5", "--autonomous", "--state-dir", d])
+    # --knowledge 를 임시 디렉토리로 격리 → autonomous 기본활성 자율학습(learn_gaps)이
+    # 저장소의 knowledge/ 를 오염시키지 않도록(런타임 learned-*.md 는 임시경로에 기록).
+    kd = os.path.join(d, "kb")
+    code, out, r = run_main(["10.129.1.5", "--autonomous", "--offline",
+                             "--state-dir", d, "--knowledge", kd])
     check("autonomous 정상 종료", code == 0)
     check("autonomous 모드 표기", "autonomous" in out or "능동적 완전자동" in out)
     check("autonomous 에서 enum 실행", any(c.startswith(("curl", "nmap")) for c in r.calls))
+    check("autonomous 자율학습 기본 활성 표기", "자율학습" in out)
     # 변형 학습 파일 생성(공격적 기본 max_variants>1 로 변형 시도됨)
     check("변형 학습 영속 파일 생성", os.path.isfile(os.path.join(d, "variant_stats.json")))
-# --hackathon 별칭도 동일 동작
-code, out, r = run_main(["10.129.1.5", "--hackathon", "--no-save"])
+# --hackathon 별칭도 동일 동작(저장소 오염 방지 위해 자율학습 끔)
+code, out, r = run_main(["10.129.1.5", "--hackathon", "--no-save", "--no-learn-gaps"])
 check("--hackathon 별칭 동작", code == 0 and ("autonomous" in out or "능동적 완전자동" in out))
 # --manual 은 autonomous 보다 우선(안전) — 범위내여도 대화형 승인 경로
 # (FakeRunner 라도 승인 함수가 interactive 면 비대화 입력에서 거부→미실행; 종료는 0)
-code, out, r = run_main(["10.129.1.5", "--autonomous", "--manual", "--no-save"])
+code, out, r = run_main(["10.129.1.5", "--autonomous", "--manual", "--no-save",
+                         "--no-learn-gaps"])
 check("--manual 이 autonomous 보다 우선", "완전수동" in out)
 
 print(f"\n결과: {passed} passed, {failed} failed")
