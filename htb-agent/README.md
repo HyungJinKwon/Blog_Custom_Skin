@@ -159,14 +159,16 @@ assassin 10.129.1.5 --config config/config.example.json
 > `knowledge/vulns/common-services.json` — 배너/버전 탐지형 원격 서비스 CVE
 > (Exim·Webmin·Tomcat Ghostcat·Grafana·Jenkins·Confluence·Spring·Struts·Drupal·PHP-CGI),
 > `knowledge/rules/linux-privesc.json` · `windows-privesc.json` — 권한상승·측면이동 방법론
-> (SUID/sudo/capabilities·PwnKit·Dirty Pipe/COW·Kerberoast·Zerologon·DCSync·PtH, 전부 승인제·크리덴셜 게이트).
+> (SUID/sudo/capabilities·PwnKit·Dirty Pipe/COW·Kerberoast·Zerologon·DCSync·PtH, 전부 승인제·크리덴셜 게이트),
+> `knowledge/rules/htb-attack-techniques.json` — 확충 공격기법(웹: JWT·NoSQLi·GraphQL·
+> SSRF→IMDS·CORS·요청 스머글링 / AD: ADCS ESC1·제약없는 위임, 출처 PortSwigger/OWASP/MITRE/SpecterOps).
 
 ---
 
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 41 스위트 928 테스트
+cd htb-agent && python3 tests/run_all.py     # 41 스위트 938 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
