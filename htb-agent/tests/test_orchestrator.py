@@ -243,6 +243,12 @@ rep2 = Orchestrator(guard(), rr2, kb, auto_approve_in_scope, is_tool_available=A
                     max_parallel=4).run()
 check("병렬: 러너 예외에도 done", rep2.status == "done")
 check("병렬: 배치가 통째로 깨지지 않음(여러 시도 기록)", len(rep2.enum_findings) >= 1)
+# 순차(239행)와 동일 강도: _safe_run 이 각 워커 예외를 흡수 → 예외 명령은
+# launched=False 로 '미실행' 표기되어야 한다(배치가 통째로 죽지 않음을 입증).
+check("병렬: 예외 명령은 미실행 표기", any(not f.ran for f in rep2.enum_findings))
+# 러너가 실제로 예외를 던진 enum 명령이 호출되었는지도 확인(시뮬레이션 유효성).
+check("병렬: 예외 유발 enum 명령이 실제 호출됨",
+      any(not c.startswith("nmap") for c in rr2.calls))
 
 print("\n=== RECON 실패 → 에스컬레이션(enum 진입 안 함) ===")
 r = FakeRunner(responder(DOWN))

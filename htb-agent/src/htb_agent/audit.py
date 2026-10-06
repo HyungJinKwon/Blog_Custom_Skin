@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from datetime import datetime, timezone
 
 
@@ -36,6 +37,9 @@ class NullAudit:
 class AuditLog:
     def __init__(self, path: str):
         self.path = path
+        # 병렬 열거(_attempt_batch)의 워커 스레드들이 _safe_run 에서 동시에
+        # event() 를 호출해도 JSONL 라인이 섞이지 않도록 쓰기를 직렬화한다.
+        self._lock = threading.Lock()
         d = os.path.dirname(path)
         if d:
             os.makedirs(d, exist_ok=True)
@@ -43,9 +47,11 @@ class AuditLog:
     def event(self, etype: str, **data) -> None:
         rec = {"ts": _now(), "event": etype}
         rec.update(data)
+        line = json.dumps(rec, ensure_ascii=False) + "\n"
         try:
-            with open(self.path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            with self._lock:
+                with open(self.path, "a", encoding="utf-8") as f:
+                    f.write(line)
         except OSError:
             pass  # 로깅 실패가 본 작업을 막지 않는다
 

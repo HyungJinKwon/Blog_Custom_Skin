@@ -64,6 +64,27 @@ with tempfile.TemporaryDirectory() as d:
     execs = [e for e in evs if e["event"] == "executed" and e.get("launched")]
     check("executed 에 summary", execs and "summary" in execs[0])
 
+print("\n=== 동시 기록 스레드 안전(락) ===")
+# 워커 스레드들이 event() 를 동시에 호출해도 JSONL 라인이 섞이지 않아야 한다.
+import threading
+with tempfile.TemporaryDirectory() as d:
+    a = AuditLog(os.path.join(d, "concurrent.jsonl"))
+    N_THREADS, PER = 16, 50
+
+    def worker(tid):
+        for i in range(PER):
+            a.event("run_exception", tid=tid, i=i, cmd=f"tool-{tid}-{i}")
+
+    ths = [threading.Thread(target=worker, args=(t,)) for t in range(N_THREADS)]
+    for t in ths: t.start()
+    for t in ths: t.join()
+    # 모든 라인이 손상 없이 파싱되고(개수 일치), 라인 섞임이 없어야 한다.
+    evs = read_events(a.path)
+    check("동시 기록 유실/손상 없음(개수 일치)", len(evs) == N_THREADS * PER)
+    check("모든 라인 정상 JSON 파싱", all(e.get("event") == "run_exception" for e in evs))
+    seen = {(e["tid"], e["i"]) for e in evs}
+    check("중복/누락 없이 전수 기록", len(seen) == N_THREADS * PER)
+
 print("\n=== 승인 거부 기록 ===")
 with tempfile.TemporaryDirectory() as d:
     a = AuditLog(os.path.join(d, "deny.jsonl"))
