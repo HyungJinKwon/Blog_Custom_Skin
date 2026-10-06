@@ -14,6 +14,12 @@ allowed_ranges:
 # 명령당 옵션 조합 변형(경우의 수) 수 (기본 2, 1=변형끔)
 max_variants: 2
 
+# 유한 상한/자율성 튜닝
+max_rounds: 2            # 단계별 ENUM/LLM 반복 라운드
+max_sweeps: 2            # 단계 재진입 스윕(상태 성장 시 이전 단계 재시도, 유한)
+max_parallel: 1          # 열거 동시 실행(1=순차, >1=I/O 병렬)
+# 한 명령 자율 풀이는 CLI: assassin <target> --autonomous (별칭 --hackathon)
+
 # LLM 두뇌
 llm:
   backend: none          # none | claude | ollama
