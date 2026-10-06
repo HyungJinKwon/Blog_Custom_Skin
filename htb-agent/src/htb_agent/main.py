@@ -40,7 +40,10 @@ def build_parser() -> argparse.ArgumentParser:
                         "(공격자 IP 자동/--attacker-ip). 권한 확인 대상 전용")
     p.add_argument("--learn", metavar="TOPIC", default=None,
                    help="권위 출처 자가학습(도구·공격기법·개념·프로토콜)을 지식베이스에 저장. "
-                        "예: --learn kerberoasting / burp / http. 목록: --learn list")
+                        "예: --learn kerberoasting / burp / http. 전체 일괄: --learn all. 목록: --learn list")
+    p.add_argument("--ingest", metavar="PATH", default=None,
+                   help="사용자 제공 자료(.md/.txt 파일 또는 디렉터리)를 지식베이스 노트로 "
+                        "미리 학습. 예: --ingest ./my-writeups/")
     p.add_argument("--cloud", metavar="NAME", default=None,
                    help="AWS/S3 열거 자동 준비(생성 안 실행). 호스트명/도메인에서 버킷명 "
                         "후보+비인증 점검 생성. 예: --cloud acme.htb. 권한 확인 자산 전용")
@@ -203,10 +206,26 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         print(crack.render(args.crack))
         return 0
 
+    # 사용자 제공 자료 수집(스캔 안 함) — .md/.txt 를 지식베이스 노트로 미리 학습
+    if args.ingest:
+        from . import learn
+        import os as _osing
+        kdir = args.knowledge or "knowledge"
+        paths = learn.ingest(args.ingest,
+                             dest_dir=_osing.path.join(kdir, "notes", "ingested"))
+        if paths:
+            print(ui.heading(f"자료 수집 완료 — {len(paths)}개 노트", "📥"))
+            for p in paths[:50]:
+                print("  " + ui.dim(p))
+        else:
+            print(ui.mark_err(f"수집할 .md/.txt 자료 없음: {args.ingest}"), file=sys.stderr)
+        return 0 if paths else 2
+
     # 권위 출처 자가학습(스캔 안 함) — 지식베이스에 노트 저장(P1 유지)
     if args.learn:
         from . import learn
-        if args.learn.strip().lower() in ("list", "topics", "?"):
+        key = args.learn.strip().lower()
+        if key in ("list", "topics", "?"):
             print(ui.heading("학습 가능 주제(권위 출처)", "📚"))
             print("  " + ", ".join(learn.topics()))
             return 0
@@ -215,12 +234,21 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         learner = learn.ReferenceLearner(
             cache_dir=_oslearn.path.join(kdir, "notes", "learned"),
             enabled=not args.offline)
+        if key == "all":   # 전체 주제 일괄 사전 학습(미리 학습)
+            results = learner.learn_all()
+            ok = sum(1 for r in results if r.refs)
+            print(ui.heading(f"전체 사전 학습 — {ok}/{len(results)} 주제 노트 생성", "📚"))
+            if not args.offline:
+                print(ui.dim("  (라이브 수집: 허용 도메인에서 요약 수집)"))
+            else:
+                print(ui.dim("  (오프라인: 출처 포인터 저장 — 번들 시드 노트가 보강)"))
+            return 0
         res = learner.learn(args.learn)
         print(res.summary())
         return 0 if res.refs else 2
 
     if not args.target:
-        parser.error("target 이 필요합니다 (또는 --doctor / --revshell / --cloud / --privesc / --crack / --learn). 예: assassin 10.129.1.5")
+        parser.error("target 이 필요합니다 (또는 --doctor / --revshell / --cloud / --privesc / --crack / --learn / --ingest). 예: assassin 10.129.1.5")
 
     # 0) 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값)
     from .config import load_config, pick, Config, ConfigError

@@ -263,5 +263,58 @@ class ReferenceLearner:
             return ""
 
 
+    def learn_all(self) -> list[LearnResult]:
+        """지원 주제 전체를 일괄 사전 학습(미리 학습). 사용자 Kali 에선 라이브 수집,
+        오프라인(egress 차단)이면 출처 포인터만 저장 — 번들 시드 노트가 보강한다."""
+        return [self.learn(t) for t in topics()]
+
+
+# 사용자 제공 자료 수집(ingest) — 텍스트/마크다운만. 원문은 '사용자 자료'로 보존(P1).
+INGEST_EXTS = (".md", ".markdown", ".txt", ".text")
+
+
+def ingest(src: str, dest_dir: str = "knowledge/notes/ingested",
+           max_bytes: int = 200_000) -> list[str]:
+    """사용자가 올린 자료(파일 또는 디렉터리)를 지식베이스 노트로 수집한다.
+    .md/.txt 만, 파일당 크기 상한, 파일명 새니타이즈. 수집된 노트 경로 목록 반환."""
+    srcs: list[str] = []
+    if os.path.isdir(src):
+        for root, _dirs, files in os.walk(src):
+            for fn in files:
+                if fn.lower().endswith(INGEST_EXTS):
+                    srcs.append(os.path.join(root, fn))
+    elif os.path.isfile(src) and src.lower().endswith(INGEST_EXTS):
+        srcs.append(src)
+    out: list[str] = []
+    if not srcs:
+        return out
+    try:
+        os.makedirs(dest_dir, exist_ok=True)
+    except OSError:
+        return out
+    for sp in sorted(srcs):
+        try:
+            with open(sp, encoding="utf-8", errors="replace") as f:
+                content = f.read(max_bytes)
+        except OSError:
+            continue
+        safe = re.sub(r"[^a-zA-Z0-9_.-]", "_", os.path.basename(sp)) or "note"
+        if not safe.lower().endswith((".md", ".txt", ".markdown", ".text")):
+            safe += ".md"
+        dp = os.path.join(dest_dir, f"ingested-{safe}")
+        if not dp.endswith(".md"):
+            dp += ".md"
+        header = (f"# 수집 자료: {os.path.basename(sp)}\n\n"
+                  "> 사용자 제공 자료 수집(assassin --ingest). 원문 보존 — "
+                  "사용자 자료 범주(P1: 외부 라이트업 자동참조 아님).\n\n")
+        try:
+            with open(dp, "w", encoding="utf-8") as f:
+                f.write(header + content)
+            out.append(dp)
+        except OSError:
+            continue
+    return out
+
+
 def topics() -> list[str]:
     return sorted(SOURCES)
