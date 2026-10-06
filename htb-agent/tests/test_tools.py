@@ -41,5 +41,30 @@ print("\n=== report 출력 ===")
 rep = R.report(categories=["cloud"])
 check("report 에 s3scanner 포함", "s3scanner" in rep)
 
+print("\n=== SubprocessRunner 안정화(예외 흡수) ===")
+import subprocess as _sp
+from htb_agent.tools.runner import SubprocessRunner, _as_text, RunOutput
+r = SubprocessRunner()
+# 파싱 실패(따옴표 불균형) → 실패 RunOutput(미예외)
+out = r.run('echo "unbalanced')
+check("파싱 실패 흡수", (not out.launched) and "파싱" in out.error)
+# 빈 명령
+check("빈 명령 흡수", not r.run("   ").launched)
+# 예상치 못한 예외도 흡수(subprocess.run 패치)
+_orig = _sp.run
+try:
+    _sp.run = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("unexpected"))
+    out2 = r.run("nmap -sV 10.0.0.1")
+    check("예상치 못한 예외 흡수(launched False)", not out2.launched and "예외" in out2.error)
+finally:
+    _sp.run = _orig
+# _as_text 방어
+check("_as_text bytes", _as_text(b"ab\xff") == "ab�")
+check("_as_text None", _as_text(None) == "")
+check("_as_text str", _as_text("x") == "x")
+# launched 속성
+check("error 있으면 launched False", not RunOutput("c", error="x").launched)
+check("error 없으면 launched True", RunOutput("c", stdout="ok").launched)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
