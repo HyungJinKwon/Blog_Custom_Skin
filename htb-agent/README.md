@@ -91,6 +91,11 @@ assassin 10.129.1.5 --config config/config.example.json
 
 전체 옵션: `assassin --help` (설치 전: `PYTHONPATH=src python3 -m htb_agent --help`).
 
+> **일괄 사전 학습**(미리 학습): `assassin --learn all` — 지원 주제(52개) 전체를
+> 권위 출처에서 한 번에 수집(오프라인이면 출처 포인터 + 번들 시드 노트로 보강).
+> **내 자료 학습**: `assassin --ingest ./my-writeups/` — .md/.txt 파일/디렉터리를
+> 지식베이스 노트로 미리 학습(원문 보존, 사용자 자료 범주).
+
 > **자가학습**(권위 출처만, 라이트업 미참조): `assassin --learn kerberoasting`
 > (MITRE ATT&CK·OWASP·PortSwigger·RFC 등 허용 도메인 → 지식베이스 노트로 축적,
 > `--learn list` 로 주제 목록). 도구·공격기법·개념/정의·프로토콜을 학습합니다.
@@ -154,7 +159,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 41 스위트 909 테스트
+cd htb-agent && python3 tests/run_all.py     # 41 스위트 922 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

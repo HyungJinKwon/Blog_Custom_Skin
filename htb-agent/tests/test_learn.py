@@ -97,5 +97,52 @@ check("시드 노트 KB 로드(kerberoasting)", "학습 시드: kerberoasting" i
 seed_dir = "knowledge/notes/learned"
 check("시드 디렉토리 존재", _os.path.isdir(seed_dir) and len(_os.listdir(seed_dir)) >= 15)
 
+print("\n=== learn_all 일괄 사전 학습 ===")
+with tempfile.TemporaryDirectory() as d:
+    lr = learn.ReferenceLearner(cache_dir=os.path.join(d, "learned"),
+                                fetch_fn=lambda u: "<p>doc body</p>", enabled=True)
+    results = lr.learn_all()
+    check("전체 주제 수만큼 결과", len(results) == len(learn.topics()))
+    check("모든 주제 노트 생성(출처 있음)", all(r.refs for r in results))
+    check("노트 파일 기록됨", any(os.path.isfile(r.note_path) for r in results if r.note_path))
+
+print("\n=== ingest 사용자 자료 수집 ===")
+with tempfile.TemporaryDirectory() as d:
+    src = os.path.join(d, "src"); os.makedirs(src)
+    with open(os.path.join(src, "writeup.md"), "w") as f:
+        f.write("# 내 라이트업\nSMB 널세션 공략")
+    with open(os.path.join(src, "notes.txt"), "w") as f:
+        f.write("크리덴셜 스프레이 팁")
+    with open(os.path.join(src, "ignore.pdf"), "w") as f:
+        f.write("binary-ish")
+    dest = os.path.join(d, "ingested")
+    paths = learn.ingest(src, dest_dir=dest)
+    check("md/txt 2개 수집(.pdf 제외)", len(paths) == 2)
+    check("원문 보존", any("SMB 널세션" in open(p, encoding="utf-8").read() for p in paths))
+    check("수집 헤더 표기", all("수집 자료" in open(p, encoding="utf-8").read() for p in paths))
+    # 단일 파일도 허용
+    one = learn.ingest(os.path.join(src, "writeup.md"), dest_dir=os.path.join(d, "one"))
+    check("단일 파일 수집", len(one) == 1)
+    # 자료 없는 경로 → 빈 결과
+    check("빈 경로 → 빈 결과", learn.ingest(os.path.join(d, "nope"), dest_dir=dest) == [])
+
+print("\n=== --learn all / --ingest CLI ===")
+with tempfile.TemporaryDirectory() as d:
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        code = main(["--learn", "all", "--offline", "--knowledge", os.path.join(d, "kb")])
+    check("--learn all 종료코드 0", code == 0)
+    check("전체 사전 학습 출력", "전체 사전 학습" in buf.getvalue())
+    src = os.path.join(d, "mat"); os.makedirs(src)
+    with open(os.path.join(src, "a.md"), "w") as f:
+        f.write("내 공격 노트")
+    buf2 = io.StringIO()
+    with redirect_stdout(buf2):
+        code2 = main(["--ingest", src, "--knowledge", os.path.join(d, "kb")])
+    check("--ingest 종료코드 0", code2 == 0)
+    check("수집 완료 출력", "자료 수집 완료" in buf2.getvalue())
+a = build_parser().parse_args(["--ingest", "x", "--learn", "all"])
+check("--ingest/--learn 파싱", a.ingest == "x" and a.learn == "all" and a.target is None)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
