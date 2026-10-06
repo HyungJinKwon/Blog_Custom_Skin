@@ -107,7 +107,8 @@ LLM 이 제안한 명령도 '신뢰하지 않는 데이터'로 간주되어 이 
 | | `creds_harvest.py` | 실행 출력에서 평문 자격 자동 수확(고신뢰 패턴·셸-안전 값만 볼트 투입, 월드 반영→A1 재진입 활성화) |
 | | `audit.py` | 실행 트랜스크립트(JSONL) |
 | | `config.py` | 설정 파일(JSON/YAML, CLI>config>기본) |
-| | `environment.py` · `main.py` | Kali 프리플라이트 · CLI 진입점(ASSASSIN) |
+| | `environment.py` · `main.py` · `__main__.py` | Kali 프리플라이트 · CLI 진입점(ASSASSIN) · `python -m` 진입 |
+| | `util.py` | 공용 헬퍼(바이너리 추출 등) |
 | | `doctor.py` | 환경 자가진단(--doctor: 도구·LLM·VPN, 초보자용) |
 | | `ui.py` | 터미널 렌더링(블루/네이비 색상·박스·정렬, NO_COLOR/비-TTY 자동 무색) |
 | | `profiles.py` | 플랫폼 프로파일(HTB/Dreamhack/CTF: 스코프·플래그·카테고리) |

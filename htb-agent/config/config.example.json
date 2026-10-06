@@ -6,6 +6,9 @@
   "max_attempts": 4,
   "max_enum": 6,
   "max_llm": 5,
+  "max_rounds": 2,
+  "max_sweeps": 2,
+  "max_parallel": 1,
   "max_variants": 2,
   "knowledge_dir": "knowledge",
   "state_dir": "state"
