@@ -94,6 +94,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-sweeps", type=int, default=None,
                    help="단계 재진입 스윕 수 (기본 2). 새 관측·크리덴셜로 이전 단계 "
                         "재시도. 상태 정체 시 조기종료(유한)")
+    p.add_argument("--max-parallel", type=int, default=None,
+                   help="열거 명령 동시 실행 수 (기본 1=순차). 독립 명령의 I/O 만 "
+                        "병렬 — 게이트·결과처리는 순차로 안전")
     p.add_argument("--variants", type=int, default=None,
                    help="명령당 옵션 조합 변형 수 (기본 2, 1=변형끔). 경우의 수 시도")
     p.add_argument("--knowledge", default=None,
@@ -240,6 +243,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     max_enum = pick(args.max_enum, cfg.max_enum, 6)
     max_rounds = pick(args.max_rounds, cfg.max_rounds, 2)
     max_sweeps = pick(args.max_sweeps, cfg.max_sweeps, 2)
+    max_parallel = pick(args.max_parallel, getattr(cfg, "max_parallel", None), 1)
     max_variants = pick(args.variants, cfg.max_variants, 2)
     knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, "knowledge")
     llm_kind = pick(args.llm, cfg.llm_backend, "none")
@@ -356,6 +360,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 category=(args.category or ""),
                                 revshell_port=args.lport,
                                 variant_stats=variant_stats,
+                                max_parallel=max_parallel,
                                 state_store=store, resume=args.resume, audit=audit)
     report = orchestrator.run()
     if not args.no_save:

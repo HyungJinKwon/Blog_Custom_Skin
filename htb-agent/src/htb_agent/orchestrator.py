@@ -253,6 +253,7 @@ class Orchestrator:
                  category: str = "",
                  revshell_port: int = 4444,
                  variant_stats=None,
+                 max_parallel: int = 1,
                  is_tool_available: Callable[[str], bool] | None = None):
         self.guard = guard
         self.runner = runner
@@ -278,6 +279,7 @@ class Orchestrator:
         self.category = category
         self.revshell_port = revshell_port
         self.variant_stats = variant_stats   # 실행 결과 기반 변형 학습(없으면 미학습)
+        self.max_parallel = max(1, max_parallel)   # 열거 동시 실행 수(1=순차)
         self.enricher = enricher
         # 도구 설치 여부 판단(주입 가능 — 테스트에서 대체)
         self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
@@ -466,7 +468,8 @@ class Orchestrator:
             return 0
         services = [p.service for p in host.ports if p.state == "open" and p.service]
         recs = self.kb.query(prof.os_class.value, host.open_ports, services, phase=phase)
-        attempted = 0
+        # 실행 후보(base, vcmd) 수집 — seen·budget·수동제안 처리는 여기서(결정적)
+        to_run: list[tuple[str, str]] = []
         for rec in recs:
             for tmpl in rec.suggestions:
                 for cmd, runnable in self._expand(tmpl, target):
@@ -483,26 +486,38 @@ class Orchestrator:
                         if vcmd in seen:
                             continue
                         seen.add(vcmd)
-                        if attempted >= budget:
+                        if len(to_run) >= budget:
                             report.manual_suggestions.append(vcmd + "   # (상한 초과 — 수동)")
                             continue
-                        self._attempt(report, report.enum_findings, vcmd, phase)
-                        self._record_variant_outcome(cmd, vcmd, report.enum_findings)
-                        attempted += 1
-        return attempted
+                        to_run.append((cmd, vcmd))
+        if not to_run:
+            return 0
+        base_by_cmd = {vcmd: base for base, vcmd in to_run}
+        if self.max_parallel <= 1:
+            # 순차(기본): 게이트→실행→처리→변형학습 기록
+            for base_cmd, vcmd in to_run:
+                before = len(report.enum_findings)
+                self._attempt(report, report.enum_findings, vcmd, phase)
+                if len(report.enum_findings) > before:
+                    self._record_variant_outcome(base_cmd, report.enum_findings[-1])
+        else:
+            # 병렬: 게이트(순차)→runner.run(동시)→처리(순차) 후 변형학습 기록
+            gated = self._attempt_batch(report, report.enum_findings,
+                                        [v for _, v in to_run], phase)
+            for f in gated:
+                self._record_variant_outcome(base_by_cmd.get(f.command, f.command), f)
+        return len(to_run)
 
-    def _record_variant_outcome(self, base_cmd: str, vcmd: str,
-                                findings: list[EnumFinding]) -> None:
+    def _record_variant_outcome(self, base_cmd: str, finding: EnumFinding) -> None:
         """실행된 변형의 결과(성공/실패)를 학습 통계에 기록. base 명령(fragment 없음)은
         학습 대상 아님. 성공 = 실행됐고 쓸만한 출력이 있음(요약 비어있지 않음)."""
-        if self.variant_stats is None or not findings:
+        if self.variant_stats is None or finding is None:
             return
-        frag = fragment_of(base_cmd, vcmd)
+        frag = fragment_of(base_cmd, finding.command)
         if not frag:
             return
-        f = findings[-1]
-        success = bool(f.ran and f.output)
-        self.variant_stats.record(binary_of(vcmd, strip_path=True), frag, success)
+        success = bool(finding.ran and finding.output)
+        self.variant_stats.record(binary_of(finding.command, strip_path=True), frag, success)
 
     def _harvest_creds(self, stdout: str, cmd: str, finding: EnumFinding) -> None:
         """출력에서 고신뢰 평문 자격을 수확한다. 월드엔 모두 반영(권한레벨 상승 →
@@ -802,8 +817,10 @@ class Orchestrator:
         except Exception as e:   # noqa: BLE001 — 준비 실패가 전체를 깨지 않도록
             self.audit.event("crack_error", error=str(e))
 
-    def _attempt(self, report: OrchestrationReport, findings: list[EnumFinding],
-                 cmd: str, phase: str = "enum") -> None:
+    def _gate(self, report: OrchestrationReport, findings: list[EnumFinding],
+              cmd: str, phase: str) -> EnumFinding | None:
+        """3관문(도구·검증·범위·승인)을 순차 수행(공유상태 변경은 단일 스레드).
+        통과하면 '실행 대상' finding 반환, 아니면 사유를 기록하고 None."""
         finding = EnumFinding(command=cmd, phase=phase)
         findings.append(finding)
         self.audit.event("proposed", cmd=cmd, phase=phase)
@@ -812,25 +829,29 @@ class Orchestrator:
         if binary and not self.is_tool_available(binary):
             finding.note = f"건너뜀: '{binary}' 미설치"
             self.audit.event("skipped", cmd=cmd, reason="tool-missing", binary=binary)
-            return
+            return None
         vrep: ValidationReport = validate(cmd)
         if not vrep.ok:
             finding.note = "검증 실패: " + "; ".join(str(i) for i in vrep.errors)
             self.audit.event("rejected", cmd=cmd, stage="validate",
                              errors=[str(i) for i in vrep.errors])
-            return
+            return None
         try:
             sres: CommandScopeResult = self.guard.inspect_command(cmd, hosts_map=self.hosts_map)
         except ScopeViolation as e:
             finding.note = f"범위 오류: {e}"
             self.audit.event("rejected", cmd=cmd, stage="scope", reason=str(e))
-            return
+            return None
         if not self.approver(cmd, vrep, sres):
             finding.note = "미승인(범위밖/사용자 거부)"
             self.audit.event("denied", cmd=cmd, in_scope=sres.auto_allowed)
-            return
+            return None
+        return finding
 
-        out = self.runner.run(cmd, timeout=180)
+    def _process(self, report: OrchestrationReport, finding: EnumFinding, out) -> None:
+        """실행 결과를 반영(파싱·플래그/해시/크리덴셜 스캔). 공유상태를 변경하므로
+        반드시 단일 스레드에서, 제출 순서대로 호출한다(병렬 실행과 분리)."""
+        cmd = finding.command
         finding.ran = out.launched
         if not out.launched:
             finding.note = f"실행 실패: {out.error}"
@@ -858,3 +879,33 @@ class Orchestrator:
         # 크리덴셜 자동 수확 — 원시출력에서 고신뢰 평문 자격 추출. 월드엔 모두 반영,
         # 실행 볼트엔 셸-안전한 값만(신뢰불가 출처 인젝션 차단). A1 재진입을 활성화.
         self._harvest_creds(out.stdout, cmd, finding)
+
+    def _attempt(self, report: OrchestrationReport, findings: list[EnumFinding],
+                 cmd: str, phase: str = "enum") -> None:
+        """순차 실행: 게이트 → (통과 시) 실행 → 결과 처리."""
+        finding = self._gate(report, findings, cmd, phase)
+        if finding is None:
+            return
+        out = self.runner.run(finding.command, timeout=180)
+        self._process(report, finding, out)
+
+    def _attempt_batch(self, report: OrchestrationReport, findings: list[EnumFinding],
+                       cmds: list[str], phase: str) -> list[EnumFinding]:
+        """병렬 실행: 게이트를 '순차로' 통과시킨 뒤, 통과한 명령의 runner.run 만
+        스레드풀로 동시 실행하고, 결과 처리는 다시 '제출 순서대로 단일 스레드'로
+        수행한다 → 공유상태 경쟁 없음·결정적 순서 보존. 게이트 통과 finding 목록 반환."""
+        gated: list[EnumFinding] = []
+        for cmd in cmds:
+            f = self._gate(report, findings, cmd, phase)
+            if f is not None:
+                gated.append(f)
+        if not gated:
+            return []
+        from concurrent.futures import ThreadPoolExecutor
+        workers = max(1, min(self.max_parallel, len(gated)))
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            # map 은 입력 순서대로 결과를 돌려주므로 결정성 유지(I/O 만 병렬)
+            outs = list(ex.map(lambda f: self.runner.run(f.command, timeout=180), gated))
+        for f, out in zip(gated, outs):
+            self._process(report, f, out)
+        return gated
