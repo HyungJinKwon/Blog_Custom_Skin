@@ -286,7 +286,8 @@ class ReferenceLearner:
 
 
 # 사용자 제공 자료 수집(ingest). 텍스트/마크다운 + PDF(라이트업 등 실제 포맷).
-# 원문은 '사용자 자료'로 보존(P1: 사용자 본인 학습자료 허용, 외부 라이트업 자동참조 아님).
+# 원문은 '사용자 자료'로 보존. P1 재확인: 금지 대상은 '외부' 라이트업의 자동수집일 뿐,
+# 사용자가 직접 올린 자료는 참조 허용 — KB 노트로 로드되어 RAG 가 풀이 중 참조한다.
 TEXT_EXTS = (".md", ".markdown", ".txt", ".text")
 PDF_EXTS = (".pdf",)
 INGEST_EXTS = TEXT_EXTS + PDF_EXTS
@@ -359,8 +360,9 @@ def ingest(src: str, dest_dir: str = "knowledge/notes/ingested",
         if not dp.endswith(".md"):
             dp += ".md"
         header = (f"# 수집 자료: {os.path.basename(sp)}\n\n"
-                  "> 사용자 제공 자료 수집(assassin --ingest). 원문 보존 — "
-                  "사용자 자료 범주(P1: 외부 라이트업 자동참조 아님).\n\n")
+                  "> 사용자 제공 자료 수집(assassin --ingest). 원문 보존 — 사용자가 직접 "
+                  "올린 자료로 **참조 허용**(P1 금지 대상은 '외부' 라이트업 자동수집뿐, "
+                  "본인 제공 자료는 예외). RAG 가 풀이 중 참조한다.\n\n")
         try:
             with open(dp, "w", encoding="utf-8") as f:
                 f.write(header + content)
