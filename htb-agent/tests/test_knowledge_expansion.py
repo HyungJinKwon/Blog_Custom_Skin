@@ -72,5 +72,24 @@ for f in glob.glob("knowledge/vulns/*.json"):
                 missing.add(c)
 check(f"미등재 CWE 없음 (발견: {sorted(missing) or '없음'})", not missing)
 
+print("\n=== 공격기법 확충(htb-attack-techniques) 로드 ===")
+kb_at = KnowledgeBase.load("knowledge")
+at_names = {r.name for r in kb_at.rules}
+for n in ["JWT 공격(alg:none·약한 시크릿 크랙)", "NoSQL 인젝션 인증우회(MongoDB)",
+          "GraphQL introspection 남용", "SSRF → 클라우드 메타데이터(IMDS)",
+          "ADCS ESC1 취약 템플릿(certipy)",
+          "제약 없는 위임(Unconstrained Delegation) TGT 탈취"]:
+    check(f"규칙 로드: {n[:20]}", n in at_names)
+# 웹 공격기법은 http 열거 질의에서 후보로 노출
+webrecs = [r.rule_name for r in kb_at.query("linux", [80], ["http"], phase="access")]
+check("JWT 규칙이 http access 후보", any("JWT" in n for n in webrecs))
+check("NoSQLi 규칙이 http access 후보", any("NoSQL" in n for n in webrecs))
+# AD 공격기법은 windows_ad privesc/lateral 에서 노출
+adp = [r.rule_name for r in kb_at.query("windows_ad", [445, 389], ["smb", "ldap"], phase="privesc")]
+check("ADCS ESC1 이 AD privesc 후보", any("ADCS ESC1" in n for n in adp))
+# 시드 노트(RAG) 관련도 매칭
+check("jwt 시드 노트 관련도", any("JWT" in n or "jwt" in n.lower()
+      for n in kb_at.relevant_notes(["jwt"], 3)))
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

