@@ -267,6 +267,7 @@ class Orchestrator:
                  learner=None,
                  learn_gaps: bool = False,
                  max_gap_learn: int = 6,
+                 web_learner=None,
                  is_tool_available: Callable[[str], bool] | None = None):
         self.guard = guard
         self.runner = runner
@@ -298,6 +299,7 @@ class Orchestrator:
         self.learner = learner
         self.learn_gaps = learn_gaps
         self.max_gap_learn = max(0, max_gap_learn)
+        self.web_learner = web_learner   # 인터넷 검색 학습(HTB 라이트업 가드) — 미해석 공백용
         self._acquired_topics: set[str] = set()   # 세션 내 중복 학습 방지
         # 도구 설치 여부 판단(주입 가능 — 테스트에서 대체)
         self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
@@ -615,12 +617,13 @@ class Orchestrator:
         terms = self._note_terms(host, prof, "enum", report)
         # 분석가가 지목한 기술 키워드도 공백 후보로(있으면) — 상태 성장 반영
         remaining = self.max_gap_learn - len(self._acquired_topics)
-        if remaining <= 0 and self.learner is not None:
-            # 예산 소진 — 미해석 공백만 계속 기록
+        if remaining <= 0:
+            # 예산 소진 — 미해석 공백만 계속 기록(학습 생략)
             out = kg.acquire(terms, self.kb, None, self._acquired_topics, 0)
         else:
             out = kg.acquire(terms, self.kb, self.learner,
-                             self._acquired_topics, max(0, remaining))
+                             self._acquired_topics, max(0, remaining),
+                             web_learner=self.web_learner)
         for line in out.acquired:
             if line not in report.acquired_knowledge:
                 report.acquired_knowledge.append(line)

@@ -91,6 +91,11 @@ def build_parser() -> argparse.ArgumentParser:
                         "KB 에 즉시 반영(allowlist·P1 유지). autonomous 모드에선 기본 활성")
     p.add_argument("--no-learn-gaps", action="store_true", dest="no_learn_gaps",
                    help="자율 지식 획득 비활성(autonomous 모드에서도 끔)")
+    p.add_argument("--web-learn", action="store_true", dest="web_learn",
+                   help="인터넷 검색 학습: 카탈로그 밖 '미해석 공백'을 웹 검색으로 학습해 "
+                        "KB 반영. HTB 라이트업(공식·제3자)은 가드로 차단. autonomous 기본 활성")
+    p.add_argument("--no-web-learn", action="store_true", dest="no_web_learn",
+                   help="인터넷 검색 학습 비활성(autonomous 모드에서도 끔)")
     p.add_argument("--offline", action="store_true",
                    help="오프라인: 네트워크 수집 금지(캐시만 사용)")
     p.add_argument("--enrich-cache", default=None,
@@ -391,6 +396,17 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                 else (ui.info("공백기록만(오프라인)") if args.offline
                       else ui.ok("자동(권위 출처 → KB 즉시 반영)"))), 10) + "\n")
 
+    # 6.8) 인터넷 검색 학습기 — 미해석 공백을 웹에서 학습(HTB 라이트업 가드 항상 ON).
+    #      --web-learn 또는 autonomous 기본 활성, --no-web-learn 로 끔. 오프라인이면 생략.
+    web_learn = (args.web_learn or args.autonomous) and not args.no_web_learn and not args.offline
+    web_learner = None
+    if learn_gaps and web_learn:
+        from .web_search import WebLearner
+        web_learner = WebLearner(
+            cache_dir=_os.path.join(knowledge_dir, "notes", "learned"), enabled=True)
+    print(ui.kv("웹학습", (ui.dim("비활성") if not (learn_gaps and web_learn)
+                else ui.ok("인터넷 검색(HTB 라이트업 차단 · 미해석 공백)")), 10) + "\n")
+
     # 7) 오케스트레이션 (유한 단계: RECON→PROFILE→ENUM→(LLM)→REPORT)
     # 승인 모드: --auto(완전자동) / --manual(완전수동) / 기본=스마트(범위밖만 확인)
     from .approval import smart_approver
@@ -417,6 +433,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 variant_stats=variant_stats,
                                 max_parallel=max_parallel,
                                 learner=learner, learn_gaps=learn_gaps,
+                                web_learner=web_learner,
                                 state_store=store, resume=args.resume, audit=audit)
     report = orchestrator.run()
     if not args.no_save:

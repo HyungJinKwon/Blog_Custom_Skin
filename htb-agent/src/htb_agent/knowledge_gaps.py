@@ -88,8 +88,10 @@ class GapOutcome:
 
 
 def resolve(term: str) -> str | None:
-    """관측 용어를 권위 주제(SOURCES 키)로 해석. 직접일치 → 별칭(부분일치) 순.
-    해석 불가면 None(미해석 공백)."""
+    """관측 용어를 권위 주제(SOURCES 키)로 해석. 직접일치 → 별칭 순. 해석 불가면 None.
+    토큰 인식 매칭 — 짧은 별칭(rdp·ssh·ftp…)이 긴 단어 안에서 오탐되지 않도록 한다
+    (예: 'weirdproto' 안의 'rdp' 는 매칭 안 됨). 구/하이픈 별칭은 전체 문자열 구절일치,
+    평문 별칭은 토큰 정확일치, 긴 별칭(≥5자)만 토큰 내 부분일치 허용(tomcat9 등)."""
     if not term:
         return None
     key = term.strip().lower()
@@ -97,9 +99,15 @@ def resolve(term: str) -> str | None:
         return None
     if key in _TOPICS:                 # 이미 주제명 그대로
         return key
-    # 별칭 부분일치 — 더 긴 패턴 우선(예: 'sql server' 가 'sql' 보다 먼저)
-    for pat in sorted(ALIASES, key=len, reverse=True):
-        if pat in key:
+    tokens = [t for t in re.split(r"[^a-z0-9]+", key) if t]
+    tokenset = set(tokens)
+    for pat in sorted(ALIASES, key=len, reverse=True):   # 더 긴 패턴 우선
+        if " " in pat or "-" in pat:                     # 구/하이픈 → 전체 구절일치
+            if pat in key:
+                return ALIASES[pat]
+        elif pat in tokenset:                            # 평문 → 토큰 정확일치
+            return ALIASES[pat]
+        elif len(pat) >= 5 and any(pat in tok for tok in tokens):  # 긴 별칭만 부분일치
             return ALIASES[pat]
     return None
 
@@ -152,37 +160,55 @@ def _note_text(res) -> str:
 
 
 def acquire(terms: list[str], kb, learner, already: set[str] | None = None,
-            budget: int = 6) -> GapOutcome:
+            budget: int = 6, web_learner=None) -> GapOutcome:
     """지식 공백을 감지하고, 학습가능 주제를 권위 출처에서 학습해 KB 에 즉시 반영한다.
-    - learner: learn.ReferenceLearner (allowlist·P1 가드 내장). None 이면 no-op.
-    - already: 이번 세션에 이미 수집한 주제(중복 방지, 호출측이 갱신).
-    - budget: 이번 패스 최대 학습 주제 수(폭주 방지).
-    미해석 공백은 지어내지 않고 outcome.unresolved 에 기록한다."""
+    - learner: learn.ReferenceLearner (allowlist·P1 가드 내장). None 이면 catalog 학습 생략.
+    - web_learner: web_search.WebLearner. 주어지면 '미해석 공백'(카탈로그 밖 용어)을
+      인터넷 검색으로 학습한다(HTB 라이트업은 가드로 차단). None 이면 미해석은 기록만.
+    - already: 이번 세션에 이미 수집한 주제/용어(중복 방지, 호출측이 갱신).
+    - budget: 이번 패스 최대 학습 건수(폭주 방지).
+    미해석 공백 중 웹학습으로도 못 채운 것은 지어내지 않고 outcome.unresolved 에 남긴다."""
     out = GapOutcome()
-    if learner is None:
-        # 학습기 없음 — 미해석 공백만이라도 정직하게 기록(수동 조사 안내).
-        _, unresolved = detect(terms, kb, already)
-        out.unresolved = unresolved
-        return out
     already = already if already is not None else set()
     learnable, unresolved = detect(terms, kb, already)
-    out.unresolved = unresolved
-    for term, topic in learnable:
-        if len([a for a in out.acquired]) >= max(0, budget):
-            break
+    # 1) 카탈로그 매칭 주제 — 권위 출처 학습(기존 경로)
+    if learner is not None:
+        for term, topic in learnable:
+            if len(out.acquired) >= max(0, budget):
+                break
+            try:
+                res = learner.learn(topic)
+            except Exception:           # noqa: BLE001 — 학습 실패가 풀이를 막지 않는다
+                continue
+            already.add(topic)
+            if not res.refs:
+                continue
+            srcs = ", ".join(r.url for r in res.refs[:2])
+            out.acquired.append(f"{term} → {topic} ({srcs})")
+            if any(r.excerpt for r in res.refs):
+                note = _note_text(res)
+                kb.notes.append(note)
+                out.notes_added.append(note)
+    # 2) 미해석 공백(카탈로그 밖) — 인터넷 검색 학습(HTB 라이트업 가드). 남으면 기록만.
+    still_unresolved: list[str] = []
+    for term in unresolved:
+        key = f"web:{term.lower()}"
+        if web_learner is None or key in already or len(out.acquired) >= max(0, budget):
+            still_unresolved.append(term)
+            continue
+        already.add(key)
         try:
-            res = learner.learn(topic)
-        except Exception:               # noqa: BLE001 — 학습 실패가 풀이를 막지 않는다
+            wr = web_learner.learn(term)
+        except Exception:               # noqa: BLE001
+            still_unresolved.append(term)
             continue
-        already.add(topic)              # 성공·실패 무관하게 재시도 억제
-        if not res.refs:
-            continue
-        srcs = ", ".join(r.url for r in res.refs[:2])
-        out.acquired.append(f"{term} → {topic} ({srcs})")
-        # 새 본문(온라인 발췌)이 있을 때만 라이브 KB 에 주입 — 오프라인 포인터는
-        # 번들 시드와 중복이므로 제외(노이즈 방지).
-        if any(r.excerpt for r in res.refs):
-            note = _note_text(res)
+        if wr.excerpt and wr.note_path is not None:
+            srcs = ", ".join(r.url for r in wr.refs[:2])
+            out.acquired.append(f"{term} → (웹) {srcs}")
+            note = f"[웹학습:{term}] " + wr.excerpt
             kb.notes.append(note)
             out.notes_added.append(note)
+        else:
+            still_unresolved.append(term)   # 결과 없음/전부 라이트업 차단 → 기록만
+    out.unresolved = still_unresolved
     return out
