@@ -109,7 +109,7 @@ check(f"모든 SOURCES 주제가 seed-<주제>.md 보유 (누락: {_missing_seed
 # 시드 본문이 실제 KB 노트로 로드되어 RAG 가 참조 가능해야 한다(포인터만이 아님).
 _joined_all = " ".join(kb.notes)
 check("전 주제 시드가 KB 로 로드됨(학습 시드 헤더 수 ≥ 주제 수)",
-      _joined_all.count("학습 시드:") >= len(learn.topics()))
+      _joined_all.count("학습 시드") >= len(learn.topics()))
 # 각 시드는 권위 출처 URL 을 담아야 한다(검증가능성·P1).
 _seed_files = [_os.path.join(seed_dir, f) for f in _os.listdir(seed_dir)
                if f.startswith("seed-") and f.endswith(".md")]
@@ -117,6 +117,28 @@ _no_src = [p for p in _seed_files
            if not any(dom in open(p, encoding="utf-8").read() for dom in learn.ALLOWED_DOMAINS)]
 check(f"모든 시드에 권위 출처 URL 표기 (누락: {[_os.path.basename(p) for p in _no_src] or '없음'})",
       not _no_src)
+
+print("\n=== 완성형 심화 불변식: 종합 레퍼런스 깊이 ===")
+# '완성형' 베이스라인 — 각 시드는 짧은 요약이 아니라 종합 레퍼런스여야 한다.
+# 섹션(개요·핵심기법·표준명령·블루팀 탐지·완화) + 최소 깊이 + RAG 가 전문을 반영.
+_REQUIRED_SECTIONS = ("## 개요", "## 핵심 기법", "## 표준 도구", "## 블루팀 탐지", "## 완화")
+_shallow = []
+_missing_sec = []
+for p in _seed_files:
+    txt = open(p, encoding="utf-8").read()
+    # 한글은 바이트가 크므로 깊이는 바이트 기준(종합 레퍼런스 ≥ 650B)으로 측정.
+    if len(txt.encode("utf-8")) < 650:
+        _shallow.append(_os.path.basename(p))
+    if not all(sec in txt for sec in _REQUIRED_SECTIONS):
+        _missing_sec.append(_os.path.basename(p))
+check(f"모든 시드 최소 깊이(≥650B) (미달: {_shallow or '없음'})", not _shallow)
+check(f"모든 시드 필수 섹션 구비 (누락: {_missing_sec or '없음'})", not _missing_sec)
+# 로더가 500자 병목을 넘어 전문을 반영하는지(심화 지식이 RAG 에 실제 도달)
+from htb_agent import knowledge as _kmod
+check("노트 반영 상한 상향(병목 해제)", _kmod.NOTE_CHARS >= 4000)
+_kb_full = KnowledgeBase.load("knowledge")
+_long = [n for n in _kb_full.notes if len(n) > 600]
+check("600자 초과 노트가 KB 에 실제 로드됨(심화 반영)", len(_long) >= 20)
 
 print("\n=== learn_all 일괄 사전 학습 ===")
 with tempfile.TemporaryDirectory() as d:

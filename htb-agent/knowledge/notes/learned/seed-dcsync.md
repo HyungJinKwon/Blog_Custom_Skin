@@ -1,7 +1,25 @@
-# 학습 시드: dcsync (큐레이션 요약)
+# 학습 시드(심화): dcsync
 
-> 사전 심은 큐레이션 개념 요약(확립된 보안 지식). 라이브 수집 아님 — 권위 출처에서 검증 가능. 최신 본문은 `assassin --learn dcsync` 로 갱신.
+> 종합 레퍼런스(확립된 보안 지식 · 권위 출처 검증가능). 라이브 최신화: `assassin --learn dcsync`. P1: 머신별 라이트업 미참조.
 
-DS-Replication 권한(Replicating Directory Changes) 보유 계정이 DRSUAPI로 DC에 복제를 요청해 KRBTGT/계정 해시를 덤프. impacket-secretsdump --just-dc. → Golden Ticket. 탐지: 비-DC의 복제 요청(4662).
+## 개요
+DCSync(T1003.006): 복제권한으로 DC 에서 자격(해시) 원격 추출.
+
+## 핵심 기법 · 열거
+- Replicating Directory Changes 권한 필요(DA/특정 ACL)
+- krbtgt·전 사용자 해시 덤프 → Golden Ticket 연계
+
+## 표준 도구 · 명령
+```
+impacket-secretsdump <domain>/user:pass@<dc>
+impacket-secretsdump -just-dc-user krbtgt <domain>/user:pass@<dc>
+mimikatz: lsadump::dcsync /user:krbtgt
+```
+
+## 블루팀 탐지
+4662 복제권한 사용(DS-Replication-Get-Changes)·비정상 복제 요청元(비DC).
+
+## 완화
+복제권한 최소화·Tier0 분리·4662 감사·krbtgt 보호.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1003/006/
