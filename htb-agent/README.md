@@ -104,8 +104,8 @@ assassin 10.129.1.5 --config config/config.example.json
 > 불변식으로 완비·깊이·섹션 강제). 웹 취약점·AD 공격체인·서비스 열거·전술 전반 포괄.
 > **일괄 온라인 보강**: `assassin --learn all` — 59개 주제의 최신 본문을 권위
 > 출처에서 한 번에 덧씌움(오프라인이면 출처 포인터만, 시작 지식은 번들 시드가 보장).
-> **내 자료 학습**: `assassin --ingest ./my-writeups/` — .md/.txt 파일/디렉터리를
-> 지식베이스 노트로 미리 학습(원문 보존, 사용자 자료 범주).
+> **내 자료 학습**: `assassin --ingest ./my-writeups/` — .md/.txt/.pdf 파일/디렉터리를
+> 지식베이스 노트로 학습(원문 보존). 본인이 올린 자료는 **참조 허용** — RAG 가 풀이 중 참조(P1 금지는 외부 라이트업 자동수집뿐).
 > **자율 지식 획득**: `assassin <target> --learn-gaps` (autonomous 모드 기본 활성) —
 > 풀이 중 **모르는 기술/제품을 만나면 스스로 권위 출처에서 찾아 배워** KB 에 즉시
 > 반영한다(예: MongoDB 관측 → NoSQLi 지식 자동 연결·학습). 매핑 불가한 용어는
@@ -176,7 +176,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 42 스위트 993 테스트
+cd htb-agent && python3 tests/run_all.py     # 42 스위트 997 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
