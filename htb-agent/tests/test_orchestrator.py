@@ -194,6 +194,34 @@ rep = orc.run()
 check("크리덴셜 → privesc 전제 충족(대기 아님)", not rep.phase_status.get("privesc", "").startswith("대기"))
 check("_prereq_met privesc True", orc._prereq_met("privesc")[0])
 
+print("\n=== 병렬 열거: 순차와 결과 동일(결정성) ===")
+# 동일 시나리오를 순차(max_parallel=1)와 병렬(max_parallel=4)로 실행 → 동일 결과
+rseq = FakeRunner(responder(LINUX_WEB))
+rep_seq = Orchestrator(guard(), rseq, kb, auto_approve_in_scope, max_variants=3,
+                       max_enum=20, is_tool_available=ALL_TOOLS).run()
+rpar = FakeRunner(responder(LINUX_WEB))
+rep_par = Orchestrator(guard(), rpar, kb, auto_approve_in_scope, max_variants=3,
+                       max_enum=20, max_parallel=4, is_tool_available=ALL_TOOLS).run()
+seq_cmds = [f.command for f in rep_seq.enum_findings]
+par_cmds = [f.command for f in rep_par.enum_findings]
+check("병렬=순차 명령 순서 동일", seq_cmds == par_cmds)
+check("병렬=순차 실행결과 동일", [f.ran for f in rep_seq.enum_findings] == [f.ran for f in rep_par.enum_findings])
+check("병렬에서도 출력 파싱됨", any("HTTP 200" in f.output for f in rep_par.enum_findings))
+check("병렬 상태 done", rep_par.status == "done")
+
+print("\n=== 병렬 열거: 플래그·해시·크리덴셜 스캔 유지 ===")
+def resp_rich(cmd):
+    if cmd.startswith("nmap"):
+        return RunOutput(cmd, stdout=LINUX_WEB)
+    if cmd.startswith("curl"):
+        return RunOutput(cmd, stdout="HTTP/1.1 200 OK\r\n\r\nHTB{par_flag} leak mysql://u:Pw1@db")
+    return RunOutput(cmd, stdout="ok")
+orcp = Orchestrator(guard(), FakeRunner(resp_rich), kb, auto_approve_in_scope,
+                    max_variants=2, max_parallel=4, is_tool_available=ALL_TOOLS)
+repp = orcp.run()
+check("병렬 플래그 스캔", any(f.value == "HTB{par_flag}" for f in repp.flags))
+check("병렬 크리덴셜 수확", any("u:Pw1" in c for c in repp.world.creds))
+
 print("\n=== RECON 실패 → 에스컬레이션(enum 진입 안 함) ===")
 r = FakeRunner(responder(DOWN))
 orc = Orchestrator(guard("10.129.1.9"), r, kb, auto_approve_in_scope, is_tool_available=ALL_TOOLS)
