@@ -23,6 +23,13 @@
 자동 거부, **범위 밖만 사람 확인**. `--auto`(완전자동)·`--manual`(완전수동)로 조절.
 탐지된 CVE/CWE 는 **공식 출처(NVD·GitHub PoC)에서 자동 수집·캐시**(`--no-enrich`/`--offline`).
 
+> **능동적 완전자동 모드**: `assassin 10.129.1.5 --autonomous`(별칭 `--hackathon`) —
+> 한 명령으로 최대 자율 풀이. 범위내 자동승인 + 깊은 재진입 스윕(3) + 병렬 열거(4) +
+> 변형 학습 + 전 자동준비(리버스쉘·클라우드·권한상승·크래킹)를 묶어 목표(flag/root)까지
+> 스스로 추진합니다. 두뇌까지 쓰려면 `--llm hybrid` 추가. **안전 경계는 유지** —
+> 범위 밖·파괴명령·실제 익스플로잇은 여전히 게이트(‘건드려선 안 될 권한’만 사람).
+> `--manual` 은 autonomous 보다 우선합니다.
+
 ---
 
 ## 진행 흐름 (모의해킹 단계 순서)
@@ -159,7 +166,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 41 스위트 922 테스트
+cd htb-agent && python3 tests/run_all.py     # 41 스위트 928 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

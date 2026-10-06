@@ -94,5 +94,21 @@ with tempfile.TemporaryDirectory() as d:
     check("기본 JSON 경로 생성", os.path.isfile(os.path.join(d, "report_10.129.1.5.json")))
     check("기본 HTML 경로 생성", os.path.isfile(os.path.join(d, "report_10.129.1.5.html")))
 
+print("\n=== 능동적 완전자동 모드 (--autonomous) ===")
+with tempfile.TemporaryDirectory() as d:
+    code, out, r = run_main(["10.129.1.5", "--autonomous", "--state-dir", d])
+    check("autonomous 정상 종료", code == 0)
+    check("autonomous 모드 표기", "autonomous" in out or "능동적 완전자동" in out)
+    check("autonomous 에서 enum 실행", any(c.startswith(("curl", "nmap")) for c in r.calls))
+    # 변형 학습 파일 생성(공격적 기본 max_variants>1 로 변형 시도됨)
+    check("변형 학습 영속 파일 생성", os.path.isfile(os.path.join(d, "variant_stats.json")))
+# --hackathon 별칭도 동일 동작
+code, out, r = run_main(["10.129.1.5", "--hackathon", "--no-save"])
+check("--hackathon 별칭 동작", code == 0 and ("autonomous" in out or "능동적 완전자동" in out))
+# --manual 은 autonomous 보다 우선(안전) — 범위내여도 대화형 승인 경로
+# (FakeRunner 라도 승인 함수가 interactive 면 비대화 입력에서 거부→미실행; 종료는 0)
+code, out, r = run_main(["10.129.1.5", "--autonomous", "--manual", "--no-save"])
+check("--manual 이 autonomous 보다 우선", "완전수동" in out)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
