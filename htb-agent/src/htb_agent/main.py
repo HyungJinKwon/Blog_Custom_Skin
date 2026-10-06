@@ -77,6 +77,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "'user:<32hex>' 또는 'user::domain:<NT|LM:NT>'. "
                         "{user}/{pass}/{domain}/{hash} 제안을 실행 후보로 승격")
     p.add_argument("--config", help="설정 파일(.json/.yaml). 우선순위: CLI > 설정파일 > 기본값")
+    p.add_argument("--autonomous", "--hackathon", action="store_true", dest="autonomous",
+                   help="능동적 완전자동 모드: 범위내 자동승인 + 깊은 재진입 스윕 + 병렬 열거 + "
+                        "변형학습 + 전 자동준비. 목표(flag/root)까지 스스로 추진(안전 게이트 유지)")
     p.add_argument("--auto", action="store_true",
                    help="완전 자동: 범위내+검증통과만 실행, 범위 밖은 조용히 건너뜀(무프롬프트)")
     p.add_argument("--manual", action="store_true",
@@ -267,12 +270,15 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     flag_prefixes = tuple(profile.flag_prefixes) + tuple(args.flag_prefixes or ())
     ranges = pick(args.ranges, cfg.allowed_ranges,
                   list(profile.default_ranges) or None)
+    # 능동적 완전자동 모드: 명시 지정이 없으면 공격적 기본값으로 상향(한 명령 자율 풀이)
+    _auto_def = (lambda cli, cf, aggressive, base:
+                 pick(cli, cf, aggressive if args.autonomous else base))
     max_attempts = pick(args.max_attempts, cfg.max_attempts, 4)
-    max_enum = pick(args.max_enum, cfg.max_enum, 6)
-    max_rounds = pick(args.max_rounds, cfg.max_rounds, 2)
-    max_sweeps = pick(args.max_sweeps, cfg.max_sweeps, 2)
-    max_parallel = pick(args.max_parallel, getattr(cfg, "max_parallel", None), 1)
-    max_variants = pick(args.variants, cfg.max_variants, 2)
+    max_enum = _auto_def(args.max_enum, cfg.max_enum, 10, 6)
+    max_rounds = _auto_def(args.max_rounds, cfg.max_rounds, 3, 2)
+    max_sweeps = _auto_def(args.max_sweeps, cfg.max_sweeps, 3, 2)
+    max_parallel = _auto_def(args.max_parallel, getattr(cfg, "max_parallel", None), 4, 1)
+    max_variants = _auto_def(args.variants, cfg.max_variants, 3, 2)
     knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, "knowledge")
     llm_kind = pick(args.llm, cfg.llm_backend, "none")
     llm_tier = pick(args.llm_tier, cfg.llm_tier, "standard")
@@ -299,7 +305,10 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     # 3) 환경 프리플라이트
     pf = preflight(required_tool_keys=["nmap"])
     print(pf.render())
-    _mode = "완전자동" if args.auto else ("완전수동" if args.manual else "스마트(범위밖만 확인)")
+    _mode = ("능동적 완전자동(autonomous)" if (args.autonomous and not args.manual)
+             else "완전자동" if args.auto
+             else "완전수동" if args.manual
+             else "스마트(범위밖만 확인)")
     _plat = ui.accent2(profile.name) + ui.dim(f"  ({profile.flag_kind}")
     _plat += ui.dim(f" · {args.category})") if (profile.is_jeopardy and args.category) \
         else ui.dim(")")
@@ -367,10 +376,10 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     # 7) 오케스트레이션 (유한 단계: RECON→PROFILE→ENUM→(LLM)→REPORT)
     # 승인 모드: --auto(완전자동) / --manual(완전수동) / 기본=스마트(범위밖만 확인)
     from .approval import smart_approver
-    if args.auto:
-        approver = auto_approve_in_scope
-    elif args.manual:
+    if args.manual:                               # --manual 은 autonomous 보다 우선(안전)
         approver = interactive_approver
+    elif args.auto or args.autonomous:            # autonomous → 범위내 자동승인
+        approver = auto_approve_in_scope
     else:
         approver = smart_approver
     orchestrator = Orchestrator(guard, runner or SubprocessRunner(), kb, approver,
