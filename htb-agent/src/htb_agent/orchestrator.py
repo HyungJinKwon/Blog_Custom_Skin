@@ -37,6 +37,8 @@ from .vuln import VulnKB, VulnMatch, extract_vuln_ids
 from .flag import FlagHit, scan as scan_flags
 from .crack import scan_hashes as crack_scan
 from .creds_harvest import harvest as harvest_creds, is_safe_for_cmd
+from . import diagnostics
+from . import provenance as _prov
 from .world import WorldModel
 from .variants import expand_variants, fragment_of
 from .state import SessionState, StateStore, host_to_dict, host_from_dict
@@ -97,6 +99,10 @@ class OrchestrationReport:
     # 자율 지식 획득(모르는 기술 → 권위 출처에서 자동 학습, P1 유지)
     acquired_knowledge: list = field(default_factory=list)  # "용어 → 주제 (출처)"
     knowledge_gaps: list = field(default_factory=list)      # 미해석 공백(수동 조사 필요)
+    # 실패 진단(사람 확인용) — (command, FailureDiagnosis) 목록. 자동 재공격 아님
+    blockers: list = field(default_factory=list)
+    # 플래그 출처 검증(실행 트레이스 기반) — list[provenance.FlagProvenance]
+    flag_provenance: list = field(default_factory=list)
     message: str = ""
 
     @property
@@ -149,6 +155,43 @@ class OrchestrationReport:
                 lines.append(f"  {mark} {f.command}{note}")
                 if f.output:
                     lines.append("      " + ui.dim(f.output))
+        if self.blockers:
+            from . import diagnostics as _diag
+            lines.append("\n" + ui.heading(
+                "BLOCKERS  (막힌 지점 — 사람 확인용. 자동 재공격 아님)", "🧯"))
+            diags = [d for _, d in self.blockers]
+            tgt = [(c, d) for c, d in self.blockers if d.is_target]
+            env = [(c, d) for c, d in self.blockers if not d.is_target]
+            if tgt:
+                lines.append("  " + ui.accent2("대상 응답(경로 판단에 유효):"))
+                for cmd, d in tgt[:8]:
+                    lines.append(f"    · {d.label}  — {ui.dim(cmd[:60])}")
+                    if d.hint:
+                        lines.append("      " + ui.dim("↳ " + d.hint))
+            if env:
+                lines.append("  " + ui.accent2("환경/도구/네트워크(경로 실패 아님):"))
+                for cmd, d in env[:8]:
+                    lines.append(f"    · {d.label}  — {ui.dim(cmd[:60])}")
+                    if d.hint:
+                        lines.append("      " + ui.dim("↳ " + d.hint))
+            # 오판 방지: '대상이 거듭 거부'한 범주만 경로 재검토 후보로 '표시'(결정은 사람)
+            signals = _diag.abandonment_signals(diags)
+            repeated = {c: n for c, n in signals.items() if n >= 2}
+            if repeated:
+                lines.append("  " + ui.warn("경로 재검토 후보(대상이 2회+ 거부): ")
+                             + ", ".join(f"{c}×{n}" for c, n in repeated.items())
+                             + ui.dim("  — 환경 문제는 제외됨. 포기 여부는 사람이 판단."))
+        if self.flag_provenance:
+            lines.append("\n" + ui.heading(
+                "PROVENANCE  (플래그 출처 검증 — 실행 트레이스 기반)", "🔎"))
+            for p in self.flag_provenance:
+                mark = ui.ok if p.verdict == "exploit-derived" else ui.warn
+                lines.append("  " + mark(f"[{p.label}] ") + f"{p.kind} flag")
+                lines.append("      " + ui.dim(f"↳ {p.reason} · {p.command[:60]}"))
+            susp = [p for p in self.flag_provenance if p.verdict != "exploit-derived"]
+            if susp:
+                lines.append("  " + ui.warn(
+                    f"※ {len(susp)}건은 공략 유래가 아닐 수 있음 — 사람이 실제 공략 경로 확인"))
         if self.detected_cve or self.detected_cwe or self.vuln_matches:
             lines.append("\n" + ui.heading(
                 "VULN  (탐지된 취약점 — 수동 검증/익스플로잇 필요)", "🛑"))
@@ -908,17 +951,27 @@ class Orchestrator:
         if not out.launched:
             finding.note = f"실행 실패: {out.error}"
             self.audit.event("executed", cmd=cmd, launched=False, error=out.error)
+            self._diagnose(report, finding, out)   # 실행 실패도 원인 분류(환경 문제)
             return
         finding.output = summarize_tool_output(cmd, out.stdout, out.stderr)
         self.audit.event("executed", cmd=cmd, launched=True,
                          returncode=out.returncode, summary=finding.output)
+        # 실패 진단(사람 확인용) — 404/403/타임아웃 등 원인 분류. 자동 재공격 아님.
+        self._diagnose(report, finding, out)
         # 플래그 스캔 — 출력에서 플래그 획득(플랫폼별 종류/접두 적용)
         for hit in scan_flags(cmd, out.stdout, flag_kind=self.flag_kind,
                               prefixes=self.flag_prefixes):
             if hit.value not in {f.value for f in report.flags}:
                 report.flags.append(hit)
-                finding.note = (finding.note + " " if finding.note else "") + f"🚩 {hit.kind} flag"
-                self.audit.event("flag_found", kind=hit.kind, value=hit.value, cmd=cmd)
+                # 출처 검증(실행 트레이스 기반) — 이 플래그를 만든 명령을 분류해 기록.
+                prov = _prov.classify(hit.kind, hit.value, cmd, finding.phase)
+                report.flag_provenance.append(prov)
+                note_mark = f"🚩 {hit.kind} flag"
+                if prov.verdict != "exploit-derived":
+                    note_mark += f"({prov.label})"
+                finding.note = (finding.note + " " if finding.note else "") + note_mark
+                self.audit.event("flag_found", kind=hit.kind, value=hit.value, cmd=cmd,
+                                 provenance=prov.verdict)
                 if self.world is not None:
                     self.world.add_flag(hit.kind, hit.value)
         # 해시 스캔 — 원시출력(요약 전)에서 크래킹 대상 해시 수집(크래킹 자동 준비용)
@@ -931,6 +984,23 @@ class Orchestrator:
         # 크리덴셜 자동 수확 — 원시출력에서 고신뢰 평문 자격 추출. 월드엔 모두 반영,
         # 실행 볼트엔 셸-안전한 값만(신뢰불가 출처 인젝션 차단). A1 재진입을 활성화.
         self._harvest_creds(out.stdout, cmd, finding)
+
+    def _diagnose(self, report: OrchestrationReport, finding: EnumFinding, out) -> None:
+        """실패를 원인별로 분류해 finding 비고에 덧붙이고 report.blockers 에 기록한다.
+        '대상 응답'(404/403…)과 '환경/도구/네트워크 문제'를 구분해 사람이 판단하게 한다.
+        자동 재시도·경로 변경은 하지 않는다(판단 재료만 제공)."""
+        try:
+            diag = diagnostics.diagnose(finding.command, out)
+        except Exception as e:   # noqa: BLE001 — 진단 실패가 본 작업을 막지 않음
+            self.audit.event("diagnose_error", cmd=finding.command, error=str(e))
+            return
+        if diag is None:
+            return
+        tag = f"[{diag.kind}] {diag.label}"
+        finding.note = (finding.note + " · " if finding.note else "") + tag
+        report.blockers.append((finding.command, diag))
+        self.audit.event("diagnosis", cmd=finding.command, category=diag.category,
+                         is_target=diag.is_target)
 
     def _safe_run(self, cmd: str) -> "RunOutput":
         """runner.run 을 예외로부터 보호. 어떤 러너 예외도 실패 RunOutput 으로 흡수해
