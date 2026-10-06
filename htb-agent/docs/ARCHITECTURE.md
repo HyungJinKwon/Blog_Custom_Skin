@@ -92,7 +92,7 @@ LLM 이 제안한 명령도 '신뢰하지 않는 데이터'로 간주되어 이 
 | | `variants.py` | 도구별 옵션 조합 변형(경우의 수) 생성 |
 | | `variant_stats.py` | 실행 결과 기반 변형 학습(성공률로 변형 순서 재정렬, 세션 넘어 영속) |
 | | `llm/` | Claude/Ollama 프로바이더 + 티어링 + 캐싱·비용 · **HybridRouter**(단계 난이도→로컬/강력 라우팅+상호 폴백) · **분석가 역할**(analyze: 상태→가설·공격경로·집중·확신도, 명령 생성 유도) · **구조화 출력**(JSON 배열 command/rationale/expected_signal 우선 파싱, 라인 폴백) · **적응형 tier**(저확신/빈결과 시 강력 모델 승격) |
-| | `learn.py` | 권위 출처 자가학습(--learn, 허용도메인·캐시·P1 유지) → 지식베이스 노트. 52주제 번들 시드로 '동일 완비 지식' 시작 보장 |
+| | `learn.py` | 권위 출처 자가학습(--learn, 허용도메인·캐시·P1 유지) → 지식베이스 노트. 59주제 종합 레퍼런스 시드로 '동일 완비 지식' 시작 보장 |
 | | `knowledge_gaps.py` | **자율 지식 획득**(--learn-gaps): 관측 기술→권위 주제 별칭 해석·공백 감지→권위 출처 자동 학습→KB 즉시 반영. 미해석 공백은 지어내지 않고 기록(allowlist·P1 유지) |
 | **실행** | `tools/runner.py` | Subprocess(실제) / Fake(테스트) |
 | | `tools/recon.py` | 유한 폴백 포트스캔 |
@@ -150,7 +150,7 @@ assassin 10.129.1.5 --resume                   # 중단 지점 재개
 ## 7. 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py        # 42 스위트 988 테스트
+cd htb-agent && python3 tests/run_all.py        # 42 스위트 993 테스트
 ```
 
 네트워크·도구 없이도 **러너 주입**으로 전 로직 검증하며, 통합 테스트는 `main()` 을

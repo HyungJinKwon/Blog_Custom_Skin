@@ -1,7 +1,34 @@
-# 학습 시드: service-discovery (큐레이션 요약)
+# 학습 시드(심화): service-discovery
 
-> 사전 심은 큐레이션 개념 요약(확립된 보안 지식). 라이브 수집 아님 — 권위 출처에서 검증 가능. 최신 본문은 `assassin --learn service-discovery` 로 갱신.
+> 종합 레퍼런스(확립된 보안 지식 · 권위 출처 검증가능). 라이브 최신화: `assassin --learn service-discovery`. P1: 머신별 라이트업 미참조.
 
-ATT&CK T1046. 네트워크 서비스 탐색: 포트스캔·버전식별로 공격면 매핑(nmap -sV -sC). 초기 enum 핵심. 블루팀: 수평 포트스캔(단일출발→다수포트/호스트), SYN 급증 탐지. 완화: 분할·IDS·불필요 서비스 제거.
+## 개요
+서비스 열거(T1046): 포트별 서비스 심층 열거 — HTB enum 핵심. 서비스별 표준 절차 모음.
+
+## 핵심 기법 · 열거
+- FTP(21): 익명·쓰기가능·설정 노출
+- SMB(445): 널세션·공유·RID
+- SNMP(161/udp): community(public)·snmpwalk
+- NFS(2049): showmount·no_root_squash
+- Redis(6379): 무인증·keys·웹셸
+- rsync(873): 모듈 나열·익명
+- LDAP(389): naming context·사용자
+- RPC(111): rpcinfo·NFS 연계
+- MSSQL(1433)/MySQL(3306): 기본자격·xp_cmdshell
+
+## 표준 도구 · 명령
+```
+nmap -sC -sV -p- <target>
+snmpwalk -v2c -c public <target> ; onesixtyone <target>
+showmount -e <target>                          # NFS
+redis-cli -h <target> ; rsync -av rsync://<target>/
+nxc smb <target> -u '' -p '' --shares
+```
+
+## 블루팀 탐지
+다수 서비스 동시 프로브·비정상 열거 트래픽·무인증 접근 성공.
+
+## 완화
+불필요 서비스 제거·인증 강제·버전 노출 최소화·분할.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1046/

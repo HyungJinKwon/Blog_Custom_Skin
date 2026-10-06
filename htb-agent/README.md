@@ -98,10 +98,11 @@ assassin 10.129.1.5 --config config/config.example.json
 
 전체 옵션: `assassin --help` (설치 전: `PYTHONPATH=src python3 -m htb_agent --help`).
 
-> **동일 완비 지식으로 시작**: 52개 주제 전체의 큐레이션 **번들 시드 노트**가
-> 저장소에 포함되어, 누구가 clone 해도 **오프라인에서 동일하게 전 주제 지식을 가진
-> 상태로 시작**한다(CI 불변식으로 강제). 라이브 수집은 그 위의 *선택적 보강*이다.
-> **일괄 온라인 보강**: `assassin --learn all` — 52개 주제의 최신 본문을 권위
+> **완성형 지식으로 시작**: 59개 주제 전체의 **종합 레퍼런스 번들 시드**(개요·핵심
+> 기법/열거·표준 도구/명령·블루팀 탐지·완화·권위 출처)가 저장소에 포함되어, 누구가
+> clone 해도 **오프라인에서 동일하게 심화 지식을 가진 완성형 상태로 시작**한다(CI
+> 불변식으로 완비·깊이·섹션 강제). 웹 취약점·AD 공격체인·서비스 열거·전술 전반 포괄.
+> **일괄 온라인 보강**: `assassin --learn all` — 59개 주제의 최신 본문을 권위
 > 출처에서 한 번에 덧씌움(오프라인이면 출처 포인터만, 시작 지식은 번들 시드가 보장).
 > **내 자료 학습**: `assassin --ingest ./my-writeups/` — .md/.txt 파일/디렉터리를
 > 지식베이스 노트로 미리 학습(원문 보존, 사용자 자료 범주).
@@ -175,7 +176,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 42 스위트 988 테스트
+cd htb-agent && python3 tests/run_all.py     # 42 스위트 993 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

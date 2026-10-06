@@ -138,6 +138,20 @@ SOURCES: dict[str, list[tuple[str, str]]] = {
     "snmp": [("RFC 1157 SNMP", "https://datatracker.ietf.org/doc/html/rfc1157")],
     "smtp": [("RFC 5321 SMTP", "https://datatracker.ietf.org/doc/html/rfc5321")],
     "tcp": [("RFC 9293 TCP", "https://datatracker.ietf.org/doc/html/rfc9293")],
+    # HTB 특화 공격 체인(추가) — MITRE ATT&CK
+    "pivoting": [("ATT&CK T1090 Proxy", "https://attack.mitre.org/techniques/T1090/")],
+    "password-cracking": [("ATT&CK T1110.002 Password Cracking",
+                           "https://attack.mitre.org/techniques/T1110/002/")],
+    "pass-the-ticket": [("ATT&CK T1550.003 Pass the Ticket",
+                         "https://attack.mitre.org/techniques/T1550/003/")],
+    "golden-ticket": [("ATT&CK T1558.001 Golden Ticket",
+                       "https://attack.mitre.org/techniques/T1558/001/")],
+    "silver-ticket": [("ATT&CK T1558.002 Silver Ticket",
+                       "https://attack.mitre.org/techniques/T1558/002/")],
+    "ad-enumeration": [("ATT&CK T1087.002 Domain Account Discovery",
+                        "https://attack.mitre.org/techniques/T1087/002/")],
+    "unsecured-credentials": [("ATT&CK T1552 Unsecured Credentials",
+                               "https://attack.mitre.org/techniques/T1552/")],
 }
 
 

@@ -1,7 +1,26 @@
-# 학습 시드: snmp (큐레이션 요약)
+# 학습 시드(심화): snmp
 
-> 사전 심은 큐레이션 개념 요약(확립된 보안 지식). 라이브 수집 아님 — 권위 출처에서 검증 가능. 최신 본문은 `assassin --learn snmp` 로 갱신.
+> 종합 레퍼런스(확립된 보안 지식 · 권위 출처 검증가능). 라이브 최신화: `assassin --learn snmp`. P1: 머신별 라이트업 미참조.
 
-RFC 1157. SNMP(161/udp). 기본 커뮤니티스트링(public/private)으로 시스템정보·사용자·프로세스·라우팅 노출(특히 v1/v2c 평문). 열거: snmpwalk·onesixtyone. 블루팀: 기본 커뮤니티 접근·대량 OID 조회 탐지. 완화: v3(인증/암호)·커뮤니티 변경·접근제한.
+## 개요
+SNMP(161/udp): 네트워크 관리. 기본 community 로 시스템정보 노출(v1/v2c 평문).
+
+## 핵심 기법 · 열거
+- community(public/private) 추측
+- 시스템/프로세스/사용자/라우팅/설치SW 노출
+- 쓰기 community 로 설정 변경
+
+## 표준 도구 · 명령
+```
+onesixtyone <target> community.txt
+snmpwalk -v2c -c public <target>
+snmpwalk -v2c -c public <target> 1.3.6.1.4.1.77.1.2.25  # 사용자
+```
+
+## 블루팀 탐지
+기본 community 접근·대량 OID 조회·v1/v2c 평문.
+
+## 완화
+SNMPv3(인증/암호)·community 변경·접근제한·불필요 비활성.
 
 - 출처(검증): https://datatracker.ietf.org/doc/html/rfc1157

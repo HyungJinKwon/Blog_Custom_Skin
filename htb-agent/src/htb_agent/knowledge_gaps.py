@@ -35,7 +35,7 @@ ALIASES: dict[str, str] = {
     "postgresql": "sqli", "postgres": "sqli", "mariadb": "sqli", "mysql": "sqli",
     "mssql": "sqli", "sql server": "sqli", "oracle": "sqli", "sqlite": "sqli",
     "mongodb": "nosql-injection", "mongo": "nosql-injection", "couchdb": "nosql-injection",
-    "redis": "nosql-injection", "cassandra": "nosql-injection", "elasticsearch": "nosql-injection",
+    "cassandra": "nosql-injection", "elasticsearch": "nosql-injection",
     # ── 웹 서버 / 애플리케이션(공개 서비스 익스플로잇) ──
     "apache": "exploit-public-app", "httpd": "exploit-public-app", "nginx": "exploit-public-app",
     "tomcat": "exploit-public-app", "jetty": "exploit-public-app", "jboss": "exploit-public-app",
@@ -62,6 +62,16 @@ ALIASES: dict[str, str] = {
     "msrpc": "service-discovery", "rpcbind": "service-discovery", "portmapper": "service-discovery",
     "rpc": "service-discovery", "nfs": "service-discovery", "mountd": "service-discovery",
     "telnet": "brute-force", "finger": "service-discovery",
+    "redis": "unsecured-credentials", "memcached": "unsecured-credentials",
+    "rsync": "service-discovery", "ipmi": "password-cracking",
+    # ── AD 공격 체인 / 횡이동 ──
+    "bloodhound": "ad-enumeration", "sharphound": "ad-enumeration",
+    "ntds": "dcsync", "ntds.dit": "dcsync",
+    "chisel": "pivoting", "socat": "pivoting", "proxychains": "pivoting",
+    "ligolo": "pivoting", "sshuttle": "pivoting",
+    "hashcat": "password-cracking", "john": "password-cracking",
+    "mimikatz": "pass-the-ticket", "rubeus": "pass-the-ticket",
+    "secretsdump": "dcsync", "lsass": "credential-dumping",
 }
 
 # CVE 식별자 — enrich.py(NVD) 경로로 흐르므로 공백 학습 대상에서 제외한다.

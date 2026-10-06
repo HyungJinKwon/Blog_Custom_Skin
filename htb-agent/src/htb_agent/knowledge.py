@@ -211,6 +211,12 @@ def _load_rule_dir(path: str) -> list[Rule]:
     return out
 
 
+# 노트 1개당 RAG 반영 문자 상한. '완성형' 심화 시드(종합 레퍼런스)가 실제로
+# 활용되도록 충분히 크게 둔다(기존 500자는 심화 지식을 잘라 깊이를 무력화했음).
+# 상위 N개만 프롬프트에 주입되므로(relevant_notes limit) 컨텍스트 폭증 없음.
+NOTE_CHARS = 6000
+
+
 def _load_notes_dir(path: str) -> list[str]:
     # 하위 디렉토리(예: notes/learned/ — 자가학습 노트)까지 포함해 '성장'을 반영.
     out: list[str] = []
@@ -221,7 +227,7 @@ def _load_notes_dir(path: str) -> list[str]:
             if fn.endswith((".md", ".txt")):
                 try:
                     with open(os.path.join(root, fn), encoding="utf-8") as f:
-                        out.append(f"[{fn}] " + f.read().strip()[:500])
+                        out.append(f"[{fn}] " + f.read().strip()[:NOTE_CHARS])
                 except OSError:
                     continue
     return out
