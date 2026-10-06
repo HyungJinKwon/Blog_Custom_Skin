@@ -169,6 +169,39 @@ with tempfile.TemporaryDirectory() as d:
     # 자료 없는 경로 → 빈 결과
     check("빈 경로 → 빈 결과", learn.ingest(os.path.join(d, "nope"), dest_dir=dest) == [])
 
+print("\n=== ingest PDF 지원(라이트업 등 실제 포맷) ===")
+check("INGEST_EXTS 에 .pdf 포함", ".pdf" in learn.INGEST_EXTS)
+with tempfile.TemporaryDirectory() as d:
+    # 유효하지 않은 PDF(추출 불가) → 크래시 없이 건너뜀(스캔본·도구부재 시 동작)
+    bad = os.path.join(d, "broken.pdf")
+    with open(bad, "wb") as f:
+        f.write(b"%PDF-1.4\nnot-a-real-pdf-body\n")
+    check("추출 불가 PDF 안전 처리(빈 문자열)", learn._extract_pdf_text(bad, 1000) == "")
+    check("추출 불가 PDF 는 건너뜀(크래시 없음)",
+          learn.ingest(bad, dest_dir=os.path.join(d, "o")) == [])
+    # 최소 유효 PDF(텍스트 포함) 생성 → 추출·수집 확인(pdftotext 있을 때)
+    import shutil
+    minimal = (b"%PDF-1.4\n"
+               b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+               b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+               b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]"
+               b"/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n"
+               b"4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+               b"5 0 obj<</Length 44>>stream\n"
+               b"BT /F1 12 Tf 72 700 Td (HTB WRITEUP TOKEN) Tj ET\n"
+               b"endstream endobj\n"
+               b"xref\n0 6\n0000000000 65535 f \n"
+               b"trailer<</Root 1 0 R/Size 6>>\n%%EOF\n")
+    mp = os.path.join(d, "note.pdf")
+    with open(mp, "wb") as f:
+        f.write(minimal)
+    if shutil.which("pdftotext"):
+        got = learn.ingest(mp, dest_dir=os.path.join(d, "o2"))
+        check("유효 PDF 텍스트 수집(pdftotext)",
+              len(got) == 1 and "WRITEUP TOKEN" in open(got[0], encoding="utf-8").read())
+    else:
+        check("pdftotext 미설치 — 스킵(환경 의존)", True)
+
 print("\n=== --learn all / --ingest CLI ===")
 with tempfile.TemporaryDirectory() as d:
     buf = io.StringIO()
