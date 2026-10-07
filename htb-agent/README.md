@@ -181,7 +181,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 48 스위트 1107 테스트
+cd htb-agent && python3 tests/run_all.py     # 49 스위트 1122 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
@@ -195,3 +195,54 @@ cd htb-agent && python3 tests/run_all.py     # 48 스위트 1107 테스트
 - 명령 검증은 "형식적 무오류 + 실행 가능 형태"까지 보장(도구별 옵션 의미·해시 정답은 미보장).
 - OS/취약점 판정은 증거기반 확신도 — 약하면 `〔추정〕` 표기.
 - LLM 비용은 추정치. 실제 공격·VPN 은 Kali 환경 전용.
+
+## 전체 CLI 옵션
+
+<!-- CLI-OPTIONS:START (scripts/gen_cli_docs.py 가 자동 생성 — 직접 수정 금지) -->
+| 옵션 | 설명 |
+|---|---|
+| `--version` | show program's version number and exit |
+| `--doctor` | 환경 자가진단(도구·LLM·VPN 점검, 스캔 안 함). 완전 초보자 권장 첫 실행 |
+| `--revshell` `LHOST:LPORT` | 리버스쉘 페이로드 생성(실행 안 함). 'IP:PORT' 또는 'PORT'(공격자 IP 자동/--attacker-ip). 권한 확인 대상 전용 |
+| `--learn` `TOPIC` | 권위 출처 자가학습(도구·공격기법·개념·프로토콜)을 지식베이스에 저장. 예: --learn kerberoasting / burp / http. 전체 일괄: --learn all. 목록: --learn list |
+| `--ingest` `PATH` | 사용자 제공 자료(.md/.txt 파일 또는 디렉터리)를 지식베이스 노트로 미리 학습. 예: --ingest ./my-writeups/ |
+| `--cloud` `NAME` | AWS/S3 열거 자동 준비(생성 안 실행). 호스트명/도메인에서 버킷명 후보+비인증 점검 생성. 예: --cloud acme.htb. 권한 확인 자산 전용 |
+| `--privesc` `OS` | 권한상승 플레이북 자동 준비(생성 안 실행). OS 별 열거·점검·LPE 체크리스트 생성. 예: --privesc linux. 획득한 대상 셸에서 직접 실행 |
+| `--crack` `HASH` | 해시 크래킹 자동 준비(생성 안 실행). 해시 종류 식별 + john/hashcat 명령 생성. 예: --crack '$krb5tgs$23$...'. 권한 확인 자산 해시 전용 |
+| `--platform` | 플랫폼 프로파일 (기본 htb). dreamhack/ctf=단일 타겟+flag{} 모드 |
+| `--category` | Jeopardy 카테고리 힌트(web/pwn/rev/crypto/forensic/misc). CTF/Dreamhack 에서 LLM 제안을 카테고리에 맞게 유도 |
+| `--flag-prefix` | 우선 인식할 플래그 접두 (반복 가능, 예: --flag-prefix DH). 플랫폼 기본값에 추가 |
+| `--range` | 허용 타겟 CIDR (반복 가능). 생략 시 플랫폼 기본(HTB만 대역 강제) |
+| `--attacker-ip` | 공격자 VPN IP (반복 가능). 생략 시 tun0 자동탐지 |
+| `--lport` | 리버스쉘 리스너 포트(자동 준비 페이로드용, 기본 4444) |
+| `--cred` | 자격증명 'user:pass' / 'user:pass:domain' / 'user:pass:domain:nthash' (반복 가능). Pass-the-Hash 는 'user:&lt;32hex&gt;' 또는 'user::domain:&lt;NT\|LM:NT&gt;'. {user}/{pass}/{domain}/{hash} 제안을 실행 후보로 승격 |
+| `--config` | 설정 파일(.json/.yaml). 우선순위: CLI &gt; 설정파일 &gt; 기본값 |
+| `--autonomous`, `--hackathon` | 능동적 완전자동 모드: 범위내 자동승인 + 깊은 재진입 스윕 + 병렬 열거 + 변형학습 + 전 자동준비. 목표(flag/root)까지 스스로 추진(안전 게이트 유지) |
+| `--auto` | 완전 자동: 범위내+검증통과만 실행, 범위 밖은 조용히 건너뜀(무프롬프트) |
+| `--manual` | 완전 수동: 모든 명령을 실행 전 확인(승인제 최대) |
+| `--no-enrich` | CVE/CWE 자동 수집(NVD/GitHub) 비활성 |
+| `--learn-gaps` | 자율 지식 획득: 풀이 중 모르는 기술을 권위 출처에서 자동 학습해 KB 에 즉시 반영(allowlist·P1 유지). autonomous 모드에선 기본 활성 |
+| `--no-learn-gaps` | 자율 지식 획득 비활성(autonomous 모드에서도 끔) |
+| `--web-learn` | 인터넷 검색 학습: 카탈로그 밖 '미해석 공백'을 웹 검색으로 학습해 KB 반영. HTB 라이트업(공식·제3자)은 가드로 차단. autonomous 기본 활성 |
+| `--no-web-learn` | 인터넷 검색 학습 비활성(autonomous 모드에서도 끔) |
+| `--offline` | 오프라인: 네트워크 수집 금지(캐시만 사용) |
+| `--enrich-cache` | CVE 캐시 디렉토리 (기본 &lt;knowledge&gt;/cve_cache) |
+| `--max-attempts` | 포트스캔 폴백 최대 시도 (기본 4, 무한루프 방지) |
+| `--max-enum` | enum 자동실행 최대 개수 (기본 6, 무한확장 방지) |
+| `--max-rounds` | ENUM/LLM 반복 라운드 수 (기본 2, 무한루프 방지) |
+| `--max-sweeps` | 단계 재진입 스윕 수 (기본 2). 새 관측·크리덴셜로 이전 단계 재시도. 상태 정체 시 조기종료(유한) |
+| `--max-parallel` | 열거 명령 동시 실행 수 (기본 1=순차). 독립 명령의 I/O 만 병렬 — 게이트·결과처리는 순차로 안전 |
+| `--variants` | 명령당 옵션 조합 변형 수 (기본 2, 1=변형끔). 경우의 수 시도 |
+| `--knowledge` | 지식베이스 디렉토리 (기본 ./knowledge). 사용자 규칙/노트로 성장 |
+| `--llm` | LLM 두뇌 백엔드 (기본 none=규칙기반). claude=API, ollama=로컬, hybrid=둘을 단계 난이도로 라우팅+폴백(장점극대·단점보완) |
+| `--llm-tier` | LLM 티어 (비용/성능) |
+| `--state-dir` | 세션 상태 저장 디렉토리 (기본 ./state) |
+| `--resume` | 저장된 상태에서 재개 (RECON 재사용, 재스캔 생략) |
+| `--no-save` | 상태 저장 안 함 |
+| `--log-file` | 감사 로그(JSONL) 경로. 생략 시 &lt;state-dir&gt;/audit_&lt;타겟&gt;.jsonl |
+| `--no-audit` | 감사 로그 비활성 |
+| `--writeup` | 풀이 라이트업 Markdown 생성(경로 생략 시 writeup_&lt;타겟&gt;.md) |
+| `--writeup-format` | 라이트업 형식: htb(기본, htb-ctf-writeup-v5) / tistory(13섹션) |
+| `--json` | 결과를 기계판독 JSON 으로 내보내기(경로 생략 시 &lt;state-dir&gt;/report_&lt;타겟&gt;.json) |
+| `--html` | 결과를 HTML 대시보드로 내보내기(블루/네이비, 경로 생략 시 &lt;state-dir&gt;/report_&lt;타겟&gt;.html) |
+<!-- CLI-OPTIONS:END -->
