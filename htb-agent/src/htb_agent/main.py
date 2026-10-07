@@ -138,6 +138,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-cost", type=float, default=None, metavar="USD",
                    help="LLM 누적 추정 비용 상한(달러). 넘으면 LLM 호출을 멈추고 규칙 기반으로 "
                         "계속 진행한다. 기본: 무제한")
+    p.add_argument("--observe", action="store_true",
+                   help="사람 관찰 입력: 건너뛴(미승인) 명령 대신 브라우저 등으로 직접 확인한 내용을 "
+                        "적어 기록에 반영한다('사람 관찰'로 표시, 에이전트 검증 결과와 구분). 대화형 실행용")
     p.add_argument("--knowledge", default=None,
                    help="지식베이스 디렉토리 (기본 ./knowledge). 사용자 규칙/노트로 성장")
     p.add_argument("--llm", choices=["none", "claude", "ollama", "hybrid"], default=None,
@@ -602,7 +605,10 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         approver = auto_approve_in_scope
     else:
         approver = smart_approver
+    from .approval import interactive_observer
+    observer = interactive_observer if (args.observe and runner is None) else None
     orchestrator = Orchestrator(guard, runner or SubprocessRunner(), kb, approver,
+                                observer=observer,
                                 max_enum=max_enum,
                                 max_llm=pick(None, cfg.max_llm, 5),
                                 recon_max_attempts=max_attempts,

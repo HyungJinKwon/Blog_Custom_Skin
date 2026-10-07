@@ -177,6 +177,16 @@ def interactive_approver(command: str, vrep: ValidationReport,
     return ans in ("y", "yes")
 
 
+def interactive_observer(command: str) -> str:
+    """사람 관찰 입력 — 건너뛴 명령 대신 직접 확인한 내용(예: 브라우저 화면)을 적는다.
+    엔터만 치면 기록하지 않는다. 기록은 '사람 관찰'로 표시돼 에이전트 검증 결과와 구분된다."""
+    from . import ui
+    try:
+        return input(ui.dim("  직접 확인한 내용이 있으면 적어 주세요(엔터=없음): ")).strip()
+    except EOFError:
+        return ""
+
+
 def smart_approver(command: str, vrep: ValidationReport,
                    sres: CommandScopeResult) -> bool:
     """

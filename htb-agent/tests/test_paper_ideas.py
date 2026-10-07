@@ -5,6 +5,7 @@ import io
 import sys
 sys.path.insert(0, "src")
 from htb_agent import bench as B
+from htb_agent import main as M
 from htb_agent.knowledge import KnowledgeBase, Rule
 from htb_agent.llm.fake_provider import FakeProvider
 from htb_agent.llm.router import LLMRouter
@@ -99,6 +100,38 @@ d = B.to_dict("x", 1, "none", st, res)
 check("JSON totals 에 verified_solve_rate·verified_any",
       "verified_solve_rate" in d["totals"] and "verified_any" in d["totals"])
 check("표에 '검증된 풀이율'", "검증된 풀이율" in B.render(st, 1, "none"))
+
+print("\n=== 사람 관찰 입력(선택) — 건너뛴 명령 대신 직접 확인 내용 기록 ===")
+# 범위 밖 명령을 거부(reject-scope)하는 승인자 + 관찰 콜백 주입
+def deny(cmd, vrep, sres):     # 정찰(nmap)은 통과, 열거 명령만 거부 → 관찰 입력 경로
+    return cmd.startswith("nmap")
+def observer(cmd):
+    return "브라우저에서 /admin 페이지에 로그인 폼 확인"
+g4 = ScopeGuard.from_cidr_strings(); g4.bind_target(T)
+kb4 = KnowledgeBase(rules=[Rule(name="w", phase="enum", ports=[80],
+                               suggest=["curl -i http://{t}/admin"])], notes=[])
+def runweb(c):
+    if c.startswith("nmap"):
+        return RunOutput(c, stdout=XMLw)
+    return RunOutput(c, stdout="ok")
+rep4 = Orchestrator(g4, FakeRunner(runweb), kb4, deny, observer=observer,
+                    is_tool_available=lambda b: True, max_sweeps=1).run()
+obs = [f for f in rep4.enum_findings if "사람 관찰" in (f.note or "")]
+check("관찰 입력이 finding 에 기록", obs and "[사람 관찰]" in obs[0].output)
+check("관찰이 월드 수집물에 '사람 관찰' 출처로", rep4.world is not None
+      and any("사람 관찰" in rep4.world.evidence.get(l, "") for l in rep4.world.loot))
+check("관찰 명령은 실행되지 않음(ran=False)", obs and not obs[0].ran)
+# observer 가 빈 문자열이면 아무것도 기록 안 함
+rep5 = Orchestrator(g4, FakeRunner(runweb), kb4, deny, observer=lambda c: "",
+                    is_tool_available=lambda b: True, max_sweeps=1).run()
+check("빈 관찰은 기록 안 함", not any("사람 관찰" in (f.note or "") for f in rep5.enum_findings))
+# observer 없으면 기존 동작(관찰 없음)
+rep6 = Orchestrator(g4, FakeRunner(runweb), kb4, deny,
+                    is_tool_available=lambda b: True, max_sweeps=1).run()
+check("observer 미지정 → 관찰 없음(기존 동작)", not any("사람 관찰" in (f.note or "")
+                                                   for f in rep6.enum_findings))
+a2 = M.build_parser().parse_args([T, "--observe"])
+check("파서: --observe", a2.observe is True)
 
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
