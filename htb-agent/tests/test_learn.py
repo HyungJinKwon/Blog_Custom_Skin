@@ -65,6 +65,29 @@ check("평문 입력 + 엔티티", ex("plain &amp; text") == "plain & text")
 check("결과가 비면 기존 방식으로 대체(전부 nav)", ex("<nav>Only nav text</nav>") == "")
 check("limit 적용", len(ex("<p>" + "x" * 2000 + "</p>", limit=100)) == 100)
 
+print("\n=== extract_text: 공지 배너·접힘 목록·메타 줄·RFC 머리글 ===")
+check("사이트 공지(.alert) 제거",
+      ex("<main><div class='alert'><p>We have migrated our community.</p></div><p>Body</p></main>") == "Body")
+check("기본 접힘(.collapse) 목록 제거 + 토글 머리(.collapsed) 제거",
+      ex("<div class='card-header collapsed'><h5>Other items (5)</h5></div>"
+         "<div class='card-body collapse'><table><tr><td>T1</td></tr></table></div><p>Body</p>") == "Body")
+check("펼친 접힘(.collapse.show)은 보존", ex("<div class='collapse show'><p>Shown</p></div>") == "Shown")
+check("작성자·기여자 메타 줄 제거",
+      ex("<main><div><b>Author:</b> A<br><b>Contributor(s):</b> " + "Name, " * 60
+         + "<br></div><h2>Overview</h2><p>Body</p></main>") == "Overview Body")
+check("본문 문장 속 'Author:' 는 보존(줄 머리만 메타)", "Author: x" in ex("<p>The Author: x said</p>"))
+rfc_abs = "<pre>Network Working Group  J. Doe\nRequest for Comments: 1\nStatus of This Memo\n x\nAbstract\n The protocol does Y.</pre>"
+check("RFC 머리글 건너뛰고 초록부터", ex(rfc_abs) == "The protocol does Y.")
+check("초록 없으면 'Status of this Memo' 다음부터",
+      ex("<pre>Network Working Group J. Postel\nStatus of this Memo\n This memo is the spec.</pre>")
+      == "This memo is the spec.")
+check("목차의 'Status of this Memo' 항목이 아니라 실제 절부터",
+      ex("<pre>Network Working Group J. Case\n1. Status of this Memo ....... 1\n2. Intro ..... 2\n"
+         "1. Status of this Memo\n This memo defines SNMP.</pre>") == "This memo defines SNMP.")
+check("목차(.toc) 제거", ex("<div class='toc'><p>Table of Contents Chapter 1</p></div><p>Body</p>") == "Body")
+check("RFC 아닌 문서의 'Abstract' 는 그대로", ex("<p>Abstract classes in Java</p>") == "Abstract classes in Java")
+check("머리글 뒤 본문이 없으면 원문 유지", ex("<pre>RFC 1 Title Abstract</pre>") == "RFC 1 Title Abstract")
+
 print("\n=== match_sources ===")
 check("정확 일치", learn.ReferenceLearner().match_sources("burp"))
 check("부분 일치(kerberos→kerberos/kerberoasting)", len(learn.ReferenceLearner().match_sources("kerberos")) >= 1)
