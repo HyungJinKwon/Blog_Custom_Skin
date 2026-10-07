@@ -1,0 +1,12 @@
+{
+  "name": "ftp-anon-file",
+  "title": "익명 FTP 목록의 메모 파일",
+  "difficulty": "medium",
+  "lesson": "익명 접근으로 보이는 파일을 실제로 내려받아 확인",
+  "ports": [[21, "ftp"]],
+  "responses": [
+    {"match": "note.txt", "stdout": "FLAG{anonymous_is_not_private}"},
+    {"match": "ftp://", "stdout": "-rw-r--r-- 1 ftp ftp 32 Jan 01 note.txt"}
+  ],
+  "flag": "FLAG{anonymous_is_not_private}"
+}

@@ -57,6 +57,10 @@ flowchart TD
 저장한다(네트워크 CVE 수집은 생략). 리포트 status=`interrupted`, 종료코드 130, `--resume` 으로
 이어 간다.
 
+**실패 되먹임**: 각 단계 종료 시 분류한 실패 진단(`diagnostics.py`)을 다음 분석가·명령 생성 맥락에 넣는다.
+'대상 응답'(404/403 등)은 경로 판단 근거로, '환경/도구' 문제는 경로를 버릴 근거가 아닌 것으로 구분해,
+같은 실패를 반복하지 않고 다른 경로·도구로 전환하도록 유도한다(이전엔 리포트에만 남던 정보).
+
 **예산 의미**: `max_enum`·`max_llm` 은 '이번 실행에서 실제로 시도한 명령' 수다. 도구 미설치로
 건너뛴 명령(`skipped`)과 재개로 복원한 이전 결과는 예산을 쓰지 않는다.
 
@@ -156,11 +160,13 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 | | `environment.py` · `main.py` · `__main__.py` | Kali 프리플라이트 · CLI 진입점(ASSASSIN) · `python -m` 진입 |
 | | `util.py` | 공용 헬퍼(바이너리 추출 등) |
 | | `doctor.py` | 환경 자가진단(--doctor: 도구·LLM·VPN, 초보자용) |
+| | `bench.py` | 평가 하네스(--bench): 오프라인 모의 문제로 성공률·pass@N·명령 수·플래그까지 단계·시간·비용 측정, 시도별 감사 로그 저장 |
+| | `replay.py` | 실행 기록 재생(--replay): 감사 로그(JSONL) → 단계별 타임라인 HTML(이전/다음/자동 재생). 로그는 신뢰불가 데이터로 이스케이프 |
 | | `ui.py` | 터미널 렌더링(블루/네이비 색상·박스·정렬, NO_COLOR/비-TTY 자동 무색) |
 | | `profiles.py` | 플랫폼 프로파일(HTB/Dreamhack/CTF: 스코프·플래그·카테고리) |
 | | `enrich.py` | CVE/CWE 자동 수집(NVD·GitHub PoC, 주입식 fetcher·캐시·오프라인 안전) |
 | | `writeup.py` | 라이트업 생성(htb-ctf-writeup-v5 / Tistory 13섹션) |
-| | `report_export.py` | 결과 내보내기 — 기계판독 JSON(schema 1.4) · 블루/네이비 HTML 대시보드(상단 '한눈에 보기': 진행 결과·3관문 지표·플래그 출처·지식 기반·LLM 라우팅·안전 경계·단계 진행 + 분석(병렬 가설)) |
+| | `report_export.py` | 결과 내보내기 — 기계판독 JSON(schema 1.5) · 블루/네이비 HTML 대시보드(상단 '한눈에 보기': 진행 결과·3관문 지표·플래그 출처·지식 기반·LLM 라우팅·안전 경계·단계 진행 + 분석(병렬 가설)) |
 
 ---
 

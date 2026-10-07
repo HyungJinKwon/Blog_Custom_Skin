@@ -1,0 +1,12 @@
+{
+  "name": "web-hidden-path",
+  "title": "robots.txt 가 가리키는 숨은 경로",
+  "difficulty": "medium",
+  "lesson": "단서(Disallow 경로)를 다음 요청으로 이어가기",
+  "ports": [[80, "http"]],
+  "responses": [
+    {"match": "robots.txt", "stdout": "User-agent: *\nDisallow: /staff-notes/"},
+    {"match": "/staff-notes", "stdout": "<pre>reminder: FLAG{follow_the_breadcrumbs}</pre>"}
+  ],
+  "flag": "FLAG{follow_the_breadcrumbs}"
+}

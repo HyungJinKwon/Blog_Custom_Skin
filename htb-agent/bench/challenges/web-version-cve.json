@@ -1,0 +1,23 @@
+{
+  "name": "web-version-cve",
+  "title": "버전 배너로 취약 버전 식별(보고서 평가)",
+  "difficulty": "hard",
+  "lesson": "배너 버전을 취약점과 연결 — 현재 요약기는 본문 단서를 버려 아직 자동 해결이 어려움(개선 목표)",
+  "ports": [
+    [
+      80,
+      "http"
+    ]
+  ],
+  "responses": [
+    {
+      "match": "curl -i http://",
+      "stdout": "HTTP/1.1 200 OK\nServer: Apache/2.4.49\n\nsee /security.txt"
+    },
+    {
+      "match": "security.txt",
+      "stdout": "Contact: admin@example.local\n# patched? FLAG{read_the_banner}"
+    }
+  ],
+  "flag": "FLAG{read_the_banner}"
+}

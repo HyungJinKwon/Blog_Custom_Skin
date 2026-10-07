@@ -120,6 +120,7 @@ class OrchestrationReport:
     flag_provenance: list = field(default_factory=list)
     goal_reached: bool = False        # 신뢰 가능한 플래그로 목표 달성 → 남은 단계 조기 종료
     timed_out: bool = False           # 시간 예산 소진 → 남은 단계 조기 종료(상태 저장)
+    cost_capped: bool = False         # LLM 비용 상한 도달 → 이후 규칙 기반으로만 진행
     elapsed_sec: float = 0.0          # 이번 실행 경과 시간(초)
     # LLM 라우팅 집계(하이브리드일 때 main 이 채움): 로컬/강력/폴백/거절/빈응답/오류/미응답 + 차단 백엔드
     llm_routing: dict = field(default_factory=dict)
@@ -380,6 +381,7 @@ class Orchestrator:
                  variant_stats=None,
                  max_parallel: int = 1,
                  time_budget: float = 0.0,
+                 max_cost: float = 0.0,
                  clock=None,
                  learner=None,
                  learn_gaps: bool = False,
@@ -412,6 +414,7 @@ class Orchestrator:
         self.variant_stats = variant_stats   # 실행 결과 기반 변형 학습(없으면 미학습)
         self.max_parallel = max(1, max_parallel)   # 열거 동시 실행 수(1=순차)
         self.time_budget = max(0.0, time_budget)   # 해커톤 시간 예산(분, 0=무제한)
+        self.max_cost = max(0.0, max_cost)         # LLM 누적 추정 비용 상한(USD, 0=무제한)
         self._clock = clock or time.monotonic      # 테스트 주입용(단조 시계)
         self.enricher = enricher
         # 자율 지식 획득 — 모르는 기술을 권위 출처에서 자동 학습(learner 주입 시)
@@ -514,7 +517,9 @@ class Orchestrator:
                     met, reason = self._prereq_met(key)
                     # B3 분석가: 이 단계의 명령 생성 직전에, 마지막 분석 이후 상태가 자랐을
                     # 때만 다시 판단한다(앞 단계 결과·새 크리덴셜·취약점을 계획에 반영).
-                    if met and self.llm_router is not None:
+                    use_llm = (met and self.llm_router is not None
+                               and not self._cost_capped(report))
+                    if use_llm:
                         self._refresh_analysis(report, prof, host, target)
                     phase_before = len(report.enum_findings) + len(report.llm_findings)
                     for _rnd in range(self.max_rounds):
@@ -522,7 +527,8 @@ class Orchestrator:
                             report, host, prof, target, seen_cmds,
                             self.max_enum - self._spent(report.enum_findings, self._enum_base),
                             key)
-                        if met and self.llm_router is not None and not self._goal_reached(report):
+                        if (use_llm and not self._goal_reached(report)
+                                and not self._cost_capped(report)):
                             added += self._llm_round(
                                 report, host, prof, target, seen_cmds,
                                 self.max_llm - self._spent(report.llm_findings, self._llm_base),
@@ -603,6 +609,8 @@ class Orchestrator:
                                "— 남은 단계 생략, 진행 상태 저장(--resume 으로 이어서 진행). ")
         elif interrupted:
             report.message += "사용자 중단 — 진행 상태 저장(--resume 으로 이어서 진행). "
+        if report.cost_capped:
+            report.message += (f"LLM 비용 상한 ${self.max_cost:g} 도달 — 이후 규칙 기반으로 진행. ")
         elif self._goal_reached(report):
             report.goal_reached = True
             report.message += "목표 달성 — 남은 단계 조기 종료. "
@@ -673,6 +681,29 @@ class Orchestrator:
             return any(not pref or f.value.split("{", 1)[0].lower() in pref for f in hits)
         kinds = {f.kind for f in hits}
         return "user" in kinds and "root" in kinds
+
+    def _cost_capped(self, report: OrchestrationReport) -> bool:
+        """LLM 누적 추정 비용이 상한에 도달했으면 True(처음 도달 시 1회 기록). 이후엔 규칙 기반만."""
+        if report.cost_capped:
+            return True
+        if not self.max_cost or self.llm_router is None:
+            return False
+        spent = float(getattr(self.llm_router, "total_cost", 0.0) or 0.0)
+        if spent < self.max_cost:
+            return False
+        report.cost_capped = True
+        self.audit.event("cost_capped", max_cost=self.max_cost, spent=round(spent, 4))
+        return True
+
+    @staticmethod
+    def _failure_context(report: OrchestrationReport, limit: int = 6) -> list[str]:
+        """최근 실패 진단을 LLM 맥락용 한 줄씩으로(논문 공통: 실패를 계획에 되먹임).
+        '대상 응답'(404/403 등)은 경로 판단 근거, '환경/도구'는 근거 아님을 함께 표시한다."""
+        out: list[str] = []
+        for cmd, d in (getattr(report, "blockers", []) or [])[-limit:]:
+            basis = "경로 판단 근거" if d.is_target else "환경 문제 — 경로 포기 근거 아님"
+            out.append(f"{cmd[:120]} → [{d.kind}] {d.label} ({basis})")
+        return out
 
     def _time_up(self) -> bool:
         """해커톤 시간 예산 마감 도달 여부(예산 0=무제한이면 항상 False)."""
@@ -906,6 +937,7 @@ class Orchestrator:
             "open_ports": [str(p) for p in host.ports if p.state == "open"],
             "state": self.world.context_lines() if self.world is not None else [],
             "findings": prior[-10:],
+            "failures": self._failure_context(report),
         }
         try:
             text = self.llm_router.analyze(context, target)
@@ -914,7 +946,7 @@ class Orchestrator:
             return
         if text:
             report.analysis = text
-            self.audit.event("analyst", chars=len(text))
+            self.audit.event("analyst", chars=len(text), text=text[:2000])   # 재생 뷰어용
 
     def _llm_round(self, report: OrchestrationReport, host: NmapHost,
                    prof: ProfileResult, target: str,
@@ -942,6 +974,7 @@ class Orchestrator:
             "notes": self.kb.relevant_notes(
                 self._note_terms(host, prof, phase, report), 3),
             "findings": prior[-10:],
+            "failures": self._failure_context(report),
             # 플랫폼 인식 — LLM 프롬프트가 HTB/Jeopardy·카테고리에 맞게 조립된다
             "platform": self.platform_name,
             "jeopardy": self.flag_kind == "single",

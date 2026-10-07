@@ -1,0 +1,11 @@
+{
+  "name": "web-robots",
+  "title": "robots.txt 주석에 남은 플래그",
+  "difficulty": "easy",
+  "lesson": "robots.txt 같은 공개 메타 파일 확인",
+  "ports": [[80, "http"]],
+  "responses": [
+    {"match": "robots.txt", "stdout": "User-agent: *\nDisallow: /tmp\n# FLAG{robots_are_public}"}
+  ],
+  "flag": "FLAG{robots_are_public}"
+}

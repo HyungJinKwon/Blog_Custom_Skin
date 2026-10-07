@@ -424,6 +424,7 @@ assassin 10.129.1.5 --config config/config.example.json
 | `--max-parallel` | 1 | 4 | 열거 명령 동시 실행 수(I/O 만 병렬, 관문·결과 처리는 순차) |
 | `--variants` | 2 | 3 | 명령당 옵션 조합 변형 수(1 = 변형 끔) |
 | `--time-budget 분` | 무제한 | 무제한 | 해커톤 시간 예산 — 마감 시 남은 단계 생략·상태 저장(§16.1) |
+| `--max-cost USD` | 무제한 | 무제한 | LLM 누적 추정 비용 상한 — 넘으면 LLM 호출 멈추고 규칙 기반으로 계속 |
 | `--no-enrich` | — | — | CVE/CWE 자동 수집(NVD·GitHub) 끄기 |
 | `--enrich-cache 경로` | `<knowledge>/cve_cache` | — | CVE 캐시 위치 |
 | `--knowledge 경로` | `./knowledge` | — | 지식베이스 위치 |
@@ -441,6 +442,32 @@ assassin 10.129.1.5 --config config/config.example.json
 | `ASSASSIN_KB_SYNC_REPO` | 동기화할 공유 저장소(`owner/repo`, 기본 `HyungJinKwon/HTB_AUTO_AGENT`) — 포크 운영 시 |
 | `ASSASSIN_KB_SYNC_REF` | 동기화할 브랜치/태그(생략 시 저장소 기본 브랜치) |
 | `NO_COLOR` / `FORCE_COLOR` | 터미널 색 끄기 / 강제 켜기(비-TTY·파이프에서는 자동으로 꺼짐) |
+
+---
+
+## 14.5 성능 측정(--bench)과 실행 재생(--replay)
+
+**로컬 모의 문제로 성공률 측정** — 실제 네트워크·도구 없이 가짜 응답만 쓰는 연습 문제(`bench/challenges/*.json`)로
+풀이 성공률·명령 수·시간·비용을 잰다. 개선 효과를 숫자로 보여줄 때(해커톤 발표) 쓴다.
+
+```bash
+assassin --bench                      # 번들 문제 세트(오프라인)
+assassin --bench --attempts 5         # 문제당 5회 → pass@5
+assassin --bench --llm hybrid         # LLM 유무 비교
+```
+
+- 결과는 표로 출력하고 `state/bench/<시각>/results.json` 에 저장한다(난이도별 성공, pass@N, 평균 명령 수, 플래그까지 단계, 시간, 비용).
+- 시도마다 감사 로그를 남겨 아래 `--replay` 로 그대로 재생할 수 있다.
+- 쉬운 문제는 규칙만으로 풀리고, 단서를 이어가야 하는 중간 문제는 LLM 을 붙여야 풀린다 — 효과를 바로 대비해 볼 수 있다.
+
+**실행을 단계별로 재생** — 감사 로그(JSONL)를 '명령 제안 → 관문 → 실행 결과' 타임라인 HTML 로 바꾼다.
+브라우저에서 ←/→/스페이스로 넘겨 본다. 교육·심사 발표에 쓴다.
+
+```bash
+assassin --replay state/audit_10.129.1.5.jsonl    # → 같은 이름의 .html
+```
+
+로그 내용은 신뢰하지 않는 데이터로 다뤄 화면에 안전하게(스크립트 주입 불가) 표시한다.
 
 ---
 

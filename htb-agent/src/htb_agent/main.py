@@ -63,6 +63,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--crack", metavar="HASH", default=None,
                    help="해시 크래킹 자동 준비(생성 안 실행). 해시 종류 식별 + john/hashcat "
                         "명령 생성. 예: --crack '$krb5tgs$23$...'. 권한 확인 자산 해시 전용")
+    p.add_argument("--bench", metavar="SUITE", nargs="?", const="__default__", default=None,
+                   help="로컬 모의 문제로 풀이 성공률·명령 수·시간·비용 측정(오프라인, 실제 통신 없음). "
+                        "SUITE 생략 시 번들 문제 세트. --attempts N 으로 반복(pass@N), --llm 으로 LLM 비교")
+    p.add_argument("--attempts", type=int, default=1, metavar="N",
+                   help="--bench 에서 문제당 시도 횟수(기본 1)")
+    p.add_argument("--replay", metavar="JSONL", default=None,
+                   help="감사 로그(JSONL)를 단계별 재생 HTML 로 변환(이전/다음/자동 재생). "
+                        "예: --replay state/audit_10.129.1.5.jsonl → 같은 이름의 .html")
     p.add_argument("target", nargs="?", default=None,
                    help="대상(IP 또는 호스트명/URL). HTB=허용대역 내 IP, "
                    "CTF/Dreamhack=챌린지 host:port/URL")
@@ -127,6 +135,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--time-budget", type=float, default=None, metavar="분",
                    help="해커톤 시간 예산(분). 마감이 되면 진행 중 단계를 마치고 남은 단계를 "
                         "생략한 뒤 상태를 저장한다(--resume 으로 이어감). 기본: 무제한")
+    p.add_argument("--max-cost", type=float, default=None, metavar="USD",
+                   help="LLM 누적 추정 비용 상한(달러). 넘으면 LLM 호출을 멈추고 규칙 기반으로 "
+                        "계속 진행한다. 기본: 무제한")
     p.add_argument("--knowledge", default=None,
                    help="지식베이스 디렉토리 (기본 ./knowledge). 사용자 규칙/노트로 성장")
     p.add_argument("--llm", choices=["none", "claude", "ollama", "hybrid"], default=None,
@@ -193,6 +204,43 @@ def _build_llm_router(kind: str, tier_name: str):
     return router, f"{kind}({tier_name})"
 
 
+def _run_bench(args, cfg, knowledge_dir: str) -> int:
+    """--bench: 모의 문제 세트를 시도하고 표·JSON·시도별 감사 로그(--replay 용)를 남긴다."""
+    import json as _json
+    import os as _os
+    from datetime import datetime
+    from . import bench, ui
+    from .config import pick
+    from .knowledge import KnowledgeBase
+    suite = bench.default_suite_dir() if args.bench == "__default__" else args.bench
+    try:
+        challenges = bench.load_suite(suite)
+    except bench.BenchError as e:
+        print(ui.mark_err(f"벤치 문제 오류: {e}"), file=sys.stderr)
+        return 2
+    llm_kind = pick(args.llm, cfg.llm_backend, "none")
+    router, llm_status = _build_llm_router(llm_kind, pick(args.llm_tier, cfg.llm_tier, "standard"))
+    if llm_kind != "none" and router is None:
+        print(ui.mark_err(llm_status), file=sys.stderr)
+        return 2
+    state_dir = pick(args.state_dir, cfg.state_dir, "state")
+    run_dir = _os.path.join(state_dir, "bench", datetime.now().strftime("%Y%m%d-%H%M%S"))
+    print(ui.kv("문제 세트", f"{suite} · {len(challenges)}개 · 문제당 {max(1, args.attempts)}회", 10))
+    print(ui.kv("LLM", llm_status, 10) + "\n")
+    results = bench.run_bench(challenges, args.attempts, KnowledgeBase.load(base_dir=knowledge_dir),
+                              router=router, trace_dir=run_dir,
+                              progress=lambda m: print(ui.dim("  · " + m)))
+    stats = bench.summarize(challenges, results)
+    print("\n" + bench.render(stats, max(1, args.attempts), llm_kind))
+    out = _os.path.join(run_dir, "results.json")
+    with open(out, "w", encoding="utf-8") as f:
+        _json.dump(bench.to_dict(suite, max(1, args.attempts), llm_kind, stats, results),
+                   f, ensure_ascii=False, indent=2)
+    print(ui.kv("결과", out, 10))
+    print(ui.kv("재생", f"assassin --replay {_os.path.join(run_dir, '<문제>_<회차>.jsonl')}", 10))
+    return 0
+
+
 def _print_kb_sync(r, verbose: bool = False) -> None:
     """공유 시드 동기화 결과 한 줄 요약(변화 없으면 자동 실행 시엔 조용히)."""
     from . import ui
@@ -215,7 +263,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     standalone = [flag for flag, v in (
         ("--doctor", args.doctor), ("--revshell", args.revshell), ("--cloud", args.cloud),
         ("--privesc", args.privesc), ("--crack", args.crack), ("--ingest", args.ingest),
-        ("--kb-sync", args.kb_sync), ("--promote", args.promote), ("--learn", args.learn))
+        ("--kb-sync", args.kb_sync), ("--promote", args.promote), ("--learn", args.learn),
+        ("--bench", args.bench), ("--replay", args.replay))
         if v not in (None, False)]
     if len(standalone) > 1:
         parser.error(f"함께 쓸 수 없는 단독 명령: {' '.join(standalone)}")
@@ -231,6 +280,21 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     for w in cfg.warnings:
         print(ui.mark_warn(f"설정 경고: {w}"), file=sys.stderr)
     knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, "knowledge")
+
+    # 실행 기록 재생(감사 로그 → 단계별 HTML)
+    if args.replay:
+        from . import replay
+        try:
+            out, n = replay.replay_file(args.replay)
+        except OSError as e:
+            print(ui.mark_err(f"재생 실패: {e}"), file=sys.stderr)
+            return 2
+        print(ui.mark_ok(f"재생 HTML 생성: {out} ({n}단계) — 브라우저로 열어 ←/→/스페이스로 넘겨 보세요"))
+        return 0
+
+    # 평가 하네스(오프라인 모의 문제) — 성공률·pass@N·명령 수·시간·비용
+    if args.bench:
+        return _run_bench(args, cfg, knowledge_dir)
 
     # 환경 자가진단(스캔 안 함) — 완전 초보자 권장 첫 실행
     if args.doctor:
@@ -392,6 +456,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     max_parallel = _auto_def(args.max_parallel, getattr(cfg, "max_parallel", None), 4, 1)
     max_variants = _auto_def(args.variants, cfg.max_variants, 3, 2)
     time_budget = pick(args.time_budget, cfg.time_budget, 0.0) or 0.0
+    max_cost = pick(args.max_cost, cfg.max_cost, 0.0) or 0.0
     llm_kind = pick(args.llm, cfg.llm_backend, "none")
     llm_tier = pick(args.llm_tier, cfg.llm_tier, "standard")
     state_dir = pick(args.state_dir, cfg.state_dir, "state")
@@ -438,6 +503,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         ui.kv("플래그", ui.dim("접두 " + (", ".join(flag_prefixes) or "자동") + " · TAG{} 자동인식"), 8),
         *([ui.kv("시간예산", ui.info(f"{time_budget:g}분 (마감 시 남은 단계 생략·상태 저장)"), 8)]
           if time_budget else []),
+        *([ui.kv("비용상한", ui.info(f"${max_cost:g} (넘으면 규칙 기반으로 계속)"), 8)]
+          if max_cost else []),
     ], style="navy") + "\n")
 
     # 4) 지식베이스 + 취약점 KB 로드 (사용자 학습데이터로 성장)
@@ -553,6 +620,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 variant_stats=variant_stats,
                                 max_parallel=max_parallel,
                                 time_budget=time_budget,
+                                max_cost=max_cost,
                                 learner=learner, learn_gaps=learn_gaps,
                                 web_learner=web_learner,
                                 state_store=store, resume=args.resume, audit=audit)
