@@ -67,11 +67,28 @@ _NET_TOOLS = {
 }
 _WRAPPERS = {"sudo", "proxychains", "proxychains4", "torsocks", "env", "nohup", "stdbuf"}
 _HOSTLIKE_RE = re.compile(r"^[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)+$")
-# 호스트로 오인하기 쉬운 파일 확장자(점 포함 토큰) 제외 → 오탐 방지
+# 호스트로 오인하기 쉬운 파일 확장자(점 포함 토큰) 제외 → 오탐 방지.
+# ⚠ 규칙: 실제 TLD 와 겹치는 확장자는 추가 금지 — 그 TLD 의 진짜 호스트가 파일로
+#   오인돼 범위 검사를 통과(fail-open)한다. 아래 추가분은 IANA TLD 목록
+#   (data.iana.org/TLD/tlds-alpha-by-domain.txt, 2026-10-06 판)과 대조해 겹치지 않음을
+#   확인했다. 첫 줄 원본 목록의 md·py·sh·so·zip 은 TLD 와 겹치는 기존 항목이다.
 _NONHOST_EXT = {
     "nse", "txt", "sh", "py", "html", "htm", "php", "xml", "json", "yaml", "yml",
     "conf", "cfg", "log", "md", "js", "css", "asp", "aspx", "jsp", "bak", "zip",
     "tar", "gz", "csv", "pdf", "png", "jpg", "exe", "dll", "so",
+    # 바이너리·이미지·캡처·DB·키/인증서(전부 비-TLD)
+    "bin", "elf", "out", "img", "iso", "raw", "dmp", "pcap", "pcapng", "cap",
+    "db", "sqlite", "sqlite3", "kdbx", "dat", "sav", "pem", "crt", "cer", "der",
+    "pfx", "p12", "key", "keytab", "ccache", "kirbi", "ovpn",
+    # 패키지·아카이브·가상디스크
+    "jar", "war", "apk", "whl", "deb", "rpm", "class", "pyc", "rar", "tgz", "bz2",
+    "xz", "7z", "zst", "lzma", "vmdk", "vhd", "vhdx", "ova",
+    # 문서·스크립트·소스·설정·스캔 산출물
+    "doc", "docx", "docm", "xls", "xlsx", "xlsm", "pptx", "odt", "epub", "chm",
+    "ps1", "psm1", "bat", "vbs", "hta", "reg", "lnk", "msi", "evtx", "sys", "efi",
+    "c", "h", "cpp", "hpp", "go", "rb", "lua", "ts", "ini", "toml", "sql",
+    "hash", "hashes", "lst", "dic", "swp", "orig", "tmp", "old", "nmap", "gnmap",
+    "mp4", "wav",
 }
 
 
