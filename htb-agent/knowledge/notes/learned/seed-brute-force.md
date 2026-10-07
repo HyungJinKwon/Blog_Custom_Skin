@@ -24,3 +24,12 @@ kerbrute passwordspray -d <domain> users.txt 'Welcome1'
 잠금정책·MFA·스프레이 탐지룰·fail2ban·강한 암호정책.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1110/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK T1110 Brute Force
+- 출처: https://attack.mitre.org/techniques/T1110/
+- 승격일: 2026-10-07
+- 요약: Brute Force Adversaries may use brute force techniques to gain access to accounts when passwords are unknown or when password hashes are obtained.[1] Without knowledge of the password for an account or set of accounts, an adversary may systematically guess the password using a repetitive or iterative mechanism.[2] Brute forcing passwords can take place via interaction with a service that will check the validity of those credentials or offline against previously acquired credential data, such as

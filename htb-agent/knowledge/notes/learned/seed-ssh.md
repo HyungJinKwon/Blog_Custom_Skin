@@ -24,3 +24,12 @@ chmod 600 id_rsa ; ssh2john id_rsa > h ; john h   # 키 암호 크랙
 키 인증·암호로그인 비활성·fail2ban·MFA·AllowUsers.
 
 - 출처(검증): https://datatracker.ietf.org/doc/html/rfc4253
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### RFC 4253 SSH Transport
+- 출처: https://datatracker.ietf.org/doc/html/rfc4253
+- 승격일: 2026-10-07
+- 요약: The Secure Shell (SSH) is a protocol for secure remote login and other secure network services over an insecure network. This document describes the SSH transport layer protocol, which typically runs on top of TCP/IP. The protocol can be used as a basis for a number of secure network services. It provides strong encryption, server authentication, and integrity protection. It may also provide compression. Key exchange method, public key algorithm, symmetric encryption algorithm, message authentic

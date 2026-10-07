@@ -23,3 +23,12 @@ mimikatz: lsadump::dcsync /user:krbtgt
 복제권한 최소화·Tier0 분리·4662 감사·krbtgt 보호.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1003/006/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK T1003.006 DCSync
+- 출처: https://attack.mitre.org/techniques/T1003/006/
+- 승격일: 2026-10-07
+- 요약: OS Credential Dumping: DCSync Adversaries may attempt to access credentials and other sensitive information by abusing a Windows Domain Controller's application programming interface (API)[1] [2] [3] [4] to simulate the replication process from a remote domain controller using a technique called DCSync. Members of the Administrators, Domain Admins, and Enterprise Admin groups or computer accounts on the domain controller are able to run DCSync to pull password data[5] from Active Directory, whic

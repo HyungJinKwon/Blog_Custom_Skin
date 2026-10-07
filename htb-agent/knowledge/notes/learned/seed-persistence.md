@@ -23,3 +23,12 @@ schtasks /create /tn upd /tr c:\x.exe /sc onlogon
 기준선 모니터링·무결성 검사·자동실행 감사·키 관리.
 
 - 출처(검증): https://attack.mitre.org/tactics/TA0003/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK TA0003 Persistence
+- 출처: https://attack.mitre.org/tactics/TA0003/
+- 승격일: 2026-10-07
+- 요약: Persistence The adversary is trying to maintain their foothold. Persistence consists of techniques that adversaries use to keep access to systems across restarts, changed credentials, and other interruptions that could cut off their access. Techniques used for persistence include any access, action, or configuration changes that let them maintain their foothold on systems, such as replacing or hijacking legitimate code or adding startup code. ID: TA0003 Created: 17 October 2018 Last Modified: 25

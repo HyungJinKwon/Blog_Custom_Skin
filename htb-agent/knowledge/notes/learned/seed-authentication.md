@@ -24,3 +24,12 @@ hydra -L users.txt -P rockyou.txt <target> http-post-form '...'
 레이트리밋·계정잠금·균일 오류메시지·MFA·안전한 재설정 토큰.
 
 - 출처(검증): https://portswigger.net/web-security/authentication
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger Authentication
+- 출처: https://portswigger.net/web-security/authentication
+- 승격일: 2026-10-07
+- 요약: Authentication vulnerabilities Conceptually, authentication vulnerabilities are easy to understand. However, they are usually critical because of the clear relationship between authentication and security. Authentication vulnerabilities can allow attackers to gain access to sensitive data and functionality. They also expose additional attack surface for further exploits. For this reason, it's important to learn how to identify and exploit authentication vulnerabilities, and how to bypass common

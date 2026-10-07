@@ -23,3 +23,12 @@
 최소권한·패치·오구성 점검·정기 enum·CIS 벤치마크.
 
 - 출처(검증): https://attack.mitre.org/tactics/TA0004/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK TA0004 Privilege Escalation
+- 출처: https://attack.mitre.org/tactics/TA0004/
+- 승격일: 2026-10-07
+- 요약: Privilege Escalation The adversary is trying to gain higher-level permissions. Privilege Escalation consists of techniques that adversaries use to gain higher-level permissions on a system or network. Adversaries can often enter and explore a network with unprivileged access but require elevated permissions to follow through on their objectives. Common approaches are to take advantage of system weaknesses, misconfigurations, and vulnerabilities. Examples of elevated access include: SYSTEM/root l

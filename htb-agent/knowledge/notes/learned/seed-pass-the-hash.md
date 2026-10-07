@@ -23,3 +23,12 @@ evil-winrm -i <target> -u user -H <nthash>
 LAPS(로컬관리자 암호 랜덤화)·Credential Guard·관리자 계층화·NTLM 제한.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1550/002/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK T1550.002 Pass the Hash
+- 출처: https://attack.mitre.org/techniques/T1550/002/
+- 승격일: 2026-10-07
+- 요약: Use Alternate Authentication Material: Pass the Hash Adversaries may "pass the hash" using stolen password hashes to move laterally within an environment, bypassing normal system access controls. Pass the hash (PtH) is a method of authenticating as a user without having access to the user's cleartext password. This method bypasses standard authentication steps that require a cleartext password, moving directly into the portion of the authentication that uses the password hash. When performing Pt

@@ -25,3 +25,12 @@ clairvoyance / graphw00f 로 스키마 추론·엔진 식별
 프로덕션 인트로스펙션 차단·깊이/복잡도 제한·필드 인가·배치 제한.
 
 - 출처(검증): https://portswigger.net/web-security/graphql
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger GraphQL API
+- 출처: https://portswigger.net/web-security/graphql
+- 승격일: 2026-10-07
+- 요약: GraphQL API vulnerabilities GraphQL vulnerabilities generally arise due to implementation and design flaws. For example, the introspection feature may be left active, enabling attackers to query the API in order to glean information about its schema. GraphQL attacks usually take the form of malicious requests that can enable an attacker to obtain data or perform unauthorized actions. These attacks can have a severe impact, especially if the user is able to gain admin privileges by manipulating q

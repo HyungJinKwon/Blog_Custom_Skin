@@ -25,3 +25,12 @@ PUT {"role":"admin"}   # 질량 할당
 서버측 세션기준 인가·객체소유 검증·거부기본·화이트리스트 바인딩.
 
 - 출처(검증): https://portswigger.net/web-security/access-control
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger Access Control (IDOR)
+- 출처: https://portswigger.net/web-security/access-control
+- 승격일: 2026-10-07
+- 요약: Access control vulnerabilities and privilege escalation In this section, we describe: Privilege escalation. The types of vulnerabilities that can arise with access control. How to prevent access control vulnerabilities. Labs If you're familiar with the basic concepts behind access control vulnerabilities and want to practice exploiting them on some realistic, deliberately vulnerable targets, you can access labs in this topic from the link below. View all access control labs What is access contro

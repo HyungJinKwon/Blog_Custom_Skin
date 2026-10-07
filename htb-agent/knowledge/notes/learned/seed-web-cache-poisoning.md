@@ -22,3 +22,12 @@ X-Forwarded-Host: evil.com  # 응답 반영+캐시 확인
 키 정규화·언키드 입력 제거·Vary 정확설정·민감응답 no-store.
 
 - 출처(검증): https://portswigger.net/web-security/web-cache-poisoning
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger Web Cache Poisoning
+- 출처: https://portswigger.net/web-security/web-cache-poisoning
+- 승격일: 2026-10-07
+- 요약: Web cache poisoning In this section, we'll talk about what web cache poisoning is and what behaviors can lead to web cache poisoning vulnerabilities. We'll also look at some ways of exploiting these vulnerabilities and suggest ways you can reduce your exposure to them. What is web cache poisoning? Web cache poisoning is an advanced technique whereby an attacker exploits the behavior of a web server and cache so that a harmful HTTP response is served to other users. Fundamentally, web cache poiso

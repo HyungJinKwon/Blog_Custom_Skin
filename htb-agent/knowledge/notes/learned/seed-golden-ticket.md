@@ -22,3 +22,12 @@ mimikatz: kerberos::golden /user:Administrator /krbtgt:<hash> ...
 krbtgt 2회 리셋(정기)·DCSync 권한 최소화·티어링.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1558/001/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK T1558.001 Golden Ticket
+- 출처: https://attack.mitre.org/techniques/T1558/001/
+- 승격일: 2026-10-07
+- 요약: Steal or Forge Kerberos Tickets: Golden Ticket Adversaries who have the KRBTGT account password hash may forge Kerberos ticket-granting tickets (TGT), also known as a golden ticket.[1] Golden tickets enable adversaries to generate authentication material for any account in Active Directory.[2] Using a golden ticket, adversaries are then able to request ticket granting service (TGS) tickets, which enable access to specific resources. Golden tickets require adversaries to interact with the Key Dis

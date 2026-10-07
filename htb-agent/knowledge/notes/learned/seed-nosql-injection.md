@@ -26,3 +26,12 @@ nosqlmap / 수동 Burp Intruder 로 $regex 브루트
 입력 타입 검증(문자열 강제)·연산자 키 거부·$where 비활성·ODM 스키마 검증.
 
 - 출처(검증): https://portswigger.net/web-security/nosql-injection
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger NoSQL Injection
+- 출처: https://portswigger.net/web-security/nosql-injection
+- 승격일: 2026-10-07
+- 요약: NoSQL injection NoSQL injection is a vulnerability where an attacker is able to interfere with the queries that an application makes to a NoSQL database. NoSQL injection may enable an attacker to: Bypass authentication or protection mechanisms. Extract or edit data. Cause a denial of service. Execute code on the server. NoSQL databases store and retrieve data in a format other than traditional SQL relational tables. They use a wide range of query languages instead of a universal standard like SQ

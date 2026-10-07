@@ -24,3 +24,12 @@ wget -r ftp://anonymous:@<target>/
 FTPS/SFTP 대체·익명 비활성·강한 자격·쓰기권한 최소화.
 
 - 출처(검증): https://datatracker.ietf.org/doc/html/rfc959
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### RFC 959 FTP
+- 출처: https://datatracker.ietf.org/doc/html/rfc959
+- 승격일: 2026-10-07
+- 요약: This memo is the official specification of the File Transfer Protocol (FTP). Distribution of this memo is unlimited. The following new optional commands are included in this edition of the specification: CDUP (Change to Parent Directory), SMNT (Structure Mount), STOU (Store Unique), RMD (Remove Directory), MKD (Make Directory), PWD (Print Directory), and SYST (System). Note that this specification is compatible with the previous edition. 1. INTRODUCTION The objectives of FTP are 1) to promote sh

@@ -25,3 +25,12 @@ rO0AB/O:숫자 패턴 입력·역직렬화 후 비정상 자식프로세스·가
 신뢰불가 역직렬화 금지·서명/무결성·허용목록 클래스·JSON 등 데이터 포맷.
 
 - 출처(검증): https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### OWASP Deserialization
+- 출처: https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html
+- 승격일: 2026-10-07
+- 요약: Deserialization Cheat Sheet¶ Introduction¶ This article is focused on providing clear, actionable guidance for safely deserializing untrusted data in your applications. What is Deserialization¶ Serialization is the process of turning some object into a data format that can be restored later. People often serialize objects in order to save them for storage, or to send as part of communications. Deserialization is the reverse of that process, taking data structured in some format, and rebuilding i

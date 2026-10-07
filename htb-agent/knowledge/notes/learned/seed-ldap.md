@@ -24,3 +24,12 @@ nxc ldap <dc> -u user -p pass --users
 익명 바인드 차단·LDAP 서명/채널바인딩·최소권한·민감속성 보호.
 
 - 출처(검증): https://datatracker.ietf.org/doc/html/rfc4511
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### RFC 4511 LDAP
+- 출처: https://datatracker.ietf.org/doc/html/rfc4511
+- 승격일: 2026-10-07
+- 요약: This document describes the protocol elements, along with their semantics and encodings, of the Lightweight Directory Access Protocol (LDAP). LDAP provides access to distributed directory services that act in accordance with X.500 data and service models. These protocol elements are based on those described in the X.500 Directory Access Protocol (DAP). Table of Contents 1. Introduction ....................................................3 1.1. Relationship to Other LDAP Specifications ..........

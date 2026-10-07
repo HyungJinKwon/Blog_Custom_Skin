@@ -24,3 +24,17 @@ tshark -r cap.pcap -z follow,tcp,ascii,0
 (도구). 평문 프로토콜 제거·암호화가 근본 완화.
 
 - 출처(검증): https://www.wireshark.org/docs/wsug_html_chunked/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### Wireshark User's Guide
+- 출처: https://www.wireshark.org/docs/wsug_html_chunked/
+- 승격일: 2026-10-07
+- 요약: Wireshark User’s Guide Next Wireshark User’s Guide Version 4.7.4 Richard Sharpe, Ed Warnicke, Ulf Lamping List of Figures 1.1. Wireshark captures packets and lets you examine their contents. 3.1. The Main window 3.2. The Menu 3.3. The “File” Menu 3.4. The “Edit” Menu 3.5. The “View” Menu 3.6. The “Go” Menu 3.7. The “Capture” Menu 3.8. The “Analyze” Menu 3.9. The “Statistics” Menu 3.10. The “Telephony” Menu 3.11. The “Wireless” Menu 3.12. The “Tools” Menu 3.13. The “Help” Menu 3.14. The “Main” to
+
+### Display Filter Reference
+- 출처: https://www.wireshark.org/docs/dfref/
+- 승격일: 2026-10-07
+- 요약: Display Filter Reference Wireshark's most powerful feature is its vast array of display filters (over 328000 fields in 3000 protocols as of version 4.6.9). They let you drill down to the exact traffic you want to see and are the basis of many of Wireshark's other features, such as the coloring rules. This is a reference. For general help using display filters, please see the wireshark-filter manual page or the User's Guide. Index 1234569_ABCDEFGHIJKLMNOPQRSTUVWXYZ 1 104apci: IEC 60870-5-104-Apci

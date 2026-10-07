@@ -23,3 +23,12 @@ Transfer-Encoding: chunked + Content-Length 모호 조합
 일관된 파서·HTTP/2 end-to-end·모호헤더 거부·프론트 정규화.
 
 - 출처(검증): https://portswigger.net/web-security/request-smuggling
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger HTTP Request Smuggling
+- 출처: https://portswigger.net/web-security/request-smuggling
+- 승격일: 2026-10-07
+- 요약: HTTP request smuggling In this section, we'll explain HTTP request smuggling attacks and describe how common request smuggling vulnerabilities can arise. Labs If you're already familiar with HTTP request smuggling and just want to practice on a series of deliberately vulnerable sites, check out the link below for an overview of all labs in this topic. View all HTTP request smuggling labs What is HTTP request smuggling? HTTP request smuggling is a technique for interfering with the way a web site

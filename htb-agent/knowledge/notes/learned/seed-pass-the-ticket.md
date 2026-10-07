@@ -23,3 +23,12 @@ impacket-psexec -k -no-pass <host>
 티켓 수명 단축·보호된 사용자·tgt 재발급 제한·LSASS 보호.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1550/003/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK T1550.003 Pass the Ticket
+- 출처: https://attack.mitre.org/techniques/T1550/003/
+- 승격일: 2026-10-07
+- 요약: Use Alternate Authentication Material: Pass the Ticket Adversaries may "pass the ticket" using stolen Kerberos tickets to move laterally within an environment, bypassing normal system access controls. Pass the ticket (PtT) is a method of authenticating to a system using Kerberos tickets without having access to an account's password. Kerberos authentication can be used as the first step to lateral movement to a remote system. When preforming PtT, valid Kerberos tickets for Valid Accounts are cap
