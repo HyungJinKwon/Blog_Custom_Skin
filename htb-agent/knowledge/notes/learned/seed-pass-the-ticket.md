@@ -28,6 +28,11 @@ impacket-psexec -k -no-pass <host>
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CAPEC-645 Use of Captured Tickets
+- 출처: https://capec.mitre.org/data/definitions/645.html
+- 승격일: 2026-10-07
+- 요약: Attack Pattern ID: 645 Abstraction: Detailed Description An adversary uses stolen Kerberos tickets to access systems/resources that leverage the Kerberos authentication protocol. The Kerberos authentication protocol centers around a ticketing system which is used to request/grant access to services and to then access the requested services. An adversary can obtain any one of these tickets (e.g. Service Ticket, Ticket Granting Ticket, Silver Ticket, or Golden Ticket) to authenticate to a system/r
+
 ### ATT&CK T1550.003 Pass the Ticket
 - 출처: https://attack.mitre.org/techniques/T1550/003/
 - 승격일: 2026-10-07

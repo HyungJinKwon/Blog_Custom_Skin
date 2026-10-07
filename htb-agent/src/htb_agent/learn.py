@@ -80,7 +80,8 @@ SOURCES: dict[str, list[tuple[str, str]]] = {
     "csrf": [("PortSwigger CSRF", "https://portswigger.net/web-security/csrf"),
              ("OWASP CSRF", "https://owasp.org/www-community/attacks/csrf")],
     "xxe": [("PortSwigger XXE", "https://portswigger.net/web-security/xxe"),
-            ("OWASP XXE", "https://owasp.org/www-community/attacks/xxe")],
+            ("OWASP XXE Prevention",
+             "https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html")],
     "command-injection": [("PortSwigger OS Command Injection",
                            "https://portswigger.net/web-security/os-command-injection"),
                           ("OWASP Command Injection",
@@ -93,7 +94,7 @@ SOURCES: dict[str, list[tuple[str, str]]] = {
               "https://portswigger.net/web-security/server-side-template-injection")],
     "jwt": [("PortSwigger JWT", "https://portswigger.net/web-security/jwt"),
             ("OWASP JWT Cheat Sheet",
-             "https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html")],
+             "https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_Cheat_Sheet.html")],
     "access-control": [("PortSwigger Access Control (IDOR)",
                         "https://portswigger.net/web-security/access-control")],
     "authentication": [("PortSwigger Authentication",
@@ -155,6 +156,50 @@ SOURCES: dict[str, list[tuple[str, str]]] = {
     "unsecured-credentials": [("ATT&CK T1552 Unsecured Credentials",
                                "https://attack.mitre.org/techniques/T1552/")],
 }
+
+# 2차 출처 — 주제당 출처를 다양화(정의: CWE/CAPEC · 방어: OWASP 치트시트 · 분석: Wireshark/Nmap · MDN).
+# 한 출처가 바뀌거나 막혀도 시작 지식이 한쪽 관점에 치우치지 않게. 모두 허용 도메인·승격 관문 검증 통과분.
+_SECONDARY: dict[str, tuple[str, str]] = {
+    "ssti": ("CWE-1336 Template Engine Injection", "https://cwe.mitre.org/data/definitions/1336.html"),
+    "access-control": ("OWASP Authorization Cheat Sheet", "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html"),
+    "authentication": ("OWASP Authentication Cheat Sheet", "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html"),
+    "cors": ("MDN CORS", "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS"),
+    "request-smuggling": ("CWE-444 HTTP Request Smuggling", "https://cwe.mitre.org/data/definitions/444.html"),
+    "prototype-pollution": ("OWASP Prototype Pollution Prevention", "https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html"),
+    "race-condition": ("CWE-362 Race Condition", "https://cwe.mitre.org/data/definitions/362.html"),
+    "nosql-injection": ("CWE-943 Data Query Injection", "https://cwe.mitre.org/data/definitions/943.html"),
+    "graphql": ("OWASP GraphQL Cheat Sheet", "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"),
+    "oauth": ("OWASP OAuth 2.0 Cheat Sheet", "https://cheatsheetseries.owasp.org/cheatsheets/OAuth2_Cheat_Sheet.html"),
+    "web-cache-poisoning": ("OWASP Cache Poisoning", "https://owasp.org/www-community/attacks/Cache_Poisoning"),
+    "clickjacking": ("OWASP Clickjacking Defense", "https://cheatsheetseries.owasp.org/cheatsheets/Clickjacking_Defense_Cheat_Sheet.html"),
+    "path-traversal": ("CWE-22 Path Traversal", "https://cwe.mitre.org/data/definitions/22.html"),
+    "lfi": ("CWE-98 PHP File Inclusion", "https://cwe.mitre.org/data/definitions/98.html"),
+    "deserialization": ("CWE-502 Deserialization of Untrusted Data", "https://cwe.mitre.org/data/definitions/502.html"),
+    "dns": ("Wireshark DNS", "https://wiki.wireshark.org/DNS"),
+    "kerberos": ("Wireshark Kerberos", "https://wiki.wireshark.org/Kerberos"),
+    "ldap": ("Wireshark LDAP", "https://wiki.wireshark.org/LDAP"),
+    "tls": ("Wireshark TLS", "https://wiki.wireshark.org/TLS"),
+    "ftp": ("Wireshark FTP", "https://wiki.wireshark.org/FTP"),
+    "ssh": ("Wireshark SSH", "https://wiki.wireshark.org/SSH"),
+    "snmp": ("Wireshark SNMP", "https://wiki.wireshark.org/SNMP"),
+    "smtp": ("Wireshark SMTP", "https://wiki.wireshark.org/SMTP"),
+    "tcp": ("Wireshark TCP", "https://wiki.wireshark.org/Transmission_Control_Protocol"),
+    "smb": ("Wireshark SMB", "https://wiki.wireshark.org/SMB"),
+    "service-discovery": ("Nmap Port Scanning Basics", "https://nmap.org/book/man-port-scanning-basics.html"),
+    "brute-force": ("CAPEC-112 Brute Force", "https://capec.mitre.org/data/definitions/112.html"),
+    "privilege-escalation": ("CAPEC-233 Privilege Escalation", "https://capec.mitre.org/data/definitions/233.html"),
+    "kerberoasting": ("CAPEC-509 Kerberoasting", "https://capec.mitre.org/data/definitions/509.html"),
+    "pass-the-hash": ("CAPEC-644 Use of Captured Hashes", "https://capec.mitre.org/data/definitions/644.html"),
+    "pass-the-ticket": ("CAPEC-645 Use of Captured Tickets", "https://capec.mitre.org/data/definitions/645.html"),
+    "unsecured-credentials": ("CWE-522 Insufficiently Protected Credentials", "https://cwe.mitre.org/data/definitions/522.html"),
+    "valid-accounts": ("CWE-1392 Use of Default Credentials", "https://cwe.mitre.org/data/definitions/1392.html"),
+    "password-cracking": ("CWE-916 Weak Password Hash", "https://cwe.mitre.org/data/definitions/916.html"),
+    "credential-dumping": ("CWE-256 Plaintext Storage of a Password", "https://cwe.mitre.org/data/definitions/256.html"),
+    "exploit-public-app": ("OWASP Vulnerable Dependency Management", "https://cheatsheetseries.owasp.org/cheatsheets/Vulnerable_Dependency_Management_Cheat_Sheet.html"),
+}
+for _topic, _src in _SECONDARY.items():
+    SOURCES[_topic].append(_src)
+
 
 
 @dataclass
@@ -232,7 +277,9 @@ _DROP_CLASS_TOKENS = {"nav", "navbar", "navigation", "navheader", "navfooter", "
                       "cookie", "cookies", "consent", "banner", "sidebar", "footer", "skip",
                       "toolbar", "share", "social", "newsletter", "subscribe", "masthead",
                       "alert", "collapsed", "toc",   # 공지 배너 · 접힘 토글 머리 · 목차
-                      "edition"}                     # 에디션 배지(label-edition)
+                      "edition",                     # 에디션 배지(label-edition)
+                      "noprint", "topnav", "dropdown",   # 인쇄 제외 영역·상단 메뉴(사이트 공통)
+                      "headerlink"}                  # 제목 옆 고정 링크 기호(¶)
 _MAIN_TAGS = {"main", "article"}
 _NEVER_ATTR_DROP = {"html", "body", "main", "article"}
 _BLOCK_TAGS = {"p", "li", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "td", "th", "dd", "dt",
@@ -388,7 +435,19 @@ def extract_text(html_text: str, limit: int = 600) -> str:
         t = ""
     if not t:
         t = _extract_text_legacy(html_text)
-    return _skip_rfc_header(t)[:limit]
+    return _skip_cwe_header(_skip_rfc_header(t))[:limit]
+
+
+# CWE 정의 페이지: 제목 뒤 메타데이터(Weakness ID·Vulnerability Mapping·Abstraction)를 건너뛰고
+# '제목 — 설명' 으로 시작하게 한다.
+_CWE_HEAD = re.compile(r"(CWE-\d+:.{1,200}?)\s+Weakness ID:\s*\d+.{0,1500}?\bDescription\b\s*", re.S)
+
+
+def _skip_cwe_header(t: str) -> str:
+    m = _CWE_HEAD.search(t, 0, 2500)
+    if m and m.start() < 200 and t[m.end():].strip():
+        return m.group(1).strip() + " — " + t[m.end():].strip()
+    return t
 
 
 def _skip_rfc_header(t: str) -> str:

@@ -30,7 +30,12 @@ rO0AB/O:숫자 패턴 입력·역직렬화 후 비정상 자식프로세스·가
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CWE-502 Deserialization of Untrusted Data
+- 출처: https://cwe.mitre.org/data/definitions/502.html
+- 승격일: 2026-10-07
+- 요약: CWE-502: Deserialization of Untrusted Data — The product deserializes untrusted data without sufficiently ensuring that the resulting data will be valid. Alternate Terms Marshaling/Marshalling, Unmarshaling/Unmarshalling Marshaling and unmarshaling are effectively synonyms for serialization and deserialization, respectively. Pickling, Unpickling In Python, the "pickle" functionality is used to perform serialization and deserialization. PHP Object Injection Some PHP application researchers use th
+
 ### OWASP Deserialization
 - 출처: https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html
 - 승격일: 2026-10-07
-- 요약: Deserialization Cheat Sheet¶ Introduction¶ This article is focused on providing clear, actionable guidance for safely deserializing untrusted data in your applications. What is Deserialization¶ Serialization is the process of turning some object into a data format that can be restored later. People often serialize objects in order to save them for storage, or to send as part of communications. Deserialization is the reverse of that process, taking data structured in some format, and rebuilding i
+- 요약: Deserialization Cheat Sheet Introduction This article is focused on providing clear, actionable guidance for safely deserializing untrusted data in your applications. What is Deserialization Serialization is the process of turning some object into a data format that can be restored later. People often serialize objects in order to save them for storage, or to send as part of communications. Deserialization is the reverse of that process, taking data structured in some format, and rebuilding it i

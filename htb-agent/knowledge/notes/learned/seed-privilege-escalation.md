@@ -28,6 +28,11 @@
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CAPEC-233 Privilege Escalation
+- 출처: https://capec.mitre.org/data/definitions/233.html
+- 승격일: 2026-10-07
+- 요약: Attack Pattern ID: 233 Abstraction: Meta Description An adversary exploits a weakness enabling them to elevate their privilege and perform an action that they are not supposed to be authorized to perform. Relationships This table shows the other attack patterns and high level categories that are related to this attack pattern. These relationships are defined as ChildOf and ParentOf, and give insight to similar items that may exist at higher and lower levels of abstraction. In addition, relations
+
 ### ATT&CK TA0004 Privilege Escalation
 - 출처: https://attack.mitre.org/tactics/TA0004/
 - 승격일: 2026-10-07

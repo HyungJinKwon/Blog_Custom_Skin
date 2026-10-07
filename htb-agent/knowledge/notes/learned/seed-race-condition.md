@@ -27,6 +27,11 @@ for i in $(seq 30); do curl <url>/redeem & done
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CWE-362 Race Condition
+- 출처: https://cwe.mitre.org/data/definitions/362.html
+- 승격일: 2026-10-07
+- 요약: CWE-362: Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition') — The product contains a concurrent code sequence that requires temporary, exclusive access to a shared resource, but a timing window exists in which the shared resource can be modified by another code sequence operating concurrently. Extended Description A race condition occurs within concurrent environments, and it is effectively a property of a code sequence. Depending on the context, a code s
+
 ### PortSwigger Race Conditions
 - 출처: https://portswigger.net/web-security/race-conditions
 - 승격일: 2026-10-07

@@ -29,6 +29,11 @@ hashcat -m 13100 tgs.txt rockyou.txt
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CAPEC-509 Kerberoasting
+- 출처: https://capec.mitre.org/data/definitions/509.html
+- 승격일: 2026-10-07
+- 요약: Attack Pattern ID: 509 Abstraction: Detailed Description Through the exploitation of how service accounts leverage Kerberos authentication with Service Principal Names (SPNs), the adversary obtains and subsequently cracks the hashed credentials of a service account target to exploit its privileges. The Kerberos authentication protocol centers around a ticketing system which is used to request/grant access to services and to then access the requested services. As an authenticated user, the advers
+
 ### ATT&CK T1558.003 Kerberoasting
 - 출처: https://attack.mitre.org/techniques/T1558/003/
 - 승격일: 2026-10-07

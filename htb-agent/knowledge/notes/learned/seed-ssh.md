@@ -29,6 +29,11 @@ chmod 600 id_rsa ; ssh2john id_rsa > h ; john h   # 키 암호 크랙
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### Wireshark SSH
+- 출처: https://wiki.wireshark.org/SSH
+- 승격일: 2026-10-07
+- 요약: Secure Shell (SSH) Secure Shell (SSH) is a replacement for older remote shell programs such as telnet. SSH uses encryption to protect the contents (most notably passwords) being sent over its connection. History XXX - add a brief description of SSH history Protocol dependencies TCP: Typically, SSH uses TCP as its transport protocol. The well known TCP port for SSH traffic is 22. Example traffic XXX - Add example traffic here (as plain text or Wireshark screenshot). Wireshark The SSH dissector in
+
 ### RFC 4253 SSH Transport
 - 출처: https://datatracker.ietf.org/doc/html/rfc4253
 - 승격일: 2026-10-07

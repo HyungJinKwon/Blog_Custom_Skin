@@ -239,7 +239,7 @@ knowledge/
 |---|---|
 | `assassin --learn list` | 학습 가능한 주제 목록 |
 | `assassin --learn kerberoasting` | 한 주제를 권위 출처(MITRE ATT&CK·OWASP·PortSwigger·RFC 등)에서 학습 |
-| `assassin --learn all` | 59개 주제 전체를 한 번에 학습 |
+| `assassin --learn all` | 59개 주제 전체를 한 번에 학습(주제당 최대 2개 권위 출처). 수집에 실패한 출처(끊긴 링크 등)는 경고로 표시 — 주간 워크플로에서는 Actions 경고로 남음 |
 | `assassin --ingest ./my-writeups/` | 내 자료(.md/.txt/.pdf)를 노트로 학습. 본인 자료는 풀이 중 참조 허용 |
 | `assassin <t> --learn-gaps` | 풀이 중 모르는 기술을 만나면 권위 출처에서 자동 학습(autonomous 기본) |
 | `assassin <t> --web-learn` | 카탈로그 밖 공백을 인터넷 검색으로 학습(`--learn-gaps` 를 함께 켬). HTB 라이트업은 출처 불문 차단, 교차검증 통과분만(autonomous 기본) |

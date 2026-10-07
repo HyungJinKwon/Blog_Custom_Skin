@@ -28,6 +28,11 @@ Transfer-Encoding: chunked + Content-Length 모호 조합
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CWE-444 HTTP Request Smuggling
+- 출처: https://cwe.mitre.org/data/definitions/444.html
+- 승격일: 2026-10-07
+- 요약: CWE-444: Inconsistent Interpretation of HTTP Requests ('HTTP Request/Response Smuggling') — The product acts as an intermediary HTTP agent (such as a proxy or firewall) in the data flow between two entities such as a client and server, but it does not interpret malformed HTTP requests or responses in ways that are consistent with how the messages will be processed by those entities that are at the ultimate destination. Extended Description HTTP requests or responses ("messages") can be malformed
+
 ### PortSwigger HTTP Request Smuggling
 - 출처: https://portswigger.net/web-security/request-smuggling
 - 승격일: 2026-10-07

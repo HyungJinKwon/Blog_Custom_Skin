@@ -29,6 +29,11 @@ kerbrute passwordspray -d <domain> users.txt 'Welcome1'
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CAPEC-112 Brute Force
+- 출처: https://capec.mitre.org/data/definitions/112.html
+- 승격일: 2026-10-07
+- 요약: Attack Pattern ID: 112 Abstraction: Meta Description In this attack, some asset (information, functionality, identity, etc.) is protected by a finite secret value. The attacker attempts to gain access to this asset by using trial-and-error to exhaustively explore all the possible secret values in the hope of finding the secret (or a value that is functionally equivalent) that will unlock the asset. Extended Description Examples of secrets can include, but are not limited to, passwords, encryptio
+
 ### ATT&CK T1110 Brute Force
 - 출처: https://attack.mitre.org/techniques/T1110/
 - 승격일: 2026-10-07

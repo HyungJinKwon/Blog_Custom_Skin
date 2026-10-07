@@ -27,6 +27,11 @@ MFA·기본자격 제거·조건부접근·암호 재사용 차단.
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CWE-1392 Use of Default Credentials
+- 출처: https://cwe.mitre.org/data/definitions/1392.html
+- 승격일: 2026-10-07
+- 요약: CWE-1392: Use of Default Credentials — The product uses default credentials (such as passwords or cryptographic keys) for potentially critical functionality. Extended Description It is common practice for products to be designed to use default keys, passwords, or other mechanisms for authentication. The rationale is to simplify the manufacturing process or the system administrator's task of installation and deployment into an enterprise. However, if admins do not change the defaults, it is easie
+
 ### ATT&CK T1078 Valid Accounts
 - 출처: https://attack.mitre.org/techniques/T1078/
 - 승격일: 2026-10-07

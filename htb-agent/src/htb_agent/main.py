@@ -337,6 +337,14 @@ def main(argv: list[str] | None = None, runner=None) -> int:
             print(ui.heading(f"전체 사전 학습 — {n_ok}/{len(lresults)} 주제 노트 생성", "📚"))
             if not args.offline:
                 print(ui.dim("  (라이브 수집: 허용 도메인에서 요약 수집)"))
+                failed = [(lr.topic, r.title, r.url) for lr in lresults for r in lr.refs
+                          if not r.excerpt]
+                if failed:   # 끊긴 링크·차단 출처를 드러냄(주간 워크플로 로그에서 바로 보이게)
+                    print(ui.mark_warn(f"수집 실패 출처 {len(failed)}개 — 카탈로그 주소 확인 필요"))
+                    for topic, title, url in failed:
+                        print(ui.dim(f"     {topic}: {title} — {url}"))
+                        if _oslearn.environ.get("GITHUB_ACTIONS") == "true":
+                            print(f"::warning title=수집 실패 출처::{topic}: {title} — {url}")
             else:
                 print(ui.dim("  (오프라인: 출처 포인터 저장 — 번들 시드 노트가 보강)"))
             return 0 if n_ok else 2

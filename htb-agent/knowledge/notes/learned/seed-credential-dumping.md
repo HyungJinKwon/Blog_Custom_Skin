@@ -28,6 +28,11 @@ Credential Guard·LSA 보호(RunAsPPL)·최소권한·LAPS.
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CWE-256 Plaintext Storage of a Password
+- 출처: https://cwe.mitre.org/data/definitions/256.html
+- 승격일: 2026-10-07
+- 요약: CWE-256: Plaintext Storage of a Password — The product stores a password in plaintext within resources such as memory or files. Common Consequences This table specifies different individual consequences associated with the weakness. The Scope identifies the application security area that is violated, while the Impact describes the negative technical impact that arises if an adversary succeeds in exploiting this weakness. The Likelihood provides information about how likely the specific consequen
+
 ### ATT&CK T1003 OS Credential Dumping
 - 출처: https://attack.mitre.org/techniques/T1003/
 - 승격일: 2026-10-07

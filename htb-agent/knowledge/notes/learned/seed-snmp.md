@@ -29,6 +29,11 @@ SNMPv3(인증/암호)·community 변경·접근제한·불필요 비활성.
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### Wireshark SNMP
+- 출처: https://wiki.wireshark.org/SNMP
+- 승격일: 2026-10-07
+- 요약: Simple Network Management Protocol (SNMP) SNMP is used to monitor and manage devices on networks. History For an overview on SNMP, read this https://en.wikipedia.org/wiki/Simple_Network_Management_Protocol Next tackle The Simple Times newsletters which include articles from the RFC authors and Dr. SNMP. Protocol dependencies Typically, SNMP uses UDP as its transport protocol. The well known UDP ports for SNMP traffic are 161 (SNMP) and 162 (SNMPTRAP). It can also run over TCP, Ethernet, IPX, and
+
 ### RFC 1157 SNMP
 - 출처: https://datatracker.ietf.org/doc/html/rfc1157
 - 승격일: 2026-10-07

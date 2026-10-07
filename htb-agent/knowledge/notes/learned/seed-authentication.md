@@ -29,6 +29,11 @@ hydra -L users.txt -P rockyou.txt <target> http-post-form '...'
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### OWASP Authentication Cheat Sheet
+- 출처: https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html
+- 승격일: 2026-10-07
+- 요약: Authentication Cheat Sheet Introduction Authentication (AuthN) is the process of verifying that an individual, entity, or website is who or what it claims to be by determining the validity of one or more authenticators (like passwords, fingerprints, or security tokens) that are used to back up this claim. Digital Identity is the unique representation of a subject engaged in an online transaction. A digital identity is always unique in the context of a digital service but does not necessarily nee
+
 ### PortSwigger Authentication
 - 출처: https://portswigger.net/web-security/authentication
 - 승격일: 2026-10-07

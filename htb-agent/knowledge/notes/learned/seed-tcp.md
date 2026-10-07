@@ -28,6 +28,11 @@ hping3 -S <target> -p 80   # 수동 프로브
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### Wireshark TCP
+- 출처: https://wiki.wireshark.org/Transmission_Control_Protocol
+- 승격일: 2026-10-07
+- 요약: Transmission Control Protocol (TCP) The TCP protocol provides stream-based, connection-oriented transfer of data for the InternetProtocolFamily. It provides TCP port multiplexing and much more. It establishes a reliable logical connection that is resilient to problems like PacketLoss, DuplicatePackets, and other issues. Sending a few bytes transfers them to the remote host without introducing any additional faulty or missing bytes to the receiving application. History When Vint Cerf and Bob Kahn
+
 ### RFC 9293 TCP
 - 출처: https://datatracker.ietf.org/doc/html/rfc9293
 - 승격일: 2026-10-07

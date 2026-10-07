@@ -31,6 +31,11 @@ tplmap -u '<url>?name=*'                        # 자동화
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CWE-1336 Template Engine Injection
+- 출처: https://cwe.mitre.org/data/definitions/1336.html
+- 승격일: 2026-10-07
+- 요약: CWE-1336: Improper Neutralization of Special Elements Used in a Template Engine — The product uses a template engine to insert or process externally-influenced input, but it does not neutralize or incorrectly neutralizes special elements or syntax that can be interpreted as template expressions or other code directives when processed by the engine. Extended Description Many web applications use template engines that allow developers to insert externally-influenced values into free text or messag
+
 ### PortSwigger SSTI
 - 출처: https://portswigger.net/web-security/server-side-template-injection
 - 승격일: 2026-10-07

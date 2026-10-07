@@ -31,6 +31,11 @@ export KRB5CCNAME=tgt.ccache; impacket-psexec -k -no-pass <host>
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### Wireshark Kerberos
+- 출처: https://wiki.wireshark.org/Kerberos
+- 승격일: 2026-10-07
+- 요약: Kerberos Kerberos is a service that provides mutual authentication between users and services in a network. It is popular both in Unix and Windows (Active Directory) environments. History Initially Kerberos was developed and deployed as part of the Athena project. This version of the Kerberos service and protocol was version 4. While Kerberos v4 still has limited use in AFS environments, it has largely been replaced by Kerberos v5 in all other environments. There is no official specification for
+
 ### RFC 4120 Kerberos V5
 - 출처: https://datatracker.ietf.org/doc/html/rfc4120
 - 승격일: 2026-10-07

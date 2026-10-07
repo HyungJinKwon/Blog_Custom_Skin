@@ -29,6 +29,11 @@ FTPS/SFTP 대체·익명 비활성·강한 자격·쓰기권한 최소화.
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### Wireshark FTP
+- 출처: https://wiki.wireshark.org/FTP
+- 승격일: 2026-10-07
+- 요약: File Transfer Protocol (FTP) As the name implies, FTP is used to transfer files. It is a standard communication protocol built on a client-server model and relies on two separate communication channels: a control channel for sending commands and responses, and a data channel for actually transmitting the file content. Security Warning: FTP uses plain text passwords, so take care when using it. History FTP is one of the oldest internet protocols, initially developed and published as RFC114 in 197
+
 ### RFC 959 FTP
 - 출처: https://datatracker.ietf.org/doc/html/rfc959
 - 승격일: 2026-10-07

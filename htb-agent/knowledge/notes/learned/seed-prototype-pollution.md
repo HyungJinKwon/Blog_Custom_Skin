@@ -28,6 +28,11 @@ Object.create(null)·Map·키 검증·Object.freeze·안전한 병합 라이브�
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### OWASP Prototype Pollution Prevention
+- 출처: https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html
+- 승격일: 2026-10-07
+- 요약: Prototype Pollution Prevention Cheat Sheet Explanation Prototype Pollution is a critical vulnerability that can allow attackers to manipulate an application's JavaScript objects and properties, leading to serious security issues such as unauthorized access to data, privilege escalation, and even remote code execution. For examples of why this is dangerous, see the links in the Other resources section below. Suggested protection mechanisms Use "new Set()" or "new Map()" Developers should use new
+
 ### PortSwigger Prototype Pollution
 - 출처: https://portswigger.net/web-security/prototype-pollution
 - 승격일: 2026-10-07
