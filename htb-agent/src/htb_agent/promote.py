@@ -123,7 +123,8 @@ def split_seed(text: str) -> tuple[str, list[Candidate]]:
     if idx < 0:
         return text.rstrip() + "\n", []
     before = text[:idx].rstrip()
-    section, tail = [], []
+    section: list[str] = []
+    tail: list[str] = []
     for line in text[idx + len(PROMOTED_HEADER):].splitlines():
         if tail or (line.startswith("## ") and not line.startswith("### ")):
             tail.append(line)

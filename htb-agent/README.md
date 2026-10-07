@@ -128,7 +128,7 @@ assassin 10.129.1.5 --config config/config.example.json
 > 풀이 중 **모르는 기술/제품을 만나면 스스로 권위 출처에서 찾아 배워** KB 에 즉시
 > 반영한다(예: MongoDB 관측 → NoSQLi 지식 자동 연결·학습). 매핑 불가한 용어는
 > 지어내지 않고 '미해석 공백'으로 기록(수동 조사 안내). allowlist·P1 유지.
-> **인터넷 검색 학습**: `assassin <target> --web-learn` (autonomous 기본 활성) —
+> **인터넷 검색 학습**: `assassin <target> --web-learn` (autonomous 기본 활성 · 공백 탐지 `--learn-gaps` 를 함께 켬) —
 > 카탈로그 밖 '미해석 공백'을 **넓은 인터넷 검색**으로 학습해 KB 에 반영한다. 단
 > **HTB 라이트업은 출처 불문(공식·제3자) 전부 차단**(HTB 라이트업은 오직 사용자
 > 본인 ingest 로만 유입). 일반 기법 아티클·공식 문서는 허용하되 **교차검증**(출처 신뢰등급 A/B 또는 독립 출처 상호확인 + 보안 관련성) 통과분만 채택. 가져온 내용은 노트로만
@@ -201,7 +201,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 54 스위트 1429 테스트
+cd htb-agent && python3 tests/run_all.py     # 54 스위트 1452 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

@@ -333,13 +333,13 @@ def main(argv: list[str] | None = None, runner=None) -> int:
             enabled=not args.offline)
         if key == "all":   # 전체 주제 일괄 사전 학습(미리 학습)
             lresults = ref_learner.learn_all()
-            ok = sum(1 for lr in lresults if lr.refs)
-            print(ui.heading(f"전체 사전 학습 — {ok}/{len(lresults)} 주제 노트 생성", "📚"))
+            n_ok = sum(1 for lr in lresults if lr.refs)
+            print(ui.heading(f"전체 사전 학습 — {n_ok}/{len(lresults)} 주제 노트 생성", "📚"))
             if not args.offline:
                 print(ui.dim("  (라이브 수집: 허용 도메인에서 요약 수집)"))
             else:
                 print(ui.dim("  (오프라인: 출처 포인터 저장 — 번들 시드 노트가 보강)"))
-            return 0 if ok else 2
+            return 0 if n_ok else 2
         res = ref_learner.learn(args.learn)
         print(res.summary())
         return 0 if res.refs else 2
