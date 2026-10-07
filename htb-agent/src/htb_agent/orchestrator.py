@@ -80,7 +80,7 @@ class OrchestrationReport:
     recon: ReconReport | None = None
     host: NmapHost | None = None
     profile: ProfileResult | None = None
-    world: "object | None" = None     # world.WorldModel — 구조화 상태(단일 상태원)
+    world: "WorldModel | None" = None  # world.WorldModel — 구조화 상태(단일 상태원)
     analysis: str = ""                # LLM 분석가(B3) — 가설·공격경로·다음집중·확신도
     phase_status: dict = field(default_factory=dict)   # A2 단계 게이팅 상태(phase→상태)
     # 3관문 결과 집계(열거·LLM 명령 기준, 정찰 포트스캔 제외) — 리포트·대시보드용
@@ -209,8 +209,8 @@ class OrchestrationReport:
             lines.append("\n" + ui.heading(
                 "PROVENANCE  (플래그 출처 검증 — 실행 트레이스 기반)", "🔎"))
             for p in self.flag_provenance:
-                mark = ui.ok if p.verdict == "exploit-derived" else ui.warn
-                lines.append("  " + mark(f"[{p.label}] ") + f"{p.kind} flag")
+                pmark = ui.ok if p.verdict == "exploit-derived" else ui.warn
+                lines.append("  " + pmark(f"[{p.label}] ") + f"{p.kind} flag")
                 lines.append("      " + ui.dim(f"↳ {p.reason} · {p.command[:60]}"))
             susp = [p for p in self.flag_provenance if p.verdict != "exploit-derived"]
             if susp:
@@ -258,17 +258,17 @@ class OrchestrationReport:
         if self.flags:
             lines.append("\n" + ui.heading("🚩 플래그 (FLAG)"))
             if self.flag_kind == "single":
-                for f in self.flags:
-                    lines.append("  " + ui.flag(f.value)
-                                 + ui.dim(f"  ← {f.source}"))
+                for fh in self.flags:
+                    lines.append("  " + ui.flag(fh.value)
+                                 + ui.dim(f"  ← {fh.source}"))
             else:
                 uf = ui.flag(self.user_flag) if self.user_flag else ui.dim("미획득")
                 rf = ui.flag(self.root_flag) if self.root_flag else ui.dim("미획득")
                 lines.append("  " + ui.dim("user.txt:") + " " + uf)
                 lines.append("  " + ui.dim("root.txt:") + " " + rf)
-                for f in self.flags:
-                    if f.kind == "unknown":
-                        lines.append(ui.dim(f"  (미분류) {f.value} ← {f.source}"))
+                for fh in self.flags:
+                    if fh.kind == "unknown":
+                        lines.append(ui.dim(f"  (미분류) {fh.value} ← {fh.source}"))
         if self.revshells:
             from .revshell import listener_hints
             lines.append("\n" + ui.heading(

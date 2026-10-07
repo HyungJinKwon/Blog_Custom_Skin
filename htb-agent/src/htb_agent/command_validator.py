@@ -88,8 +88,10 @@ def validate_base64(s: str, urlsafe: bool = False) -> tuple[bool, str]:
     if len(s) % 4 != 0:
         return False, f"길이가 4의 배수가 아님(len={len(s)}, 패딩 오류)"
     try:
-        decoder = base64.urlsafe_b64decode if urlsafe else base64.b64decode
-        decoder(s, validate=True) if not urlsafe else decoder(s)
+        if urlsafe:
+            base64.urlsafe_b64decode(s)
+        else:
+            base64.b64decode(s, validate=True)
         return True, "유효"
     except (binascii.Error, ValueError) as e:
         return False, f"디코딩 실패: {e}"
