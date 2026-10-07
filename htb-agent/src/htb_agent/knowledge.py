@@ -274,6 +274,9 @@ def _load_notes_dir(path: str, overlays: dict[str, str] | None = None) -> list[s
     for root, dirs, files in os.walk(path):
         dirs.sort()   # 파일시스템과 무관하게 노트 순서를 결정적으로(RAG 동점 순위 안정)
         for fn in sorted(files):
+            # 폴더 안내문(README)은 노트가 아니다 — 관련 노트가 없을 때 기본값으로 LLM 에 주입되던 문제
+            if fn.lower() in ("readme.md", "readme.txt"):
+                continue
             if fn.endswith((".md", ".txt")):
                 src = os.path.join(root, fn)
                 if overlays and fn in overlays and os.path.normpath(root) == learned:

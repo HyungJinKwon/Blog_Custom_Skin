@@ -78,7 +78,7 @@ def _new_gate_stats() -> dict:
 @dataclass
 class OrchestrationReport:
     target: str
-    status: str = "pending"          # done / escalate
+    status: str = "pending"          # pending / done / escalate / interrupted
     recon: ReconReport | None = None
     host: NmapHost | None = None
     profile: ProfileResult | None = None
@@ -117,6 +117,9 @@ class OrchestrationReport:
     blockers: list = field(default_factory=list)
     # 플래그 출처 검증(실행 트레이스 기반) — list[provenance.FlagProvenance]
     flag_provenance: list = field(default_factory=list)
+    goal_reached: bool = False        # 신뢰 가능한 플래그로 목표 달성 → 남은 단계 조기 종료
+    # LLM 라우팅 집계(하이브리드일 때 main 이 채움): 로컬/강력/폴백/거절/빈응답/오류/미응답 + 차단 백엔드
+    llm_routing: dict = field(default_factory=dict)
     message: str = ""
 
     @property
@@ -549,6 +552,7 @@ class Orchestrator:
         if interrupted:
             report.message += "사용자 중단 — 진행 상태 저장(--resume 으로 이어서 진행). "
         elif self._goal_reached(report):
+            report.goal_reached = True
             report.message += "목표 달성 — 남은 단계 조기 종료. "
         flag_state = f"user={'O' if report.user_flag else 'X'} root={'O' if report.root_flag else 'X'}"
         report.message += (f"OS={prof.os_class.value}({prof.tag}), "

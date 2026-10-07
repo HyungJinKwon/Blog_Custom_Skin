@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from . import recommend as _recommend
 from .enrich import CWE_NAMES, Enricher
 
-SCHEMA_VERSION = "1.3"   # 1.1: blockers·flag_provenance·learn·next_options / 1.2: gate_stats / 1.3: knowledge(하위호환)
+SCHEMA_VERSION = "1.4"   # 1.1: blockers·flag_provenance·learn·next_options / 1.2: gate_stats / 1.3: knowledge / 1.4: goal_reached·llm_routing(하위호환)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -75,6 +75,8 @@ def to_dict(report) -> dict:
         "world": report.world.to_dict() if getattr(report, "world", None) else None,
         "analysis": getattr(report, "analysis", ""),
         "phase_status": dict(getattr(report, "phase_status", {}) or {}),
+        "goal_reached": bool(getattr(report, "goal_reached", False)),
+        "llm_routing": dict(getattr(report, "llm_routing", {}) or {}),
         "gate_stats": dict(getattr(report, "gate_stats", {}) or {}),
         "open_ports": host.open_ports if host else [],
         "ports": [_port_dict(p) for p in host.ports] if host else [],
@@ -166,6 +168,8 @@ th{color:#9ec5ff;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
 code{background:#0b1626;color:#bfe0ff;padding:1px 6px;border-radius:5px;
  font:13px/1.5 "JetBrains Mono",Consolas,monospace;overflow-wrap:anywhere;word-break:break-all}
 .flag{color:#5fe0a8;font-weight:700}
+pre{background:#0b1626;color:#dce6f5;border:1px solid #223a63;border-radius:8px;padding:12px;
+ white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 "JetBrains Mono",Consolas,monospace}
 .muted{color:#8aa0bf}
 a{color:#7fb4ff}
 ul{margin:6px 0;padding-left:20px}
@@ -366,6 +370,47 @@ def _html_knowledge(report) -> str:
     return f"<div class='panel'><b>지식 기반</b><div class='tiles'>{tile_html}</div>{body}</div>"
 
 
+# 상태 배지: (색, 한국어 설명)
+_STATUS = {"done": ("b-done", "완료"), "interrupted": ("b-high", "중단됨 — --resume 으로 이어서"),
+           "escalate": ("b-crit", "사람 개입 필요"), "pending": ("b-info", "진행 전")}
+
+
+def _html_result(report) -> str:
+    """진행 결과 한 줄: 목표 달성·중단·escalate 여부와 요약 메시지."""
+    badge = ("<span class='badge b-done'>목표 달성 — 남은 단계 조기 종료</span>"
+             if getattr(report, "goal_reached", False) else "")
+    msg = _esc(getattr(report, "message", "") or "")
+    if not (badge or msg):
+        return ""
+    return f"<div class='panel'><b>진행 결과</b><br>{badge} <span class='muted'>{msg}</span></div>"
+
+
+def _html_routing(report) -> str:
+    """하이브리드 LLM 라우팅 패널 — 어느 백엔드가 실제로 응답했는지(하이브리드일 때만)."""
+    r = dict(getattr(report, "llm_routing", {}) or {})
+    if not r:
+        return ""
+    names = [("로컬 응답", "local", "ok"), ("강력 응답", "strong", "ok"), ("폴백", "fallback", ""),
+             ("거절", "refusal", "warn"), ("빈 응답", "empty", ""), ("오류", "error", "warn"),
+             ("미응답", "unserved", "warn")]
+    tiles = "".join(
+        f"<div class='tile {cls if r.get(k) else ''}'><div class='num'>{int(r.get(k, 0))}</div>"
+        f"<div class='lbl'>{_esc(lbl)}</div></div>" for lbl, k, cls in names)
+    off = r.get("disabled") or []
+    note = (f"<p class='muted'>연속 오류로 세션 동안 건너뛴 백엔드: {_esc(', '.join(off))}</p>"
+            if off else "")
+    return f"<div class='panel'><b>LLM 라우팅 (하이브리드)</b><div class='tiles'>{tiles}</div>{note}</div>"
+
+
+def _html_analysis(report) -> str:
+    text = getattr(report, "analysis", "") or ""
+    if not text.strip():
+        return "<p class='muted'>LLM 미사용 — 규칙 기반으로 진행</p>"
+    return ("<p class='muted'>레드팀·개발자·인프라 운영자·방어 관점의 병렬 가설과 검증 계획. "
+            "LLM 명령의 비고에 어떤 가설(H1…)을 검증했는지 남는다.</p>"
+            f"<pre>{_esc(text)}</pre>")
+
+
 def _html_overview(report) -> str:
     """심사위원·리뷰어용 한눈에 보기: 3관문 지표·플래그 출처·안전 경계·단계 진행."""
     gs = dict(getattr(report, "gate_stats", {}) or {})
@@ -405,10 +450,11 @@ def _html_overview(report) -> str:
         f"<tr><td class='kcol'>{_esc(labels.get(k, k))}</td><td>{_esc(v)}</td></tr>"
         for k, v in phases.items())
         + "</table>") if phases else "<p class='muted'>없음</p>"
-    return (f"<div class='tiles'>{tile_html}</div>"
+    return (_html_result(report) +
+            f"<div class='tiles'>{tile_html}</div>"
             "<p class='muted'>3관문 지표는 열거·LLM 명령 기준(정찰 포트스캔 제외).</p>"
             f"<div class='panel'><b>플래그 출처</b><br>{flag_html}</div>"
-            + _html_knowledge(report) +
+            + _html_knowledge(report) + _html_routing(report) +
             "<div class='panel'><b>안전 경계</b><ul class='checks'>"
             + "".join(f"<li>{c}</li>" for c in checks) + "</ul></div>"
             f"<div class='panel'><b>단계 진행</b>{phase_html}</div>")
@@ -418,7 +464,7 @@ def to_html(report, machine_name: str = "") -> str:
     prof = report.profile
     os_line = f"{prof.os_class.value} ({prof.tag}) · 확신도 {prof.confidence:.0%}" if prof else "-"
     name = machine_name or report.target
-    status_badge = ("b-done" if report.status == "done" else "b-info")
+    status_badge, status_label = _STATUS.get(report.status, ("b-info", ""))
     gen = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     return f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
@@ -428,13 +474,16 @@ def to_html(report, machine_name: str = "") -> str:
 <body><div class="wrap">
 <h1>ASSASSIN · {_esc(name)}</h1>
 <div class="sub">
-  <span class="badge {status_badge}">{_esc(report.status)}</span>
+  <span class="badge {status_badge}">{_esc(report.status)}{(" · " + _esc(status_label)) if status_label else ""}</span>
   <span class="badge b-info">{_esc(report.target)}</span>
   <span class="muted">OS: {_esc(os_line)} · 생성 {gen}</span>
 </div>
 
 <h2>한눈에 보기</h2>
 {_html_overview(report)}
+
+<h2>분석 (병렬 가설 · 계획)</h2>
+{_html_analysis(report)}
 
 <h2>포트 &amp; 서비스</h2>
 {_html_ports(report.host)}
