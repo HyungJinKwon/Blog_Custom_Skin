@@ -44,7 +44,7 @@ _PHASE_LABEL = {
 }
 
 
-def propose(report, *, max_items: int = 8) -> RecommendationSet:
+def propose(report, *, max_items: int = 8, repetition=None) -> RecommendationSet:
     """리포트의 진단·정체·단계 상태에서 '사람이 고를 다음 선택지'를 만든다.
     자동 실행하지 않는다 — 선택·승인은 사람이 한다."""
     recs: list[Recommendation] = []
@@ -69,8 +69,10 @@ def propose(report, *, max_items: int = 8) -> RecommendationSet:
             source="diagnosis", priority=1))
 
     # 3) 반복·정체 — 각도 전환을 '사람이' 검토하도록 제안
-    rr = _rep.analyze(getattr(report, "enum_findings", []) + getattr(report, "llm_findings", []),
-                      getattr(report, "blockers", []))
+    # 호출측이 이미 계산했다면 재사용(리포트 렌더 시 중복 분석 방지)
+    rr = repetition if repetition is not None else _rep.analyze(
+        getattr(report, "enum_findings", []) + getattr(report, "llm_findings", []),
+        getattr(report, "blockers", []))
     if rr.stalled or rr.repeated_failures or rr.repeated_cmds:
         why = []
         if rr.repeated_cmds:

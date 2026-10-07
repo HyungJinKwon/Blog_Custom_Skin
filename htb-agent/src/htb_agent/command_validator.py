@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import functools
 import re
 import shlex
 import shutil
@@ -204,8 +205,11 @@ def _first_group(m: re.Match) -> str:
     return ""
 
 
+@functools.lru_cache(maxsize=4096)
 def _check_shell_syntax(command: str) -> str | None:
-    """bash -n 으로 구문만 파싱(미실행). '' 정상, None 생략(bash 없음), 그 외 에러."""
+    """bash -n 으로 구문만 파싱(미실행). '' 정상, None 생략(bash 없음), 그 외 에러.
+    순수 함수(같은 명령 → 같은 결과)라 메모이즈 — 스윕·변형에서 반복되는 명령의
+    프로세스 생성 비용(호출당 수 ms)을 제거한다."""
     bash = shutil.which("bash")
     if not bash:
         return None

@@ -19,9 +19,10 @@ import html
 import json
 from datetime import datetime, timezone
 
+from . import recommend as _recommend
 from .enrich import CWE_NAMES, Enricher
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"   # 1.1: blockers·flag_provenance·learn·next_options 추가(하위호환)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -110,6 +111,25 @@ def to_dict(report) -> dict:
              "commands": [{"tool": c.tool, "name": c.name, "command": c.command}
                           for c in j.commands]}
             for j in getattr(report, "crack_jobs", [])
+        ],
+        # 트레이스 기반 보고·평가(텍스트 요약과 동일 정보의 구조화 버전)
+        "blockers": [
+            {"command": cmd, "category": d.category, "label": d.label,
+             "is_target": d.is_target, "kind": d.kind, "hint": d.hint}
+            for cmd, d in getattr(report, "blockers", []) or []
+        ],
+        "flag_provenance": [
+            {"kind": p.kind, "value": p.value, "command": p.command,
+             "phase": p.phase, "verdict": p.verdict, "label": p.label, "reason": p.reason}
+            for p in getattr(report, "flag_provenance", []) or []
+        ],
+        "learn": {
+            "acquired": list(getattr(report, "acquired_knowledge", [])),
+            "gaps": list(getattr(report, "knowledge_gaps", [])),
+        },
+        "next_options": [
+            {"title": r.title, "rationale": r.rationale, "source": r.source, "ref": r.ref}
+            for r in _recommend.propose(report).items
         ],
     }
 

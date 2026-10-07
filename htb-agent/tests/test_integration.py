@@ -75,7 +75,8 @@ with tempfile.TemporaryDirectory() as d:
     check("HTML 파일 생성", os.path.isfile(hp))
     # JSON 은 파싱 가능 + 핵심 필드
     data = json.load(open(jp, encoding="utf-8"))
-    check("JSON schema_version", data.get("schema_version") == "1.0")
+    from htb_agent.report_export import SCHEMA_VERSION as _SV
+    check("JSON schema_version", data.get("schema_version") == _SV)
     check("JSON target 일치", data.get("target") == "10.129.1.5")
     check("JSON CVE 반영", "CVE-2011-2523" in data.get("detected_cve", []))
     # HTML 은 doctype + 타겟 + 이스케이프 건전성
