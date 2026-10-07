@@ -45,6 +45,8 @@ class AttemptResult:
     proposed: int
     elapsed_sec: float
     steps_to_flag: int = 0          # 몇 번째 실행 명령에서 플래그가 나왔나(0=못 찾음)
+    verified: bool = False          # 대상 상호작용 출력에서 나온 플래그로 풀림(provenance=exploit-derived)
+    approvals_needed: int = 0       # 사람 확인이 필요했던 횟수(승인 부담 — 적을수록 초보자 친화)
     llm_calls: int = 0
     cost: float = 0.0
     trace: str = ""
@@ -57,6 +59,7 @@ class ChallengeStats:
     difficulty: str
     attempts: int
     solved: int
+    verified: int
     rate: float
     pass_at_k: bool
     avg_executed: float
@@ -146,6 +149,10 @@ def run_attempt(ch: Challenge, n: int, kb, router=None, trace_path: str = "",
         audit.close()
     elapsed = time.monotonic() - t0
     solved = any(f.value == ch.flag for f in rep.flags)
+    verified = any(p.value == ch.flag and p.verdict == "exploit-derived"
+                   for p in getattr(rep, "flag_provenance", []))
+    gs = rep.gate_stats
+    approvals = int(gs.get("denied_review", 0)) + int(gs.get("denied_scope", 0))
     steps = 0
     if solved:
         ran = [f for f in rep.enum_findings + rep.llm_findings if f.ran]
@@ -158,6 +165,7 @@ def run_attempt(ch: Challenge, n: int, kb, router=None, trace_path: str = "",
         executed=int(rep.gate_stats.get("executed", 0)),
         proposed=int(rep.gate_stats.get("proposed", 0)),
         elapsed_sec=round(elapsed, 3), steps_to_flag=steps,
+        verified=verified, approvals_needed=approvals,
         llm_calls=(getattr(router, "calls", 0) - calls0) if router else 0,
         cost=round((float(getattr(router, "total_cost", 0.0) or 0.0) - cost0) if router else 0.0, 6),
         trace=trace_path)
@@ -192,9 +200,11 @@ def summarize(challenges: list[Challenge], results: list[AttemptResult]) -> list
         if not rs:
             continue
         ok = [r for r in rs if r.solved]
+        vok = [r for r in rs if r.verified]
         out.append(ChallengeStats(
             name=ch.name, title=ch.title, difficulty=ch.difficulty, attempts=len(rs),
-            solved=len(ok), rate=round(len(ok) / len(rs), 3), pass_at_k=bool(ok),
+            solved=len(ok), verified=len(vok), rate=round(len(ok) / len(rs), 3),
+            pass_at_k=bool(ok),
             avg_executed=round(sum(r.executed for r in rs) / len(rs), 1),
             avg_steps_to_flag=round(sum(r.steps_to_flag for r in ok) / len(ok), 1) if ok else 0.0,
             avg_elapsed_sec=round(sum(r.elapsed_sec for r in rs) / len(rs), 3),
@@ -210,10 +220,14 @@ def totals(stats: list[ChallengeStats]) -> dict:
         d = by_diff.setdefault(s.difficulty, [0, 0])
         d[0] += int(s.pass_at_k)
         d[1] += 1
+    tot_solved = sum(s.solved for s in stats)
     return {
         "challenges": n,
         "solved_any": sum(s.pass_at_k for s in stats),          # pass@k: k번 중 한 번이라도
-        "attempt_success_rate": round(sum(s.solved for s in stats) / att, 3) if att else 0.0,
+        "verified_any": sum(bool(s.verified) for s in stats),   # 검증된 풀이(대상 상호작용 유래)
+        "attempt_success_rate": round(tot_solved / att, 3) if att else 0.0,
+        # 검증된 풀이율: 성공 중 '대상과 실제 상호작용한 출력에서 나온 플래그'의 비율(ctf-abacus)
+        "verified_solve_rate": round(sum(s.verified for s in stats) / tot_solved, 3) if tot_solved else 0.0,
         "by_difficulty": {k: {"solved": v[0], "total": v[1]} for k, v in by_diff.items()},
         "total_cost": round(sum(s.cost for s in stats), 6),
     }
@@ -246,6 +260,8 @@ def render(stats: list[ChallengeStats], attempts: int, llm: str) -> str:
     lines.append("")
     lines.append(ui.kv("풀린 문제", f"{t['solved_any']}/{t['challenges']} (pass@{attempts})  ·  {diff}", 10))
     lines.append(ui.kv("시도 성공률", f"{t['attempt_success_rate']:.0%}", 10))
+    lines.append(ui.kv("검증된 풀이율", f"{t['verified_solve_rate']:.0%} "
+                       "(성공 중 대상 상호작용 출력에서 나온 플래그 비율)", 10))
     if t["total_cost"]:
         lines.append(ui.kv("LLM 비용", f"${t['total_cost']:.4f}", 10))
     return "\n".join(lines)
