@@ -67,6 +67,13 @@ _NET_TOOLS = {
 }
 _WRAPPERS = {"sudo", "proxychains", "proxychains4", "torsocks", "env", "nohup", "stdbuf"}
 _HOSTLIKE_RE = re.compile(r"^[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)+$")
+# _NONHOST_EXT 중 실제 TLD 와 겹치는 확장자(IANA 대조). 일반 토큰에선 파일로 보되(오탐
+# 방지), 네트워크 도구의 호스트 위치에 오면 호스트로 분류한다(fail-open 방지).
+_TLD_COLLIDING_EXT = {"md", "py", "sh", "so", "zip"}
+# 리다이렉트 연산자 — 바로 뒤 토큰은 파일
+_REDIRECTS = {"<", ">", ">>", "<<", "2>", "2>>", "1>", "&>", ">|"}
+# 원격 호스트를 '호스트:경로' 로만 받는 도구 — ':' 없는 인자는 로컬 파일
+_COLON_HOST_TOOLS = {"scp", "rsync"}
 # 호스트로 오인하기 쉬운 파일 확장자(점 포함 토큰) 제외 → 오탐 방지.
 # ⚠ 규칙: 실제 TLD 와 겹치는 확장자는 추가 금지 — 그 TLD 의 진짜 호스트가 파일로
 #   오인돼 범위 검사를 통과(fail-open)한다. 아래 추가분은 IANA TLD 목록
@@ -208,17 +215,29 @@ def _host_position_tokens(command: str) -> list[tuple[str, bool]]:
         if binary not in _NET_TOOLS and not binary.startswith("impacket-"):
             continue
         after_opt = False
+        skip_next = False
         for t in toks[i + 1:]:
+            if skip_next:              # 리다이렉트 대상(파일)
+                skip_next = False
+                continue
+            if t in _REDIRECTS:
+                skip_next = True
+                continue
             if t.startswith("-"):
                 if "=" in t:
                     out.append((t.split("=", 1)[1], False))
                 after_opt = True
+                continue
+            if binary in _COLON_HOST_TOOLS and ":" not in t:
+                after_opt = False      # scp/rsync: ':' 없는 인자는 로컬 경로
                 continue
             if "://" not in t:
                 c = t.rsplit("@", 1)[-1]
                 if c.count(":") == 1:
                     c = c.split(":", 1)[0]
                 out.append((c, not after_opt))
+                if binary == "ssh" and not after_opt:
+                    break              # ssh: 첫 위치 인자만 호스트, 나머지는 원격 명령
             after_opt = False
     return out
 
@@ -380,7 +399,15 @@ class ScopeGuard:
                     seen_tok.add(tok)
                     self._flag_encoded(result, tok, dec)
 
-        for host in self._extract_hosts(command):
+        hosts = self._extract_hosts(command)
+        # TLD 와 겹치는 확장자(sh·py 등)는 일반 토큰에선 파일로 보지만, 네트워크 도구의
+        # 호스트 위치(위치 인자)에 오면 호스트로 분류한다 — 'curl evil.sh' 미탐 방지.
+        for tok, positional in _host_position_tokens(command):
+            t = tok.strip().lower()
+            if (positional and _HOSTLIKE_RE.fullmatch(t) and re.search(r"[a-z]", t)
+                    and t.rsplit(".", 1)[-1] in _TLD_COLLIDING_EXT):
+                hosts.add(t)
+        for host in sorted(hosts):
             # CTF 호스트명 타겟: 바인딩된 호스트는 TARGET 으로 자동 허용
             if self.bound_host is not None and host.lower() == self.bound_host:
                 result.classified.append((host, IPClass.TARGET, "(바인딩 타겟)"))

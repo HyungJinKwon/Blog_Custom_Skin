@@ -97,6 +97,21 @@ for host in ["evil.pub", "evil.rs", "evil.pl", "evil.mov", "evil.cab", "evil.jav
     check(f"bare 호스트 확인 필요: curl {host}", not auto(f"curl {host}"))
 check("URL 호스트는 확장자와 무관하게 분류(evil.bin)", not auto("curl http://evil.bin/"))
 
+print("\n=== TLD 겹침 확장자(md·py·sh·so·zip): 네트워크 도구 호스트 위치면 호스트로 ===")
+for c in ["curl evil.sh", "wget evil.zip", "nc evil.so 80", "ssh user@evil.py", "ping -c 1 evil.md",
+          "sudo curl evil.sh"]:
+    check(f"확인 필요: {c}", not auto(c))
+for c in ["python3 exploit.py", "bash linpeas.sh", "cat notes.md", "unzip a.zip",
+          f"scp exploit.py user@{T}:/tmp",                 # scp: ':' 없는 인자는 로컬 파일
+          f"rsync -av ./tools.sh user@{T}:/tmp/",
+          f"nc {T} 4444 < shell.sh",                       # 리다이렉트 대상은 파일
+          f"ssh user@{T} python3 x.py",                    # ssh: 첫 위치 인자 뒤는 원격 명령
+          f"ssh user@{T} 'bash -s' < enum.sh",
+          f"curl -o out.zip http://{T}/a.zip"]:            # 옵션 값은 위치 인자 아님
+    check(f"자동허용 유지: {c[:46]}", auto(c))
+check("scp 원격 지정의 TLD 겹침 호스트는 확인 필요", not auto("scp a.txt user@evil.sh:/tmp"))
+check("ssh 첫 위치 인자의 비정규 숫자 표기는 계속 검사", not auto("ssh 167772161 id"))
+
 print("\n=== 승인 연동: 무프롬프트 모드에서 실행 안 됨 ===")
 c = "curl 167772161"
 check("auto/autonomous 승인자 거부", auto_approve_in_scope(c, validate(c), res(c)) is False)
