@@ -43,8 +43,9 @@ Approver = Callable[[str, ValidationReport, CommandScopeResult], bool]
 
 def auto_approve_in_scope(cmd: str, vrep: ValidationReport,
                           sres: CommandScopeResult) -> bool:
-    """검증 통과 + 범위내(추가확인 불필요)일 때만 자동 승인. 그 외 거부."""
-    return vrep.ok and sres.auto_allowed
+    """검증 통과 + 범위내(추가확인 불필요) + 검토 불필요일 때만 자동 승인. 그 외 거부.
+    동적·원격 코드 실행(vrep.review)은 무프롬프트 모드에서 실행하지 않는다(수동 제안으로)."""
+    return vrep.ok and sres.auto_allowed and not vrep.review
 
 
 @dataclass

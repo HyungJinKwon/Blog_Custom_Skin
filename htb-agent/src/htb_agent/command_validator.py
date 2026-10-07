@@ -7,7 +7,8 @@ LLM 이 제안한 명령이 **문법적으로, 그리고 형식적으로(base64�
 
 보장 범위 (과장 금지):
   - 보장함  : 쉘 문법 무오류 / 따옴표·이스케이프 균형 / base64·hex·포트·해시의
-              '형식적' 무오류 / 명백한 파괴적 명령 차단 / 바이너리 존재 확인
+              '형식적' 무오류 / 명백한 파괴적 명령 차단 / 바이너리 존재 확인 /
+              동적·원격 코드 실행 패턴 표시(사람 검토 필요 — 자동실행 금지)
   - 미보장  : 도구별 옵션의 '의미적' 정확성, 해시가 '정답'인지(평문 없이는 불가),
               명령이 실제로 목표를 달성하는지
 
@@ -30,12 +31,12 @@ from dataclasses import dataclass, field
 # ── 결과 구조 ────────────────────────────────────────────────────────
 @dataclass
 class ValidationIssue:
-    level: str   # "error" | "warning"
+    level: str   # "error" | "warning" | "review"
     code: str
     message: str
 
     def __str__(self) -> str:
-        mark = "⛔" if self.level == "error" else "⚠️"
+        mark = {"error": "⛔", "review": "▲"}.get(self.level, "⚠️")
         return f"{mark} [{self.code}] {self.message}"
 
 
@@ -55,8 +56,14 @@ class ValidationReport:
         return [i for i in self.issues if i.level == "warning"]
 
     @property
+    def review(self) -> list[ValidationIssue]:
+        """형식상 실행 가능하지만 '사람 검토'가 필요한 이슈(동적·원격 코드 실행 등).
+        ok 에는 영향을 주지 않는다 — 승인 게이트가 자동실행을 막고 사람에게 넘긴다."""
+        return [i for i in self.issues if i.level == "review"]
+
+    @property
     def ok(self) -> bool:
-        """에러가 하나도 없으면 실행 가능으로 본다(경고는 허용)."""
+        """에러가 하나도 없으면 실행 가능으로 본다(경고·검토는 허용)."""
         return not self.errors
 
     def summary(self) -> str:
@@ -186,6 +193,29 @@ _DESTRUCTIVE = [
 ]
 
 
+# ── 동적·원격 코드 실행(사람 검토 필요) ─────────────────────────────
+# 관측 출력(웹 응답 등)을 통한 프롬프트 인젝션으로 LLM 이 '내려받아 바로 실행'
+# 류 명령을 제안할 수 있다. 대상이 범위 안이어도 실제 실행 내용은 정적 검사로
+# 알 수 없으므로, 아래 패턴은 자동실행하지 않고 사람 검토로 넘긴다(차단 아님).
+# 셸 내장 eval 은 '명령 위치'에서만 매칭 — mongosh --eval 같은 CLI 플래그는 제외.
+_CMD_POS = r"(?:^|[;&|(`\n]|\$\()\s*(?:sudo\s+)?"
+_EXEC_RISK = [
+    (re.compile(r"\|\s*(?:sudo\s+)?(?:env\s+)?(?:/\S*/)?"
+                r"(?:ba|z|da|k|c|tc|fi)?sh\b"), "파이프→셸 실행"),
+    (re.compile(r"\|\s*(?:sudo\s+)?(?:/\S*/)?"
+                r"(?:python[0-9.]*|perl|ruby|php|node|lua)\b(?!\s+-m\s+json)"),
+     "파이프→인터프리터 실행"),
+    (re.compile(r"(?:^|[\s;&|(])(?:\.|source|(?:ba|z|da|k)?sh)\s+<\("),
+     "프로세스 치환 실행"),
+    (re.compile(_CMD_POS + r"eval\b"), "셸 eval"),
+    (re.compile(r"(?i)\b(?:iex|invoke-expression)\b"), "PowerShell 동적 실행(IEX)"),
+    (re.compile(r"(?i)\bdownloadstring\b|\bdownloadfile\b"), "PowerShell 원격 다운로드"),
+    (re.compile(r"(?i)\b(?:powershell|pwsh)(?:\.exe)?\b.*\s-e(?:nc|ncodedcommand)?\s"),
+     "PowerShell 인코딩 명령"),
+    (re.compile(r"\$\((?!\()|`[^`]+`"), "명령 치환(런타임 결정 — 정적 검사 불가)"),
+]
+
+
 # base64 디코드 문맥 (여기 걸린 블롭은 반드시 유효해야 함).
 # 인자 토큰을 '넓게' 캡처한다(따옴표 안 전체 / 비공백 / 파이프 전까지) —
 # 깨진 문자를 캡처 단계에서 놓치지 않기 위함. 각 패턴의 그룹들 중 매칭된
@@ -245,6 +275,12 @@ def validate(command: str, require_known_binary: bool = False) -> ValidationRepo
         if pat.search(cmd):
             report.issues.append(ValidationIssue("error", "DESTRUCTIVE",
                                                  f"파괴적 명령 차단: {desc}"))
+
+    # 1-b) 동적·원격 코드 실행 — 검토 필요(자동실행 금지, 차단은 아님)
+    for pat, desc in _EXEC_RISK:
+        if pat.search(cmd):
+            report.issues.append(ValidationIssue("review", "EXEC_RISK",
+                                                 f"사람 검토 필요: {desc}"))
 
     # 2) 쉘 문법 (경로 A: bash -n)
     syn = _check_shell_syntax(cmd)
