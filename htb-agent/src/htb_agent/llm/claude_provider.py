@@ -34,11 +34,13 @@ class ClaudeProvider(LLMProvider):
             model=model, max_tokens=max_tokens, system=system_blocks,
             messages=[{"role": "user", "content": user}],
         )
-        text = "".join(getattr(b, "text", "") for b in msg.content
-                       if getattr(b, "type", "") == "text")
+        stop = getattr(msg, "stop_reason", "") or ""
+        # 거절(refusal)이면 본문을 쓰지 않는다 — 라우터가 원인을 기록하고 다른 백엔드로 폴백
+        text = "" if stop == "refusal" else "".join(
+            getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
         usage = getattr(msg, "usage", None)
         return LLMResponse(
-            text, model,
+            text, model, stop_reason=stop,
             prompt_tokens=getattr(usage, "input_tokens", 0) or 0,
             completion_tokens=getattr(usage, "output_tokens", 0) or 0,
             cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,

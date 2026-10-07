@@ -171,6 +171,13 @@ def _build_llm_router(kind: str, tier_name: str):
             return None, f"hybrid 사용 불가: ollama({lreason}) / claude({sreason})"
         status = (f"hybrid(local=ollama[{'OK' if local else 'X'}], "
                   f"strong=claude[{'OK' if strong else 'X'}], 티어={tier_name})")
+        if local is not None:
+            # 티어 모델 미설치 시 설치 모델로 대체됨을 알림(강력 단계 품질이 낮아질 수 있음)
+            p = local.provider
+            subs = [f"{t.value}→{p.model_for(t)}" for t in Tier
+                    if p.model_for(t) != p.models.get(t)]
+            if subs:
+                status += " · 로컬 모델 대체: " + ", ".join(subs)
         return HybridRouter(local=local, strong=strong,
                             default_tier=Tier(tier_name)), status
 

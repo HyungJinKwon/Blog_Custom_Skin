@@ -47,6 +47,7 @@ class LLMResponse:
     completion_tokens: int = 0
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
+    stop_reason: str = ""           # "refusal" 이면 모델이 응답을 거절(빈 응답과 구분)
 
 
 class LLMProvider(ABC):

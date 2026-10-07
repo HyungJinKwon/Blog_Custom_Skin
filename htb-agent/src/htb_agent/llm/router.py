@@ -108,6 +108,7 @@ class LLMRouter:
         self.max_items = max_items
         # 최근 suggest 의 명령별 메타(B4 구조화 출력: 근거·기대신호). cmd -> {rationale,expected}
         self.last_meta: dict[str, dict] = {}
+        self.last_stop = ""   # 직전 응답의 stop_reason("refusal" 이면 거절)
         # 누적 사용량/비용 집계
         self.calls = 0
         self.total_prompt = 0
@@ -127,6 +128,7 @@ class LLMRouter:
         system = build_system_prompt(context, limit)
         user = self._user_prompt(context, target)
         resp = self.provider.complete(system, user, tier or self.default_tier)
+        self.last_stop = resp.stop_reason
         self.calls += 1
         self.total_prompt += resp.prompt_tokens
         self.total_completion += resp.completion_tokens
@@ -143,6 +145,7 @@ class LLMRouter:
         system = build_analyst_prompt(context)
         user = self._analyst_user_prompt(context, target)
         resp = self.provider.complete(system, user, tier or self.default_tier)
+        self.last_stop = resp.stop_reason
         self.calls += 1
         self.total_prompt += resp.prompt_tokens
         self.total_completion += resp.completion_tokens
@@ -275,26 +278,35 @@ class LLMRouter:
 class HybridRouter:
     """
     하이브리드 LLM 라우터 — 로컬(Ollama)과 강력(Claude)을 **단계 난이도로 라우팅**하고
-    실패/빈 응답 시 상호 **폴백**한다. 장점 극대화(로컬=무료·토큰절약, Claude=정확)·
+    실패/빈 응답/거절 시 상호 **폴백**한다. 장점 극대화(로컬=무료·토큰절약, Claude=정확)·
     단점 보완(로컬 품질 부족분을 Claude 가, Claude 비용을 로컬이).
 
       - cheap/standard(열거·일반) → 로컬 우선, 실패 시 강력
-      - strong(권한상승·exploit 설계) → 강력 우선, 실패 시 로컬
+      - strong(권한상승·분석) → 강력 우선, 실패 시 로컬
+      - 같은 백엔드가 연속으로 예외를 내면(기본 2회) 세션 동안 건너뜀(서킷 브레이커) —
+        죽은 로컬 서버를 매 호출마다 타임아웃까지 기다리지 않게
+      - 어느 백엔드가 응답했는지·폴백·거절·실패를 집계해 routing_summary() 로 보고
 
-    LLMRouter 와 동일 인터페이스(suggest_commands·calls·cost_summary)를 제공해
+    LLMRouter 와 동일 인터페이스(suggest_commands·analyze·calls·cost_summary)를 제공해
     오케스트레이터가 교체 없이 사용한다.
     """
 
     def __init__(self, local: "LLMRouter | None" = None,
                  strong: "LLMRouter | None" = None,
-                 default_tier: Tier = Tier.STANDARD, max_items: int = 5):
+                 default_tier: Tier = Tier.STANDARD, max_items: int = 5,
+                 max_consecutive_errors: int = 2):
         if local is None and strong is None:
             raise ValueError("HybridRouter: local/strong 중 최소 하나는 필요합니다.")
         self.local = local
         self.strong = strong
         self.default_tier = default_tier
         self.max_items = max_items
+        self.max_consecutive_errors = max_consecutive_errors
         self.last_meta: dict[str, dict] = {}   # 선택된 라우터의 명령별 메타(B4)
+        self.stats = {"local": 0, "strong": 0, "fallback": 0, "refusal": 0,
+                      "error": 0, "empty": 0, "unserved": 0}
+        self._errors = {"local": 0, "strong": 0}
+        self.disabled: dict[str, str] = {}      # 차단된 백엔드 → 마지막 오류
 
     @property
     def calls(self) -> int:
@@ -311,37 +323,60 @@ class HybridRouter:
         secondary = secondary if secondary is not primary else None
         return primary, secondary
 
+    def _name(self, router) -> str:
+        return "local" if router is self.local else "strong"
+
+    def _try(self, method: str, tier: Tier, *args):
+        """우선→폴백 순으로 호출. (결과, 응답한 라우터) — 둘 다 실패면 (빈 값, None)."""
+        primary, secondary = self._route(tier)
+        tried = 0
+        for router in (primary, secondary):
+            if router is None:
+                continue
+            name = self._name(router)
+            if name in self.disabled:
+                continue
+            tried += 1
+            try:
+                out = getattr(router, method)(*args)
+            except Exception as e:   # 한 백엔드 실패는 폴백으로 흡수(원인은 집계)
+                self.stats["error"] += 1
+                self._errors[name] += 1
+                if self._errors[name] >= self.max_consecutive_errors:
+                    self.disabled[name] = f"{type(e).__name__}: {str(e)[:80]}"
+                continue
+            self._errors[name] = 0
+            if out:
+                self.stats[name] += 1
+                if tried > 1:
+                    self.stats["fallback"] += 1
+                return out, router
+            self.stats["refusal" if getattr(router, "last_stop", "") == "refusal" else "empty"] += 1
+        self.stats["unserved"] += 1
+        return None, None
+
     def suggest_commands(self, context: dict, target: str,
                          tier: Tier | None = None,
                          max_items: int | None = None) -> list[str]:
         tier = tier or self.default_tier
-        primary, secondary = self._route(tier)
         self.last_meta = {}
-        for router in (primary, secondary):
-            if router is None:
-                continue
-            try:
-                out = router.suggest_commands(context, target, tier, max_items)
-            except Exception:   # 한 백엔드 실패는 폴백으로 흡수
-                out = []
-            if out:
-                self.last_meta = getattr(router, "last_meta", {})
-                return out
-        return []
+        out, router = self._try("suggest_commands", tier, context, target, tier, max_items)
+        if router is not None:
+            self.last_meta = getattr(router, "last_meta", {})
+        return out or []
 
     def analyze(self, context: dict, target: str, tier: Tier | None = None) -> str:
         """분석(B3)은 강력 모델 우선(추론 품질), 실패 시 로컬 폴백."""
-        primary, secondary = self._route(Tier.STRONG)
-        for router in (primary, secondary):
-            if router is None:
-                continue
-            try:
-                out = router.analyze(context, target, tier or Tier.STRONG)
-            except Exception:
-                out = ""
-            if out:
-                return out
-        return ""
+        out, _ = self._try("analyze", Tier.STRONG, context, target, tier or Tier.STRONG)
+        return out or ""
+
+    def routing_summary(self) -> str:
+        s = self.stats
+        line = (f"라우팅: 로컬 {s['local']} · 강력 {s['strong']} · 폴백 {s['fallback']} · "
+                f"거절 {s['refusal']} · 빈응답 {s['empty']} · 오류 {s['error']} · 미응답 {s['unserved']}")
+        if self.disabled:
+            line += " | 차단: " + ", ".join(f"{k}({v})" for k, v in self.disabled.items())
+        return line
 
     def cost_summary(self) -> str:
         parts = []
@@ -349,4 +384,5 @@ class HybridRouter:
             parts.append("로컬(Ollama) " + self.local.cost_summary())
         if self.strong:
             parts.append("강력(Claude) " + self.strong.cost_summary())
+        parts.append(self.routing_summary())
         return " | ".join(parts)
