@@ -33,6 +33,11 @@ SMB 서명 강제·SMBv1 비활성·널세션 차단·최소권한 공유·LAPS.
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### Wireshark SMB
+- 출처: https://wiki.wireshark.org/SMB
+- 승격일: 2026-10-07
+- 요약: Server Message Block Protocol (SMB) The Server Message Block protocol, or "SMB", is a remote file access protocol originally specified by Microsoft, IBM, and Intel. It's also referred to as the Common Internet File System, or "CIFS". It's one of the protocols most commonly used by DOS and Windows machines to access files on a file server. Current versions of Windows, and some older versions of Windows, include both client and server code for SMB/CIFS; clients and servers were also available for
+
 ### ATT&CK SMB/Windows Admin Shares
 - 출처: https://attack.mitre.org/techniques/T1021/002/
 - 승격일: 2026-10-07

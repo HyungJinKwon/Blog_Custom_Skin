@@ -32,6 +32,11 @@ basename()·허용목록·open_basedir·래퍼 비활성·입력 정규화후 �
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CWE-98 PHP File Inclusion
+- 출처: https://cwe.mitre.org/data/definitions/98.html
+- 승격일: 2026-10-07
+- 요약: CWE-98: Improper Control of Filename for Include/Require Statement in PHP Program ('PHP Remote File Inclusion') — The PHP application receives input from an upstream component, but it does not restrict or incorrectly restricts the input before its usage in "require," "include," or similar functions. Extended Description In certain versions and configurations of PHP, this can allow an attacker to specify a URL to a remote location from which the product will obtain the code to execute. In other c
+
 ### OWASP Path Traversal
 - 출처: https://owasp.org/www-community/attacks/Path_Traversal
 - 승격일: 2026-10-07

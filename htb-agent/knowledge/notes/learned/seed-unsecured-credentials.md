@@ -29,6 +29,11 @@ redis-cli -h <target> ; keys *            # 무인증 Redis
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CWE-522 Insufficiently Protected Credentials
+- 출처: https://cwe.mitre.org/data/definitions/522.html
+- 승격일: 2026-10-07
+- 요약: CWE-522: Insufficiently Protected Credentials — The product transmits or stores authentication credentials, but it uses an insecure method that is susceptible to unauthorized interception and/or retrieval. Common Consequences This table specifies different individual consequences associated with the weakness. The Scope identifies the application security area that is violated, while the Impact describes the negative technical impact that arises if an adversary succeeds in exploiting this weaknes
+
 ### ATT&CK T1552 Unsecured Credentials
 - 출처: https://attack.mitre.org/techniques/T1552/
 - 승격일: 2026-10-07

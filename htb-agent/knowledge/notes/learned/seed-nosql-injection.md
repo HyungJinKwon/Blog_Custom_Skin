@@ -31,6 +31,11 @@ nosqlmap / 수동 Burp Intruder 로 $regex 브루트
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CWE-943 Data Query Injection
+- 출처: https://cwe.mitre.org/data/definitions/943.html
+- 승격일: 2026-10-07
+- 요약: CWE-943: Improper Neutralization of Special Elements in Data Query Logic — The product generates a query intended to access or manipulate data in a data store such as a database, but it does not neutralize or incorrectly neutralizes special elements that can modify the intended logic of the query. Extended Description Depending on the capabilities of the query language, an attacker could inject additional logic into the query to: Modify the intended selection criteria, thus changing which data e
+
 ### PortSwigger NoSQL Injection
 - 출처: https://portswigger.net/web-security/nosql-injection
 - 승격일: 2026-10-07

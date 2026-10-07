@@ -27,6 +27,11 @@ X-Forwarded-Host: evil.com  # 응답 반영+캐시 확인
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### OWASP Cache Poisoning
+- 출처: https://owasp.org/www-community/attacks/Cache_Poisoning
+- 승격일: 2026-10-07
+- 요약: Cache Poisoning Description The impact of a maliciously constructed response can be magnified if it is cached either by a web cache used by multiple users or even the browser cache of a single user. If a response is cached in a shared web cache, such as those commonly found in proxy servers, then all users of that cache will continue to receive the malicious content until the cache entry is purged. Similarly, if the response is cached in the browser of an individual user, then that user will con
+
 ### PortSwigger Web Cache Poisoning
 - 출처: https://portswigger.net/web-security/web-cache-poisoning
 - 승격일: 2026-10-07

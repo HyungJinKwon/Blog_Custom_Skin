@@ -29,6 +29,11 @@ nxc ldap <dc> -u user -p pass --users
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### Wireshark LDAP
+- 출처: https://wiki.wireshark.org/LDAP
+- 승격일: 2026-10-07
+- 요약: Lightweight Directory Access Protocol (LDAP) The Lightweight Directory Access Protocol: The protocol accessing data from directory services like OpenLDAP, Microsoft Active Directory, Netscape Directory Server or Novell eDirectory. History LDAP was developed as simple access protocol for X.500 databases. Protocol dependencies TCP/UDP: Typically, LDAP uses TCP or UDP (aka CLDAP) as its transport protocol. The well known TCP and UDP port for LDAP traffic is 389. SSL/TLS: LDAP can also be tunneled t
+
 ### RFC 4511 LDAP
 - 출처: https://datatracker.ietf.org/doc/html/rfc4511
 - 승격일: 2026-10-07

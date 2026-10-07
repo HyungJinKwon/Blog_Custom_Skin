@@ -29,6 +29,11 @@ redirect_uri 정확일치·state/PKCE 필수·1회성 코드·짧은 만료.
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### OWASP OAuth 2.0 Cheat Sheet
+- 출처: https://cheatsheetseries.owasp.org/cheatsheets/OAuth2_Cheat_Sheet.html
+- 승격일: 2026-10-07
+- 요약: OAuth 2.0 Protocol Cheatsheet This cheatsheet describes the best current security practices for OAuth 2.0 as derived from its RFC. OAuth became the standard for API protection and the basis for federated login using OpenID Connect. OpenID Connect 1.0 is a simple identity layer on top of the OAuth 2.0 protocol. It enables clients to verify the identity of the end user based on the authentication performed by an authorization server, as well as to obtain basic profile information about the end use
+
 ### PortSwigger OAuth
 - 출처: https://portswigger.net/web-security/oauth
 - 승격일: 2026-10-07

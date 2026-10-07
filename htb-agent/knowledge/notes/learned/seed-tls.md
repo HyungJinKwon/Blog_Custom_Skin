@@ -27,6 +27,11 @@ TLS1.2+·강한 암호군·HSTS·유효 인증서·취약 버전 비활성.
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### Wireshark TLS
+- 출처: https://wiki.wireshark.org/TLS
+- 승격일: 2026-10-07
+- 요약: Transport Layer Security (TLS) Transport Layer Security (TLS) provides security in the communication between two hosts. It provides integrity, authentication and confidentiality. It is used most commonly in web browsers, but can be used with any protocol that uses TCP as the transport layer. Secure Sockets Layer (SSL) is the predecessor of the TLS protocol. These names are often used interchangeably which can lead to some confusion: A configuration that uses the SSL protocol (SSLv2/SSLv3) is ins
+
 ### RFC 8446 TLS 1.3
 - 출처: https://datatracker.ietf.org/doc/html/rfc8446
 - 승격일: 2026-10-07

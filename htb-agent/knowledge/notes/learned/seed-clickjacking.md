@@ -26,6 +26,11 @@ X-Frame-Options:DENY·CSP frame-ancestors 'self'·중요작업 확인단계.
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### OWASP Clickjacking Defense
+- 출처: https://cheatsheetseries.owasp.org/cheatsheets/Clickjacking_Defense_Cheat_Sheet.html
+- 승격일: 2026-10-07
+- 요약: Clickjacking Defense Cheat Sheet Introduction This cheat sheet is intended to provide guidance for developers on how to defend against Clickjacking, also known as UI redress attacks. There are three main mechanisms that can be used to defend against these attacks: Preventing the browser from loading the page in frame using the X-Frame-Options or Content Security Policy (frame-ancestors) HTTP headers. Preventing session cookies from being included in cross-site iframe requests using the SameSite
+
 ### PortSwigger Clickjacking
 - 출처: https://portswigger.net/web-security/clickjacking
 - 승격일: 2026-10-07

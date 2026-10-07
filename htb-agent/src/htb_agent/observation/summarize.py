@@ -11,12 +11,11 @@ from __future__ import annotations
 from typing import Any
 
 from ..util import binary_of
-from .parsers import parse_http
-from .web import (parse_gobuster, parse_ffuf, parse_feroxbuster,
-                  parse_nikto, parse_whatweb)
-from .smb import parse_smbclient_shares, parse_smbmap, parse_nxc_smb
 from .ad import parse_ldapsearch
 from .net import parse_dig, parse_snmpwalk
+from .parsers import parse_http
+from .smb import parse_nxc_smb, parse_smbclient_shares, parse_smbmap
+from .web import parse_feroxbuster, parse_ffuf, parse_gobuster, parse_nikto, parse_whatweb
 
 
 def _truncate(stdout: str, stderr: str, limit: int = 200) -> str:

@@ -29,6 +29,11 @@ AXFR 제한(신뢰 secondary)·존 분리·질의 레이트리밋.
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### Wireshark DNS
+- 출처: https://wiki.wireshark.org/DNS
+- 승격일: 2026-10-07
+- 요약: Domain Name System (DNS) DNS is the system used to resolve information about domain names, including IP addresses, mail servers, and other data. History DNS was invented in 1982-1983 by Paul Mockapetris and Jon Postel. Protocol dependencies TCP/UDP: Typically, DNS uses TCP or UDP as its transport protocol. The well-known TCP/UDP port for DNS traffic is 53. Example traffic XXX - Add example traffic here (as plain text or Wireshark screenshot). Wireshark The DNS dissector is fully functional. Also
+
 ### RFC 1035 DNS
 - 출처: https://datatracker.ietf.org/doc/html/rfc1035
 - 승격일: 2026-10-07

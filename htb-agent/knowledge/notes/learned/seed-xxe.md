@@ -30,6 +30,11 @@ XML 입력의 DOCTYPE/ENTITY/SYSTEM·file:// 참조. 파서의 외부 DTD fetch(
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### OWASP XXE Prevention
+- 출처: https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html
+- 승격일: 2026-10-07
+- 요약: XML External Entity Prevention Cheat Sheet Introduction XML External Entity (XXE) injection occurs when an XML processor resolves an external entity from untrusted input. This can expose local files, cause server-side request forgery (SSRF), or exhaust resources. CWE-611 describes the weakness; this cheat sheet gives parser-specific controls to prevent it. General Guidance Disable document type definitions (DTDs) whenever possible. Reject DOCTYPE declarations if the parser supports it. If your a
+
 ### PortSwigger XXE
 - 출처: https://portswigger.net/web-security/xxe
 - 승격일: 2026-10-07

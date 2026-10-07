@@ -28,6 +28,11 @@ curl -H 'Origin: https://evil.com' -I <url>/api/me
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### MDN CORS
+- 출처: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+- 승격일: 2026-10-07
+- 요약: Cross-Origin Resource Sharing (CORS) Baseline Widely available This feature is well established and works across many devices and browser versions. It’s been available across browsers since July 2015. See full compatibility Learn more Cross-Origin Resource Sharing (CORS) is an HTTP-header based mechanism that allows a server to indicate any origins (domain, scheme, or port) other than its own from which a browser should permit loading resources. CORS also relies on a mechanism by which browsers
+
 ### PortSwigger CORS
 - 출처: https://portswigger.net/web-security/cors
 - 승격일: 2026-10-07

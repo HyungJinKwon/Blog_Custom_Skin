@@ -37,6 +37,11 @@ nxc smb <target> -u '' -p '' --shares
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### Nmap Port Scanning Basics
+- 출처: https://nmap.org/book/man-port-scanning-basics.html
+- 승격일: 2026-10-07
+- 요약: Port Scanning Basics While Nmap has grown in functionality over the years, it began as an efficient port scanner, and that remains its core function. The simple command nmap <target> scans 1,000 TCP ports on the host <target>. While many port scanners have traditionally lumped all ports into the open or closed states, Nmap is much more granular. It divides ports into six states: open, closed, filtered, unfiltered, open|filtered, or closed|filtered. These states are not intrinsic properties of th
+
 ### ATT&CK T1046 Network Service Discovery
 - 출처: https://attack.mitre.org/techniques/T1046/
 - 승격일: 2026-10-07

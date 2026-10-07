@@ -86,6 +86,17 @@ check("목차의 'Status of this Memo' 항목이 아니라 실제 절부터",
          "1. Status of this Memo\n This memo defines SNMP.</pre>") == "This memo defines SNMP.")
 check("DocBook 이전/다음 머리·꼬리(.navheader/.navfooter) 제거",
       ex("<div class='navheader'>Prev Next</div><p>Body</p><div class='navfooter'>Up Home</div>") == "Body")
+check("인쇄 제외(.noprint)·상단 메뉴(.topnav/.dropdown) 제거",
+      ex("<div class='noprint'>Home &gt; CWE List</div><div class='topnav'><ul><li>Home</li></ul></div>"
+         "<div class='dropdown-content'>Who We Are</div><p>Body</p>") == "Body")
+check("제목 옆 고정 링크(¶, .headerlink) 제거",
+      ex("<h1>Intro<a class='headerlink' href='#i'>¶</a></h1><p>Body</p>") == "Intro Body")
+_cwe = ("<p>CWE Glossary Definition</p><h2>CWE-22: Path Traversal</h2><p>Weakness ID: 22</p>"
+        "<p>Vulnerability Mapping: ALLOWED</p><p>Abstraction: Base</p><p>Description</p>"
+        "<p>The product uses external input to construct a pathname.</p>")
+check("CWE 메타데이터 건너뛰고 '제목 — 설명'",
+      ex(_cwe) == "CWE-22: Path Traversal — The product uses external input to construct a pathname.")
+check("CWE 형식이 아니면 그대로", ex("<p>Description of CWE-22 usage</p>") == "Description of CWE-22 usage")
 check("목차(.toc) 제거", ex("<div class='toc'><p>Table of Contents Chapter 1</p></div><p>Body</p>") == "Body")
 check("RFC 아닌 문서의 'Abstract' 는 그대로", ex("<p>Abstract classes in Java</p>") == "Abstract classes in Java")
 check("머리글 뒤 본문이 없으면 원문 유지", ex("<pre>RFC 1 Title Abstract</pre>") == "RFC 1 Title Abstract")
@@ -104,7 +115,8 @@ with tempfile.TemporaryDirectory() as d:
     lr = learn.ReferenceLearner(cache_dir=os.path.join(d, "learned"),
                                 fetch_fn=lambda url: CANNED, enabled=True)
     res = lr.learn("kerberoasting")
-    check("출처 수집", len(res.refs) == 1 and res.refs[0].url.startswith("https://attack.mitre.org"))
+    check("출처 수집(카탈로그 출처 전부, 1순위 ATT&CK)", len(res.refs) == len(learn.SOURCES["kerberoasting"])
+          and res.refs[0].url.startswith("https://attack.mitre.org"))
     check("본문 요약 추출", "ticket-granting" in res.refs[0].excerpt and "x" not in res.refs[0].excerpt.split()[-1:])
     check("노트 파일 생성", os.path.isfile(res.note_path))
     note = open(res.note_path, encoding="utf-8").read()
@@ -138,6 +150,13 @@ with tempfile.TemporaryDirectory() as d:
     with redirect_stdout(buf):
         code = main(["--learn", "nonsense-xyz", "--offline", "--knowledge", d])
     check("미지원 주제 종료 2", code == 2)
+
+print("\n=== 카탈로그 출처 다양화(2차 출처) ===")
+_two = sum(1 for v in learn.SOURCES.values() if len(v) >= 2)
+check(f"출처 2개 이상 주제 ≥ 48 (현재 {_two})", _two >= 48)
+_urls = [u for v in learn.SOURCES.values() for _, u in v]
+check("카탈로그 URL 중복 없음", len(_urls) == len(set(_urls)))
+check("주제 안 출처 도메인·URL 모두 허용", all(learn.is_allowed(u) for u in _urls))
 
 print("\n=== 확장 카탈로그 + 사전 학습 시드 ===")
 check("주제 50개 이상", len(learn.SOURCES) >= 50)

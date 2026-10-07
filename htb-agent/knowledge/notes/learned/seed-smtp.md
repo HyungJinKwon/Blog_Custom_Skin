@@ -27,6 +27,11 @@ VRFY/EXPN 비활성·인증 릴레이·SPF/DKIM/DMARC.
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### Wireshark SMTP
+- 출처: https://wiki.wireshark.org/SMTP
+- 승격일: 2026-10-07
+- 요약: Simple Mail Transfer Protocol (SMTP) This protocol is widely use to send e-Mail from the authors mail program to the mail server and between servers too. Receiving mail from a server - on the other hand - is done using POP or IMAP. History SMTP is existing since the early days of the internet and was one of the first protocols used. Protocol dependencies TCP: Typically, SMTP uses TCP as its transport protocol. The well known TCP port for SMTP traffic is 25. SMTP uses MIME_multipart to transfer a
+
 ### RFC 5321 SMTP
 - 출처: https://datatracker.ietf.org/doc/html/rfc5321
 - 승격일: 2026-10-07

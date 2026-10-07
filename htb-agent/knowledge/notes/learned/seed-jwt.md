@@ -31,6 +31,11 @@ python3 jwt_tool.py <token> -X k -pk pub.pem  # RS→HS 혼동
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### OWASP JWT Cheat Sheet
+- 출처: https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_Cheat_Sheet.html
+- 승격일: 2026-10-07
+- 요약: JSON Web Token Cheat Sheet Introduction This cheat sheet provides tips to prevent common security issues when using JSON Web Tokens (JWT). JSON Web Tokens (JWT) are security tokens for carrying information (claims), often about a user, an application, etc. (subject). JWTs can provide authenticity of the claims (signed JWT) and/or confidentiality of the claims (encrypted JWT). In addition, JWT defines standard claims. JWTs are used in a wide range of applications such as: In OpenID Connect, the I
+
 ### PortSwigger JWT
 - 출처: https://portswigger.net/web-security/jwt
 - 승격일: 2026-10-07

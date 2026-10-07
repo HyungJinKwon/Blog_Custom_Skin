@@ -29,6 +29,11 @@ curl '<url>/download?file=..%2f..%2f..%2fetc%2fpasswd'
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CWE-22 Path Traversal
+- 출처: https://cwe.mitre.org/data/definitions/22.html
+- 승격일: 2026-10-07
+- 요약: CWE-22: Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal') — The product uses external input to construct a pathname that is intended to identify a file or directory that is located underneath a restricted parent directory, but the product does not properly neutralize special elements within the pathname that can cause the pathname to resolve to a location that is outside of the restricted directory. Extended Description Many file operations are intended to take place
+
 ### PortSwigger Path Traversal
 - 출처: https://portswigger.net/web-security/file-path-traversal
 - 승격일: 2026-10-07

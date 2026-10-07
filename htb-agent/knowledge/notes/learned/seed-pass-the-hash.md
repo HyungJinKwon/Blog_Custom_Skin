@@ -28,6 +28,11 @@ LAPS(로컬관리자 암호 랜덤화)·Credential Guard·관리자 계층화·N
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CAPEC-644 Use of Captured Hashes
+- 출처: https://capec.mitre.org/data/definitions/644.html
+- 승격일: 2026-10-07
+- 요약: Attack Pattern ID: 644 Abstraction: Detailed Description An adversary obtains (i.e. steals or purchases) legitimate Windows domain credential hash values to access systems within the domain that leverage the Lan Man (LM) and/or NT Lan Man (NTLM) authentication protocols. Extended Description When authenticating via LM or NTLM, an authenticating account's plaintext credentials are not required by the protocols for successful authentication. Instead, the hashed credentials are used to determine if
+
 ### ATT&CK T1550.002 Pass the Hash
 - 출처: https://attack.mitre.org/techniques/T1550/002/
 - 승격일: 2026-10-07

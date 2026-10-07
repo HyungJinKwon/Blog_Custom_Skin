@@ -29,6 +29,11 @@ john --format=sha512crypt --wordlist=rockyou.txt shadow.txt
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### CWE-916 Weak Password Hash
+- 출처: https://cwe.mitre.org/data/definitions/916.html
+- 승격일: 2026-10-07
+- 요약: CWE-916: Use of Password Hash With Insufficient Computational Effort — The product generates a hash for a password, but it uses a scheme that does not provide a sufficient level of computational effort that would make password cracking attacks infeasible or expensive. Extended Description Many password storage mechanisms compute a hash and store the hash, instead of storing the original password in plaintext. In this design, authentication involves accepting an incoming password, computing its h
+
 ### ATT&CK T1110.002 Password Cracking
 - 출처: https://attack.mitre.org/techniques/T1110/002/
 - 승격일: 2026-10-07

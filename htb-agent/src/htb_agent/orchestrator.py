@@ -18,6 +18,7 @@ Orchestrator — 유한 단계 상태머신 (자동화 + 무한루프 금지)
 
 from __future__ import annotations
 
+import re
 import shutil
 from dataclasses import dataclass, field
 from typing import Callable
@@ -142,7 +143,7 @@ class OrchestrationReport:
             lines.append("\n" + ui.heading("STATE  (월드 모델 — 구조화 상태)", "🗺️"))
             lines.append(self.world.summary())
         if self.analysis:
-            lines.append("\n" + ui.heading("ANALYSIS  (LLM 분석 — 가설·경로·집중)", "🧠"))
+            lines.append("\n" + ui.heading("ANALYSIS  (LLM 분석 — 병렬 가설·계획·경로)", "🧠"))
             for ln in self.analysis.splitlines():
                 if ln.strip():
                     lines.append("  " + ui.dim(ln.strip()))
@@ -717,12 +718,13 @@ class Orchestrator:
     def _low_confidence(report: OrchestrationReport) -> bool:
         """B6: 분석가 산출의 '확신도' 가 낮으면(하/low) True. 적응형 tier 상향 근거."""
         text = (getattr(report, "analysis", "") or "")
+        # '확신도: 하' 처럼 항목 값의 첫 등급만 본다(근거 문장 속 '하위'·'below' 오탐 방지).
+        # 다관점 분석은 가설 줄에 '[우선:하]' 도 쓰므로 '확신도' 항목 줄만 대상으로 한다.
         for ln in text.splitlines():
-            low = ln.lower()
-            if "확신도" in ln or "confidence" in low:
-                if "하" in ln or "low" in low:
-                    return True
-                return False
+            m = re.match(r"\s*(?:확신도|confidence)\s*[:：]\s*\(?\s*(상|중|하|high|medium|low)",
+                         ln, re.I)
+            if m:
+                return m.group(1).lower() in ("하", "low")
         return False
 
     def _run_analyst(self, report: OrchestrationReport, prof: ProfileResult,
@@ -808,11 +810,13 @@ class Orchestrator:
             if attempted >= budget:
                 break
             self._attempt(report, report.llm_findings, cmd, phase)
-            # B4: 구조화 출력의 근거(rationale)를 finding 비고에 덧붙임
-            rat = (meta.get(cmd) or {}).get("rationale", "")
-            if rat and report.llm_findings:
+            # B4: 구조화 출력의 가설·근거를 finding 비고에 덧붙임(어느 가설을 검증했는지 추적)
+            m = meta.get(cmd) or {}
+            tags = [t for t in (("가설 " + m["hypothesis"]) if m.get("hypothesis") else "",
+                                ("근거: " + m["rationale"]) if m.get("rationale") else "") if t]
+            if tags and report.llm_findings:
                 f = report.llm_findings[-1]
-                f.note = (f.note + " · " if f.note else "") + "근거: " + rat
+                f.note = (f.note + " · " if f.note else "") + " · ".join(tags)
             attempted += 1
         return attempted
 

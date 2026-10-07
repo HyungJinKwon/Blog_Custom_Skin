@@ -30,6 +30,11 @@ clairvoyance / graphw00f 로 스키마 추론·엔진 식별
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
+### OWASP GraphQL Cheat Sheet
+- 출처: https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
+- 승격일: 2026-10-07
+- 요약: GraphQL Cheat Sheet Introduction GraphQL is an open source query language originally developed by Facebook that can be used to build APIs as an alternative to REST and SOAP. It has gained popularity since its inception in 2012 because of the native flexibility it offers to those building and calling the API. There are GraphQL servers and clients implemented in various languages. Many companies use GraphQL including GitHub, Credit Karma, Intuit, and PayPal. This Cheat Sheet provides guidance on t
+
 ### PortSwigger GraphQL API
 - 출처: https://portswigger.net/web-security/graphql
 - 승격일: 2026-10-07
