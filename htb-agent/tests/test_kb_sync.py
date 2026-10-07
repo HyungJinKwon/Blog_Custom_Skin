@@ -6,11 +6,13 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 
 sys.path.insert(0, "src")
 from htb_agent import kb_sync as K  # noqa: E402
+from htb_agent import promote as P  # noqa: E402
 from htb_agent.knowledge import KnowledgeBase  # noqa: E402
 from htb_agent.main import main  # noqa: E402
 from htb_agent.tools.runner import FakeRunner, RunOutput  # noqa: E402
@@ -69,13 +71,16 @@ check("권위 출처 없음",
       "출처" in (K.validate_seed("seed-sqli.md", NEWER.replace("https://", "hxxp://")) or ""))
 check("제어문자", "제어문자" in (K.validate_seed("seed-sqli.md", NEWER + "\x00") or ""))
 check("RAG 상한 초과", K.validate_seed("seed-sqli.md", NEWER + "가" * 7000) is not None)
-junk = NEWER.split("## 최신 보강(승격)")[0] + ("## 최신 보강(승격)\n\n### Bad\n- 출처: https://blog.example.com/x\n"
-                                              "- 요약: " + "text " * 40 + "\n")
+_body = P.split_seed(NEWER)[0]
+_ref = "Reference text describing the concept and its typical defenses. " * 3
+junk = P.render_seed(_body, [P.Candidate("Bad", "https://blog.example.com/x", "text " * 40)])
 check("승격 항목이 관문 위반", "승격 항목" in (K.validate_seed("seed-sqli.md", junk) or ""))
-many = NEWER.split("## 최신 보강(승격)")[0] + "## 최신 보강(승격)\n\n" + "".join(
-    f"### E{i}\n- 출처: https://owasp.org/e{i}\n- 요약: {'Reference text describing the concept. ' * 5}\n\n"
-    for i in range(4))
+many = P.render_seed(_body, [P.Candidate(f"E{i}", f"https://owasp.org/e{i}", _ref) for i in range(4)])
 check("승격 항목 상한 초과", "상한" in (K.validate_seed("seed-sqli.md", many) or ""))
+loose = NEWER.rstrip() + "\n형식 밖 문장\n"
+check("승격 섹션 정규 형식 아님 → 거부", "형식" in (K.validate_seed("seed-sqli.md", loose) or ""))
+nourl = P.render_seed(_body, [P.Candidate("NoUrl", "", _ref)])
+check("출처 없는 승격 항목 → 거부", "출처" in (K.validate_seed("seed-sqli.md", nourl) or ""))
 bad = [(os.path.basename(p), K.validate_seed(os.path.basename(p), read(p)))
        for p in sorted(glob.glob(os.path.join(SEED_DIR, "seed-*.md")))]
 bad = [b for b in bad if b[1]]
@@ -125,7 +130,6 @@ check("저장소 형식 오류", K.sync(k, fetch=up, repo="bad repo").error != "
 check("로컬 시드 디렉토리 없음", K.sync(tempfile.mkdtemp(), fetch=up).error != "")
 
 print("\n=== 로컬에서 직접 수정한(미커밋) 시드는 보존 ===")
-import subprocess  # noqa: E402
 
 k = workspace()
 _git = ["git", "-C", k, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
@@ -141,6 +145,42 @@ if subprocess.run(["git", "init", "-q", k], capture_output=True).returncode == 0
     check("커밋된 깨끗한 시드는 동기화", K.sync(k, fetch=Upstream({"seed-sqli.md": NEWER})).applied == ["seed-sqli.md"])
 else:
     check("git 없음 — 건너뜀", True)
+
+print("\n=== 회귀: 로컬 커밋 최신본 · 쓰기 오류 · 줄바꿈 · 사라진 시드 ===")
+k = workspace()
+if subprocess.run(["git", "init", "-q", k], capture_output=True).returncode == 0:
+    _g = ["git", "-C", k, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+    subprocess.run(_g + ["add", "-A"], capture_output=True)
+    subprocess.run(_g + ["commit", "-qm", "base"], capture_output=True)       # 공유본(LOCAL)과 같은 버전
+    with open(os.path.join(k, "notes", "learned", "seed-sqli.md"), "w", encoding="utf-8") as f:
+        f.write(NEWER)
+    subprocess.run(_g + ["commit", "-qam", "promote"], capture_output=True)   # 로컬이 앞서 커밋
+    r = K.sync(k, fetch=Upstream({"seed-sqli.md": LOCAL}))
+    check("로컬이 공유본을 거쳐 커밋된 최신본 → 캐시로 덮지 않음",
+          r.applied == [] and K.active_overlays(k) == {})
+else:
+    check("git 없음 — 건너뜀", True)
+k = workspace()
+with open(os.path.join(k, "shared_seeds"), "w") as f:
+    f.write("not a dir")
+r = K.sync(k, fetch=Upstream({"seed-sqli.md": NEWER}))
+check("캐시 디렉토리 쓰기 불가 → 예외 없이 오류 보고", "캐시" in r.error)
+check("auto_sync 도 예외 없이 진행", K.auto_sync(k, fetch=Upstream({"seed-sqli.md": NEWER})).error != "")
+k = workspace()
+K.sync(k, fetch=Upstream({"seed-sqli.md": NEWER}))
+with open(os.path.join(k, "notes", "learned", "seed-sqli.md"), "w", encoding="utf-8", newline="") as f:
+    f.write(NEWER.replace("\n", "\r\n"))                                 # git pull(autocrlf) 후
+r = K.sync(k, fetch=Upstream({"seed-sqli.md": NEWER}))
+check("줄바꿈만 다른 최신 로컬 → 캐시본 정리", r.cleared == ["seed-sqli.md"]
+      and not os.path.exists(os.path.join(K.cache_dir(k), "seed-sqli.md")))
+k = workspace()
+K.sync(k, fetch=Upstream({"seed-sqli.md": NEWER}))
+r = K.sync(k, fetch=Upstream({}))
+check("공유 저장소에서 사라진 시드 → 캐시본 정리", r.cleared == ["seed-sqli.md"] and K.active_overlays(k) == {})
+for v in ("False", "NO", "Off"):
+    os.environ["ASSASSIN_NO_KB_SYNC"] = v
+    check(f"ASSASSIN_NO_KB_SYNC={v} → 끄지 않음(대소문자 무시)", K.auto_sync(workspace(), fetch=Upstream({})).skipped == "")
+del os.environ["ASSASSIN_NO_KB_SYNC"]
 
 print("\n=== auto_sync: 하루 1회 · 끄기 · 오프라인 재시도 억제 ===")
 k = workspace()

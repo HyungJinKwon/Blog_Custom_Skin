@@ -9,7 +9,7 @@ Knowledge Base — 사용자 제공 학습데이터로 '성장'하는 지식
 구성:
   - 내장 시드 규칙(SEED_RULES): 표준 도구 사용 템플릿(라이트업 아님).
   - 사용자 규칙:  <knowledge>/rules/*.json   (아래 스키마)
-  - 사용자 노트:  <knowledge>/notes/*.md     (자유 서술, 맥락 제공)
+  - 사용자 노트:  <knowledge>/notes/**/*.md|.txt (하위 디렉토리 포함, 자유 서술, 맥락 제공)
 
 규칙 JSON 스키마(한 파일에 객체 1개 또는 배열):
   {
@@ -214,7 +214,7 @@ def _load_rule_dir(path: str, warnings: list[str] | None = None) -> list[Rule]:
         try:
             with open(fp, encoding="utf-8") as f:
                 data = json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
+        except (OSError, ValueError) as e:   # ValueError ⊃ JSONDecodeError·UnicodeDecodeError
             warn(f"{fn}: 읽기/JSON 파싱 실패로 파일 전체 건너뜀 ({e})")
             continue
         items = data if isinstance(data, list) else [data]
@@ -279,7 +279,7 @@ def _load_notes_dir(path: str, overlays: dict[str, str] | None = None) -> list[s
                 if overlays and fn in overlays and os.path.normpath(root) == learned:
                     src = overlays[fn]
                 try:
-                    with open(src, encoding="utf-8") as f:
+                    with open(src, encoding="utf-8", errors="replace") as f:   # 비UTF-8 노트도 로드
                         out.append(f"[{fn}] " + f.read().strip()[:NOTE_CHARS])
                 except OSError:
                     continue

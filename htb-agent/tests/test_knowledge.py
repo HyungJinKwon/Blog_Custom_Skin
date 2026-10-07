@@ -84,5 +84,19 @@ check("빈 용어 → 앞 N개", kb_n.relevant_notes([], limit=1) == kb_n.notes[
 # 노트 없으면 빈 리스트
 check("노트 없음 → 빈 리스트", KnowledgeBase(rules=[], notes=[]).relevant_notes(["smb"]) == [])
 
+print("\n=== 비UTF-8 파일(예: cp949 메모)도 로드 실패 없이 처리 ===")
+with tempfile.TemporaryDirectory() as d:
+    os.makedirs(os.path.join(d, "notes")); os.makedirs(os.path.join(d, "rules"))
+    with open(os.path.join(d, "notes", "my-notes.md"), "wb") as f:
+        f.write("한글 메모 smb".encode("cp949"))
+    with open(os.path.join(d, "notes", "ok.md"), "w", encoding="utf-8") as f:
+        f.write("정상 노트")
+    with open(os.path.join(d, "rules", "r.json"), "wb") as f:
+        f.write('{"name": "한글", "when": {}, "suggest": []}'.encode("cp949"))
+    kb = KnowledgeBase.load(d)
+    check("cp949 노트 → 예외 없이 로드(대체 문자)", any("my-notes.md" in n for n in kb.notes)
+          and any("정상 노트" in n for n in kb.notes))
+    check("cp949 규칙 파일 → 경고 후 건너뜀", any("r.json" in w for w in kb.warnings))
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

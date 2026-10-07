@@ -133,7 +133,8 @@ def build_demo():
         is_tool_available=lambda b: True)
     report = orch.run()
     from htb_agent import kb_sync
-    report.knowledge = kb_sync.knowledge_summary("knowledge")   # 파일만 읽음(네트워크 없음)
+    kdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "knowledge")
+    report.knowledge = kb_sync.knowledge_summary(kdir)   # 파일만 읽음(네트워크 없음) · 실행 위치 무관
     return report, runner
 
 

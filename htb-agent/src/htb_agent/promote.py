@@ -169,7 +169,9 @@ def is_canonical(text: str) -> bool:
     if PROMOTED_HEADER not in text:
         return True
     body, entries = split_seed(text)
-    return _norm(text).rstrip() + "\n" == render_seed(body, entries)
+    def lines(t: str) -> list[str]:   # 줄 끝 공백 차이는 무시(무해)
+        return [ln.rstrip() for ln in _norm(t).rstrip().splitlines()]
+    return lines(text) == lines(render_seed(body, entries))
 
 
 def merge(existing: list[Candidate], new: list[Candidate]) -> list[Candidate]:
