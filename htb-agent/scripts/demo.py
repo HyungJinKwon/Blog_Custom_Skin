@@ -131,7 +131,10 @@ def build_demo():
         guard, runner, KnowledgeBase.load(), auto_approve_in_scope,
         vuln_kb=VulnKB.load(), llm_router=llm, enricher=enricher,
         is_tool_available=lambda b: True)
-    return orch.run(), runner
+    report = orch.run()
+    from htb_agent import kb_sync
+    report.knowledge = kb_sync.knowledge_summary("knowledge")   # 파일만 읽음(네트워크 없음)
+    return report, runner
 
 
 def build_demo_report():
@@ -192,13 +195,23 @@ def run_live(pace: float = 0.0) -> int:
     print((ui.mark_ok("검토 대상·범위 밖 명령 실제 실행 0건") if not executed_risky
            else ui.mark_err(f"예상과 다름: {executed_risky}")))
 
-    stage(5, "산출 — 사람이 판단할 재료")
+    stage(5, "지식 — 같은 완성형 지식으로 시작, 검증된 성장만 공유")
+    k = report.knowledge
+    if k:
+        print(ui.kv("시작 지식", f"카탈로그 {k['catalog_covered']}/{k['catalog_topics']} 주제 · "
+                                 f"번들 시드 {k['seed_topics']}개 (오프라인에서도 동일)", 10))
+        print(ui.kv("승격 발췌", f"{k['promoted']}건 · 최근 {k['promoted_latest'] or '-'} "
+                                 "(품질 관문 + 전체 테스트 통과분만)", 10))
+    print(ui.kv("공유 흐름", "주간 자동 승격 → PR·자동 병합 → 실행 시 하루 1회 검증 동기화", 10))
+    print(ui.dim("  공유 지식은 데이터(노트)만 · 코드는 받지 않음 · 검증 실패분은 버림"))
+
+    stage(6, "산출 — 사람이 판단할 재료")
     cves = sorted(set(report.detected_cve) | {c for m in report.vuln_matches for c in m.cve})
     print(ui.kv("탐지 CVE", ", ".join(cves) or "(없음)", 10))
     print(ui.kv("수동 제안", f"{len(report.manual_suggestions)}건 (사람이 골라 승인)", 10))
     print(ui.kv("라이트업", "htb-ctf-writeup-v5 / Tistory 13섹션 자동 생성", 10))
     print(ui.dim("  전체 산출물: python3 scripts/demo.py --write OUT  (MD·JSON·HTML)"))
-    print(ui.dim("  HTML 상단 '한눈에 보기'에 위 3관문 지표·플래그 출처·안전 경계가 요약됨"))
+    print(ui.dim("  HTML 상단 '한눈에 보기'에 3관문 지표·플래그 출처·지식 기반·안전 경계가 요약됨"))
 
     print(ui.ok("\n라이브 데모 완료 — 실제 대상은 권한 확인된 환경의 Kali 에서 `assassin <target>`"))
     return 1 if executed_risky else 0

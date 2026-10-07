@@ -302,3 +302,44 @@ def _touch(path: str) -> None:
         os.utime(path, None)
     except OSError:
         pass
+
+
+def knowledge_summary(knowledge_dir: str) -> dict:
+    """리포트(심사위원용 '한눈에 보기')에 싣는 지식 기반 현황. 파일만 읽는다(네트워크 없음).
+    seed_topics: 번들 시드 수 / catalog_topics·catalog_covered: 카탈로그 주제 수·시드 보유 수 /
+    promoted: 승격 발췌 수(공유 캐시본 기준) / promoted_latest: 최근 승격일 /
+    shared_overlays: 공유 저장소 최신본으로 대체된 시드 수 / last_sync: 마지막 동기화(UTC ISO) /
+    local_learned: 내 로컬 학습 노트 수 / ingested: 내가 넣은 자료 수."""
+    sdir = _seed_dir(knowledge_dir)
+    overlays = active_overlays(knowledge_dir) if os.path.isdir(sdir) else {}
+    seeds = sorted(f for f in (os.listdir(sdir) if os.path.isdir(sdir) else [])
+                   if _SEED_NAME.match(f))
+    promoted, dates = 0, []
+    for name in seeds:
+        try:
+            with open(overlays.get(name, os.path.join(sdir, name)), encoding="utf-8") as f:
+                _, entries = _promote.split_seed(f.read())
+        except OSError:
+            continue
+        promoted += len(entries)
+        dates += [e.promoted_on for e in entries if e.promoted_on]
+    stamp = os.path.join(cache_dir(knowledge_dir), STAMP)
+    try:
+        last_sync = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(os.path.getmtime(stamp)))
+    except OSError:
+        last_sync = ""
+    learned = [f for f in (os.listdir(sdir) if os.path.isdir(sdir) else [])
+               if f.startswith("learned-") and f.endswith(".md")]
+    idir = os.path.join(knowledge_dir, "notes", "ingested")
+    ingested = sum(len(fs) for _, _, fs in os.walk(idir)) if os.path.isdir(idir) else 0
+    return {
+        "seed_topics": len(seeds),
+        "catalog_topics": len(learn.topics()),
+        "catalog_covered": sum(f"seed-{t}.md" in seeds for t in learn.topics()),
+        "promoted": promoted,
+        "promoted_latest": max(dates) if dates else "",
+        "shared_overlays": len(overlays),
+        "last_sync": last_sync,
+        "local_learned": len(learned),
+        "ingested": ingested,
+    }

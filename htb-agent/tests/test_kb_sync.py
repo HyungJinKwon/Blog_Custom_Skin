@@ -160,6 +160,17 @@ K.auto_sync(k2, fetch=off)
 check("오프라인 실패 후 다음 실행은 재시도 안 함(타임아웃 대기 방지)",
       K.auto_sync(k2, fetch=off).skipped != "" and len(off.calls) == 1)
 
+print("\n=== knowledge_summary(리포트 '지식 기반' 패널용) ===")
+k = workspace()
+s0 = K.knowledge_summary(k)
+check("기본 집계(시드 1·카탈로그 커버 1)", s0["seed_topics"] == 1 and s0["catalog_covered"] == 1
+      and s0["shared_overlays"] == 0 and s0["last_sync"] == "")
+K.sync(k, fetch=Upstream({"seed-sqli.md": NEWER}))
+s1 = K.knowledge_summary(k)
+check("동기화 후 공유 최신본 1·마지막 동기화 시각 기록", s1["shared_overlays"] == 1 and s1["last_sync"].endswith("Z"))
+check("승격 발췌 수·최근 승격일", s1["promoted"] >= 1 and len(s1["promoted_latest"]) == 10)
+check("없는 디렉토리도 예외 없음", K.knowledge_summary(tempfile.mkdtemp())["seed_topics"] == 0)
+
 print("\n=== CLI ===")
 k = workspace()
 orig = K._default_fetch
