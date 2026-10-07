@@ -1,5 +1,6 @@
 # 실행: htb-agent 디렉토리에서  python3 tests/test_report_export.py
 # 구조화 결과 내보내기: JSON 스키마·라운드트립 + HTML 대시보드·이스케이프(XSS 방지).
+import copy
 import json
 import sys
 sys.path.insert(0, "src")
@@ -66,7 +67,7 @@ from htb_agent.orchestrator import GATE_KEYS  # noqa: E402
 check("JSON gate_stats 키 전부", set(d3["gate_stats"]) == set(GATE_KEYS))
 check("JSON gate_stats 값(데모: 강등1·범위밖1)",
       d3["gate_stats"]["denied_review"] == 1 and d3["gate_stats"]["denied_scope"] == 1)
-check("schema 1.2", rx.SCHEMA_VERSION == "1.2")
+check("schema 1.3", rx.SCHEMA_VERSION == "1.3")
 h3 = rx.to_html(rep3, "DemoBox")
 check("한눈에 보기 섹션", "<h2>한눈에 보기</h2>" in h3)
 check("요약이 포트 섹션보다 앞", h3.index("한눈에 보기") < h3.index("포트 &amp; 서비스"))
@@ -75,6 +76,22 @@ check("안전 경계 점검 목록", "class='checks'" in h3 and "사람 승인 �
 check("단계명 한글 라벨", "열거 (Enumeration)" in h3)
 check("OS 확신도 백분율(92%)", "확신도 92%" in h3 and "0.92%" not in h3)
 check("긴 코드 토큰 줄바꿈(모바일 가로 넘침 방지)", "overflow-wrap:anywhere" in h3)
+print("\n=== 지식 기반 패널(완성형 시작·검증 공유·자율 학습) ===")
+check("JSON knowledge 키", {"seed_topics", "catalog_topics", "catalog_covered", "promoted",
+                            "promoted_latest", "shared_overlays", "last_sync"} <= set(d3["knowledge"]))
+check("데모: 카탈로그 전 주제 시드 보유", d3["knowledge"]["catalog_covered"] == d3["knowledge"]["catalog_topics"] > 0)
+check("지식 기반 패널 렌더", "<b>지식 기반</b>" in h3 and "시작 지식(주제 커버)" in h3
+      and "주간 자동 승격" in h3 and "하루 1회" in h3)
+check("패널이 단계 진행보다 앞", h3.index("<b>지식 기반</b>") < h3.index("<b>단계 진행</b>"))
+check("안전 경계: 공유 지식은 데이터만", "코드는 받지 않음" in h3)
+rk = copy.copy(rep3)
+rk.knowledge = {}
+rk.acquired_knowledge = ["mongodb → nosql-injection (portswigger.net)"]
+rk.knowledge_gaps = ["<img src=x onerror=alert(1)>"]
+hk = rx.to_html(rk, "x")
+check("현황 없음 → 세션 학습 타일만, 예외 없음", "<b>지식 기반</b>" in hk and "시작 지식(주제 커버)" not in hk
+      and "이번 세션 자율 학습" in hk and "mongodb → nosql-injection" in hk)
+check("공백 용어 이스케이프(XSS)", "<img src=x" not in hk and "&lt;img" in hk)
 rep3.target = "<script>alert(1)</script>"
 h4 = rx.to_html(rep3, "x")
 check("요약 섹션 타겟 이스케이프(XSS)", "<script>alert(1)</script>" not in h4

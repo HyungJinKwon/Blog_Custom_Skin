@@ -109,6 +109,8 @@ class OrchestrationReport:
     # 자율 지식 획득(모르는 기술 → 권위 출처에서 자동 학습, P1 유지)
     acquired_knowledge: list = field(default_factory=list)  # "용어 → 주제 (출처)"
     knowledge_gaps: list = field(default_factory=list)      # 미해석 공백(수동 조사 필요)
+    # 지식 기반 현황(번들 시드·승격·공유 동기화) — kb_sync.knowledge_summary, main 이 채움
+    knowledge: dict = field(default_factory=dict)
     # 실패 진단(사람 확인용) — (command, FailureDiagnosis) 목록. 자동 재공격 아님
     blockers: list = field(default_factory=list)
     # 플래그 출처 검증(실행 트레이스 기반) — list[provenance.FlagProvenance]

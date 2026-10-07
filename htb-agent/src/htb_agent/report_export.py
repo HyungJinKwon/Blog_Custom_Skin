@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from . import recommend as _recommend
 from .enrich import CWE_NAMES, Enricher
 
-SCHEMA_VERSION = "1.2"   # 1.1: blockers·flag_provenance·learn·next_options / 1.2: gate_stats(하위호환)
+SCHEMA_VERSION = "1.3"   # 1.1: blockers·flag_provenance·learn·next_options / 1.2: gate_stats / 1.3: knowledge(하위호환)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -128,6 +128,7 @@ def to_dict(report) -> dict:
             "acquired": list(getattr(report, "acquired_knowledge", [])),
             "gaps": list(getattr(report, "knowledge_gaps", [])),
         },
+        "knowledge": dict(getattr(report, "knowledge", {}) or {}),
         "next_options": [
             {"title": r.title, "rationale": r.rationale, "source": r.source, "ref": r.ref}
             for r in _recommend.propose(report).items
@@ -326,6 +327,37 @@ def _html_crack(report) -> str:
     return "".join(blocks)
 
 
+def _html_knowledge(report) -> str:
+    """지식 기반 패널: 완성형 시작 지식 · 검증된 성장 공유 · 이번 세션 자율 학습."""
+    k = dict(getattr(report, "knowledge", {}) or {})
+    acquired = list(getattr(report, "acquired_knowledge", []) or [])
+    gaps = list(getattr(report, "knowledge_gaps", []) or [])
+    tiles = []
+    if k:
+        cov = f"{k.get('catalog_covered', 0)}/{k.get('catalog_topics', 0)}"
+        tiles += [("시작 지식(주제 커버)", cov, "ok"),
+                  ("승격 발췌", k.get("promoted", 0), ""),
+                  ("공유 최신본 반영", k.get("shared_overlays", 0), "")]
+    tiles += [("이번 세션 자율 학습", len(acquired), "ok" if acquired else ""),
+              ("미해석 공백", len(gaps), "warn" if gaps else "")]
+    tile_html = "".join(
+        f"<div class='tile {cls}'><div class='num'>{_esc(n)}</div><div class='lbl'>{_esc(lbl)}</div></div>"
+        for lbl, n, cls in tiles)
+    lines = []
+    if k:
+        latest = k.get("promoted_latest") or "-"
+        sync = (k.get("last_sync") or "").replace("T", " ").replace("Z", " UTC") or "아직 없음"
+        lines += [
+            f"번들 시드 {k.get('seed_topics', 0)}개 — 누구나 clone 즉시 같은 지식으로 시작(오프라인 포함)",
+            f"주간 자동 승격(품질 관문 + 전체 테스트 통과분만) — 최근 승격일 {_esc(latest)}",
+            f"실행 시 하루 1회 공유 저장소와 검증 동기화 — 마지막 동기화 {_esc(sync)}",
+        ]
+    lines += [f"자율 학습: {_esc(a)}" for a in acquired[:5]]
+    lines += [f"미해석 공백(수동 조사): {_esc(t)}" for t in gaps[:5]]
+    body = ("<ul>" + "".join(f"<li>{x}</li>" for x in lines) + "</ul>") if lines else ""
+    return f"<div class='panel'><b>지식 기반</b><div class='tiles'>{tile_html}</div>{body}</div>"
+
+
 def _html_overview(report) -> str:
     """심사위원·리뷰어용 한눈에 보기: 3관문 지표·플래그 출처·안전 경계·단계 진행."""
     gs = dict(getattr(report, "gate_stats", {}) or {})
@@ -350,11 +382,13 @@ def _html_overview(report) -> str:
 
     target = getattr(report, "target", "")
     checks = [
-        f"타겟 바인딩 <code>{_esc(target)}</code> — 자동 실행은 이 타겟·공격자·loopback 대상만",
+        f"타겟 바인딩 <code>{_esc(target)}</code> — 자동 실행은 이 타겟·공격자·loopback 대상만"
+        " (비정규 숫자 표기·IPv6 등 해석 불가 주소는 확인 대상)",
         "검토 대상(원격 코드 실행)·범위 밖 명령은 사람 승인 없이는 실행되지 않음(설계상 보장) — "
         f"이번 세션 수동 강등 {g('denied_review')}건 · 범위 밖 미실행 {g('denied_scope')}건",
-        "LLM 제안도 신뢰하지 않는 입력으로 취급 — 모든 명령이 검증→범위→승인 3관문 통과",
-        "외부 라이트업 미참조 — 관측·사용자 자료·권위 출처만 사용",
+        "LLM 제안·웹에서 가져온 내용도 신뢰하지 않는 입력으로 취급 — 모든 명령이 검증→범위→승인 3관문 통과",
+        "HTB 라이트업은 출처 불문 자동 수집 차단 — 관측·권위 출처·사용자 본인 자료만 사용",
+        "공유 지식은 데이터(노트)만 받고 품질 검증 통과분만 반영 — 코드는 받지 않음",
     ]
     from .orchestrator import PENTEST_PHASES  # 지연 import(순환 방지)
     labels = dict(PENTEST_PHASES)
@@ -366,7 +400,8 @@ def _html_overview(report) -> str:
     return (f"<div class='tiles'>{tile_html}</div>"
             "<p class='muted'>3관문 지표는 열거·LLM 명령 기준(정찰 포트스캔 제외).</p>"
             f"<div class='panel'><b>플래그 출처</b><br>{flag_html}</div>"
-            f"<div class='panel'><b>안전 경계</b><ul class='checks'>"
+            + _html_knowledge(report) +
+            "<div class='panel'><b>안전 경계</b><ul class='checks'>"
             + "".join(f"<li>{c}</li>" for c in checks) + "</ul></div>"
             f"<div class='panel'><b>단계 진행</b>{phase_html}</div>")
 

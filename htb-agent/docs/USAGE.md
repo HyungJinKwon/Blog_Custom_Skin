@@ -335,7 +335,7 @@ GitHub Actions **`KB 자동 승격`** (`.github/workflows/kb-auto-promote.yml`)
 | 세션 상태 | `--state-dir 경로` / 끄기 `--no-save` | `./state` |
 
 - 라이트업에는 CVE 레퍼런스(NVD·CVSS·PoC)와 블루팀 탐지 지표(SIEM·Snort·Wireshark)가 자동으로 들어간다.
-- HTML 상단 "한눈에 보기"에는 3관문 지표·플래그 출처·안전 경계·단계 진행이 요약된다(발표·심사용).
+- HTML 상단 "한눈에 보기"에는 3관문 지표·플래그 출처·지식 기반(시작 지식 커버·승격 발췌·공유 동기화·이번 세션 자율 학습과 공백)·안전 경계·단계 진행이 요약된다(발표·심사용).
 - 중단 후 재개: `assassin <t> --resume` — 저장된 RECON 결과를 재사용해 재스캔을 생략한다.
 
 ---
@@ -409,7 +409,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ```bash
 cd htb-agent
 python3 scripts/demo.py                    # 전체 흐름 요약
-python3 scripts/demo.py --live             # 발표용 5단계 시연(범위 밖 거부 → 정찰·식별 → 열거 → 3관문 → 산출)
+python3 scripts/demo.py --live             # 발표용 6단계 시연(범위 밖 거부 → 정찰·식별 → 열거 → 3관문 → 지식 → 산출)
 python3 scripts/demo.py --live --pace 2    # 단계 사이 2초 멈춤
 python3 scripts/demo.py --write out/       # 라이트업·JSON·HTML 파일 저장
 ```

@@ -525,6 +525,11 @@ def main(argv: list[str] | None = None, runner=None) -> int:
             print(f"\n⚠️ 라이트업 저장 실패: {e}", file=sys.stderr)
 
     # 9) 구조화 결과 내보내기(선택) — JSON(기계판독) / HTML(대시보드)
+    try:
+        from . import kb_sync as _kbs
+        report.knowledge = _kbs.knowledge_summary(knowledge_dir)
+    except Exception:   # noqa: BLE001 — 현황 집계 실패가 산출물을 막지 않게
+        report.knowledge = {}
     if args.json_out is not None or args.html_out is not None:
         from . import report_export
         from .state import StateStore

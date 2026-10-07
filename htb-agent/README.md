@@ -78,7 +78,7 @@ assassin 10.129.1.5   # (htb-agent 도 동일 — 하위호환 별칭)
 assassin 10.129.1.5 --auto --cred administrator:Passw0rd --writeup
 
 # 결과 내보내기: 기계판독 JSON + 블루/네이비 HTML 대시보드
-# (HTML 상단 '한눈에 보기': 3관문 지표·플래그 출처·안전 경계·단계 진행 요약 — 발표/심사용)
+# (HTML 상단 '한눈에 보기': 3관문 지표·플래그 출처·지식 기반·안전 경계·단계 진행 요약 — 발표/심사용)
 assassin 10.129.1.5 --json --html   # <state-dir>/report_<타겟>.{json,html}
 
 # 명령당 옵션 조합 변형(경우의 수) 수 조절 (기본 2, 1=변형끔)
@@ -162,7 +162,7 @@ assassin 10.129.1.5 --config config/config.example.json
 
 > **데모(네트워크·실도구 없이 전체 흐름 보기)**: `python3 scripts/demo.py`
 > · **발표용 라이브 시연**: `python3 scripts/demo.py --live [--pace 2]` — 범위 밖 바인딩 거부 →
-> 정찰·식별 → 열거 → **3관문 작동(검토 강등·범위 밖 미실행·통계)** → 산출의 5단계를 순서대로 보여줌
+> 정찰·식별 → 열거 → **3관문 작동(검토 강등·범위 밖 미실행·통계)** → 지식(완성형 시작·검증 공유) → 산출의 6단계를 순서대로 보여줌
 > (라이트업 저장: `python3 scripts/demo.py --write out/`). 실전 운영·트러블슈팅은
 > **[docs/OPERATIONS.md](docs/OPERATIONS.md)** 참고.
 
@@ -201,7 +201,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 54 스위트 1417 테스트
+cd htb-agent && python3 tests/run_all.py     # 54 스위트 1429 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
