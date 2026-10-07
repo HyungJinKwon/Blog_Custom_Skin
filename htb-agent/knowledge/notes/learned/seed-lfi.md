@@ -27,3 +27,12 @@ ffuf -u '<url>?page=FUZZ' -w lfi-wordlist.txt
 basename()·허용목록·open_basedir·래퍼 비활성·입력 정규화후 기준경로 검증.
 
 - 출처(검증): https://owasp.org/www-community/attacks/Path_Traversal
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### OWASP Path Traversal
+- 출처: https://owasp.org/www-community/attacks/Path_Traversal
+- 승격일: 2026-10-07
+- 요약: Path Traversal Overview A path traversal attack (also known as directory traversal) aims to access files and directories that are stored outside the web root folder. By manipulating variables that reference files with “dot-dot-slash (../)” sequences and its variations or by using absolute file paths, it may be possible to access arbitrary files and directories stored on file system including application source code or configuration and critical system files. It should be noted that access to fil

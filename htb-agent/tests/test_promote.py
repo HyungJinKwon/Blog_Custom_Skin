@@ -47,6 +47,8 @@ check("요약 없음 → 거부", "요약 없음" in why(C("A", "https://owasp.o
 check("요약 짧음 → 거부", "짧음" in why(C("A", "https://owasp.org/x", "short text")))
 check("웹페이지 군더더기 → 거부",
       "군더더기" in why(C("A", "https://owasp.org/x", "Please enable JavaScript. " + LONG)))
+check("사이트 이전 공지 → 거부",
+      "군더더기" in why(C("A", "https://owasp.org/x", "Thank you for visiting OWASP.org. We have migrated " + LONG)))
 check("라이트업 신호 → 거부",
       "라이트업" in why(C("Box HTB writeup walkthrough", "https://owasp.org/x", LONG)))
 check("제어문자 → 거부", "제어문자" in why(C("A", "https://owasp.org/x", LONG + "\x00")))
@@ -61,9 +63,9 @@ r = P.promote("sqli", d, d, today="2026-10-07")
 new = read(os.path.join(d, "seed-sqli.md"))
 check("통과 1건 · 거부 3건", len(r.accepted) == 1 and len(r.rejected) == 3 and r.changed)
 check("거부 사유 기록", {t for t, _ in r.rejected} == {"Bad Domain", "Short", "Pointer Only"})
-check("사람이 쓴 본문은 그대로(앞부분 동일)", new.startswith(orig.rstrip()))
+check("사람이 쓴 본문은 그대로", P.split_seed(new)[0] == P.split_seed(orig)[0])
 check("승격 섹션 추가", P.PROMOTED_HEADER in new and "### Good One" in new and "2026-10-07" in new)
-check("거부 항목은 시드에 없음", "blog.example.com" not in new and "Short" not in new.split(P.PROMOTED_HEADER)[1])
+check("거부 항목은 시드에 없음", "blog.example.com" not in new and "### Short" not in new and "### Pointer Only" not in new)
 check("필수 섹션 유지", all(s in new for s in REQ))
 
 print("\n=== 멱등·교체·상한 ===")

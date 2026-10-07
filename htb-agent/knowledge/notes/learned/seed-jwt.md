@@ -26,3 +26,12 @@ python3 jwt_tool.py <token> -X k -pk pub.pem  # RS→HS 혼동
 강한 키·alg 화이트리스트(고정)·kid/jku 검증·만료 짧게·서명 필수 검증.
 
 - 출처(검증): https://portswigger.net/web-security/jwt
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger JWT
+- 출처: https://portswigger.net/web-security/jwt
+- 승격일: 2026-10-07
+- 요약: JWT attacks In this section, we'll look at how design issues and flawed handling of JSON web tokens (JWTs) can leave websites vulnerable to a variety of high-severity attacks. As JWTs are most commonly used in authentication, session management, and access control mechanisms, these vulnerabilities can potentially compromise the entire website and its users. Don't worry if you're not familiar with JWTs and how they work - we'll cover all of the relevant details as we go. We've also provided a num

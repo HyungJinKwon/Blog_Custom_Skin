@@ -24,3 +24,17 @@ Intruder: 파라미터 퍼징(Sniper/Cluster bomb)
 (도구). 방어는 각 취약점 완화 참조.
 
 - 출처(검증): https://portswigger.net/burp/documentation
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### Burp Suite 문서
+- 출처: https://portswigger.net/burp/documentation
+- 승격일: 2026-10-07
+- 요약: DASTProfessionalCommunity Edition Burp Suite documentation Read time: 1 Minute This documentation describes the functionality of all editions of Burp Suite and related components. Use the links below to get started: Burp Suite Professional and Community editions Burp Suite DAST Burp Scanner Burp Collaborator Full documentation contents Note Like any security testing software, Burp Suite contains functionality that can damage target systems. Testing for security flaws inherently involves interact
+
+### Web Security Academy
+- 출처: https://portswigger.net/web-security
+- 승격일: 2026-10-07
+- 요약: Boost your career The Web Security Academy is a strong step toward a career in cybersecurity. Flexible learning Learn anywhere, anytime, with free interactive labs and progress-tracking. Learn from experts Produced by a world-class team - led by the author of The Web Application Hacker's Handbook. New labs: AI-powered scanner vulnerabilities Learn how indirect prompt injection can be used to manipulate AI-powered web application scanners into performing unintended actions, exfiltrating sensitive

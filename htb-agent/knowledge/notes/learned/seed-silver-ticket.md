@@ -21,3 +21,12 @@ DC 미경유라 탐지 난이도↑. 서비스 측 비정상 티켓·호스트 �
 머신계정 암호 정기 롤링·AES·서비스 측 PAC 검증.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1558/002/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK T1558.002 Silver Ticket
+- 출처: https://attack.mitre.org/techniques/T1558/002/
+- 승격일: 2026-10-07
+- 요약: Steal or Forge Kerberos Tickets: Silver Ticket Adversaries who have the password hash of a target service account (e.g. SharePoint, MSSQL) may forge Kerberos ticket granting service (TGS) tickets, also known as silver tickets. Kerberos TGS tickets are also known as service tickets.[1] Silver tickets are more limited in scope in than golden tickets in that they only enable adversaries to access a particular resource (e.g. MSSQL) and the system that hosts the resource; however, unlike golden ticke

@@ -22,3 +22,12 @@ powershell -ep bypass -enc <base64>
 변조방지 로깅·스크립트블록 로깅·EDR·LOLBin 제한(WDAC).
 
 - 출처(검증): https://attack.mitre.org/tactics/TA0005/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK TA0005 Defense Evasion
+- 출처: https://attack.mitre.org/tactics/TA0005/
+- 승격일: 2026-10-07
+- 요약: Stealth The adversary is trying to hide and conceal their actions, appearing as normal behavior. Stealth consists of techniques that reduce the likelihood of detection by blending in with legitimate activity or minimizing observable signals. These techniques are characterized by concealment behaviors, such as avoiding, obfuscating, or mimicking normal operations, without modifying security controls or compromising collection and monitoring feeds. The goal is to remain indistinguishable from beni

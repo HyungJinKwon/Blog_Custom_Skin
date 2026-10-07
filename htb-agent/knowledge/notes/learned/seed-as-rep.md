@@ -23,3 +23,12 @@ hashcat -m 18200 asrep.txt rockyou.txt
 모든 계정 사전인증 필수화·강한 암호·플래그 감사.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1558/004/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK T1558.004 AS-REP Roasting
+- 출처: https://attack.mitre.org/techniques/T1558/004/
+- 승격일: 2026-10-07
+- 요약: Steal or Forge Kerberos Tickets: AS-REP Roasting Adversaries may reveal credentials of accounts that have disabled Kerberos preauthentication by Password Cracking Kerberos messages.[1] Preauthentication offers protection against offline Password Cracking. When enabled, a user requesting access to a resource initiates communication with the Domain Controller (DC) by sending an Authentication Server Request (AS-REQ) message with a timestamp that is encrypted with the hash of their password. If and

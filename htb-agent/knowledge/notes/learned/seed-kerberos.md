@@ -26,3 +26,12 @@ export KRB5CCNAME=tgt.ccache; impacket-psexec -k -no-pass <host>
 강한 SPN 계정 암호·AES 강제·사전인증 필수·위임 최소화·보호된 사용자 그룹.
 
 - 출처(검증): https://datatracker.ietf.org/doc/html/rfc4120
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### RFC 4120 Kerberos V5
+- 출처: https://datatracker.ietf.org/doc/html/rfc4120
+- 승격일: 2026-10-07
+- 요약: This document provides an overview and specification of Version 5 of the Kerberos protocol, and it obsoletes RFC 1510 to clarify aspects of the protocol and its intended use that require more detailed or clearer explanation than was provided in RFC 1510. This document is intended to provide a detailed description of the protocol, suitable for implementation, together with descriptions of the appropriate use of protocol messages and fields within those messages. Neuman, et al. Standards Track [Pa

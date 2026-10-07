@@ -39,7 +39,7 @@ MAX_SUMMARY = 500        # 승격 시 요약 길이 상한(RAG 반영 상한 안
 _JUNK = re.compile(
     r"(?i)(enable javascript|javascript (is )?(disabled|required)|turn on javascript|"
     r"we use cookies|accept (all )?cookies|cookie (policy|settings)|skip to (main )?content|"
-    r"\bmy account\b|\bproducts\b.{0,40}\bsolutions\b|\bsign in\b.{0,40}\b(sign up|register)\b)")
+    r"thank you for visiting|we have migrated|\bmy account\b|\bproducts\b.{0,40}\bsolutions\b|\bsign in\b.{0,40}\b(sign up|register)\b)")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _ENTRY_TITLE = re.compile(r"^#{2,3} (.+)$")
 

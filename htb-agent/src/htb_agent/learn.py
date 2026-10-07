@@ -58,7 +58,7 @@ SOURCES: dict[str, list[tuple[str, str]]] = {
                           "https://attack.mitre.org/tactics/TA0008/")],
     # 개념/정의(웹 취약점)
     "sqli": [("OWASP SQL Injection", "https://owasp.org/www-community/attacks/SQL_Injection"),
-             ("WSTG SQLi", "https://portswigger.net/web-security/sql-injection")],
+             ("PortSwigger SQL Injection", "https://portswigger.net/web-security/sql-injection")],
     "xss": [("OWASP XSS", "https://owasp.org/www-community/attacks/xss/"),
             ("PortSwigger XSS", "https://portswigger.net/web-security/cross-site-scripting")],
     "ssrf": [("PortSwigger SSRF", "https://portswigger.net/web-security/ssrf"),
@@ -222,7 +222,8 @@ _DROP_ROLES = {"navigation", "banner", "contentinfo", "complementary", "search",
 # class/id 토큰(-·_ 로 쪼갠 단어) 중 하나라도 이것이면 군더더기 영역
 _DROP_CLASS_TOKENS = {"nav", "navbar", "navigation", "menu", "breadcrumb", "breadcrumbs",
                       "cookie", "cookies", "consent", "banner", "sidebar", "footer", "skip",
-                      "toolbar", "share", "social", "newsletter", "subscribe", "masthead"}
+                      "toolbar", "share", "social", "newsletter", "subscribe", "masthead",
+                      "alert", "collapsed", "toc"}   # 공지 배너 · 접힘 토글 머리 · 목차
 _MAIN_TAGS = {"main", "article"}
 _NEVER_ATTR_DROP = {"html", "body", "main", "article"}
 _BLOCK_TAGS = {"p", "li", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "td", "th", "dd", "dt",
@@ -235,6 +236,13 @@ _BOILERPLATE = re.compile(
     r"(?i)(enable javascript|javascript (is )?(disabled|required)|turn on javascript|"
     r"we use cookies|this (web)?site uses cookies|accept (all )?cookies|cookie (policy|settings)|"
     r"skip to (main )?content|^(sign in|log ?in|my account|menu|search)$)")
+# 작성자·기여자·갱신일 메타 줄(기여자 목록은 길 수 있어 별도 길이 상한)
+_META_LINE = re.compile(r"(?i)^(author|contributor\(s\)|last updated)\s*:")
+# RFC 는 본문 앞에 저자·번호·분류 머리글이 수백 자 온다 — 초록(없으면 'Status of this Memo')부터
+_RFC_HEAD = re.compile(r"^(Network Working Group|Internet Engineering Task Force|"
+                       r"Request for Comments|RFC \d+)\b")
+_RFC_ABSTRACT = re.compile(r"\bAbstract\b")
+_RFC_STATUS = re.compile(r"(?i)\bStatus of this Memo\b")
 
 
 def _drop_by_attrs(attrs: list[tuple[str, str | None]]) -> bool:
@@ -244,6 +252,9 @@ def _drop_by_attrs(attrs: list[tuple[str, str | None]]) -> bool:
     if d.get("role", "").lower() in _DROP_ROLES:
         return True
     toks = set(re.split(r"[\s\-_]+", (d.get("class", "") + " " + d.get("id", "")).lower()))
+    # 기본 접힘(.collapse, .show 없음) 영역은 화면에 안 보이는 부속 목록(예: ATT&CK 하위기법 표)
+    if "collapse" in toks and "show" not in toks:
+        return True
     return bool(toks & _DROP_CLASS_TOKENS)
 
 
@@ -303,7 +314,8 @@ class _TextExtractor(HTMLParser):
     def text(self) -> str:
         self._flush()
         blocks = [(t, m) for t, m in self.blocks
-                  if not (len(t) < 200 and _BOILERPLATE.search(t))]
+                  if not (len(t) < 200 and _BOILERPLATE.search(t))
+                  and not (len(t) < 800 and _META_LINE.match(t))]
         main = [t for t, m in blocks if m]
         chosen = main if (self.saw_main and main) else [t for t, _ in blocks]
         return _WS.sub(" ", " ".join(chosen)).strip()
@@ -331,7 +343,21 @@ def extract_text(html_text: str, limit: int = 600) -> str:
         t = ""
     if not t:
         t = _extract_text_legacy(html_text)
-    return t[:limit]
+    return _skip_rfc_header(t)[:limit]
+
+
+def _skip_rfc_header(t: str) -> str:
+    if not _RFC_HEAD.match(t):
+        return t
+    # 초록은 첫 등장(본문의 'Abstract Syntax' 등 오인 방지). 'Status of this Memo' 는
+    # 목차 항목('…… 1' 점 지시선)을 건너뛴 첫 등장 = 실제 절.
+    m = _RFC_ABSTRACT.search(t, 0, 3000)
+    if not m:
+        m = next((x for x in _RFC_STATUS.finditer(t, 0, 6000)
+                  if not re.match(r"\s*\.{2,}", t[x.end():])), None)
+    if m and t[m.end():].strip():
+        return t[m.end():].strip()
+    return t
 
 
 class ReferenceLearner:

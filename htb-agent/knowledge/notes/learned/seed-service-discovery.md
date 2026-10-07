@@ -32,3 +32,12 @@ nxc smb <target> -u '' -p '' --shares
 불필요 서비스 제거·인증 강제·버전 노출 최소화·분할.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1046/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK T1046 Network Service Discovery
+- 출처: https://attack.mitre.org/techniques/T1046/
+- 승격일: 2026-10-07
+- 요약: Network Service Discovery Adversaries may attempt to get a listing of services running on remote hosts and local network infrastructure devices, including those that may be vulnerable to remote software exploitation. Common methods to acquire this information include port, vulnerability, and/or wordlist scans using tools that are brought onto a system.[1] Within cloud environments, adversaries may attempt to discover services running on other cloud hosts. Additionally, if the cloud environment i

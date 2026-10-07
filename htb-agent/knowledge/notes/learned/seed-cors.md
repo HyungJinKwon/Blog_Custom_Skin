@@ -23,3 +23,12 @@ curl -H 'Origin: https://evil.com' -I <url>/api/me
 출처 허용목록 엄격검증·credentials 와 와일드카드 병용 금지·정규식 앵커.
 
 - 출처(검증): https://portswigger.net/web-security/cors
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger CORS
+- 출처: https://portswigger.net/web-security/cors
+- 승격일: 2026-10-07
+- 요약: Cross-origin resource sharing (CORS) In this section, we will explain what cross-origin resource sharing (CORS) is, describe some common examples of cross-origin resource sharing based attacks, and discuss how to protect against these attacks. This topic was written in collaboration with PortSwigger Research, who popularized this attack class with the presentation Exploiting CORS misconfigurations for Bitcoins and bounties. What is CORS (cross-origin resource sharing)? Cross-origin resource shar

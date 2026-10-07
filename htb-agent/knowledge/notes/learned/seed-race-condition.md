@@ -22,3 +22,12 @@ for i in $(seq 30); do curl <url>/redeem & done
 원자적 연산·DB 잠금(SELECT FOR UPDATE)·멱등성 키·유니크 제약.
 
 - 출처(검증): https://portswigger.net/web-security/race-conditions
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger Race Conditions
+- 출처: https://portswigger.net/web-security/race-conditions
+- 승격일: 2026-10-07
+- 요약: Race conditions Race conditions are a common type of vulnerability closely related to business logic flaws. They occur when websites process requests concurrently without adequate safeguards. This can lead to multiple distinct threads interacting with the same data at the same time, resulting in a "collision" that causes unintended behavior in the application. A race condition attack uses carefully timed requests to cause intentional collisions and exploit this unintended behavior for malicious

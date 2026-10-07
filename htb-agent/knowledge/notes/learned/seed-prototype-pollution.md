@@ -23,3 +23,12 @@
 Object.create(null)·Map·키 검증·Object.freeze·안전한 병합 라이브러리.
 
 - 출처(검증): https://portswigger.net/web-security/prototype-pollution
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger Prototype Pollution
+- 출처: https://portswigger.net/web-security/prototype-pollution
+- 승격일: 2026-10-07
+- 요약: What is prototype pollution? Prototype pollution is a JavaScript vulnerability that enables an attacker to add arbitrary properties to global object prototypes, which may then be inherited by user-defined objects. Although prototype pollution is often unexploitable as a standalone vulnerability, it lets an attacker control properties of objects that would otherwise be inaccessible. If the application subsequently handles an attacker-controlled property in an unsafe way, this can potentially be c

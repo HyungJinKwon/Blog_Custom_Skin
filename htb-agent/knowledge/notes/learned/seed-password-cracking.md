@@ -24,3 +24,12 @@ john --format=sha512crypt --wordlist=rockyou.txt shadow.txt
 강한/긴 암호·느린 해시(bcrypt/argon2)·솔트·유출암호 차단.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1110/002/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK T1110.002 Password Cracking
+- 출처: https://attack.mitre.org/techniques/T1110/002/
+- 승격일: 2026-10-07
+- 요약: Brute Force: Password Cracking Adversaries may use password cracking to attempt to recover usable credentials, such as plaintext passwords, when credential material such as password hashes are obtained. OS Credential Dumping can be used to obtain password hashes, this may only get an adversary so far when Pass the Hash is not an option. Further, adversaries may leverage Data from Configuration Repository in order to obtain hashed credentials for network devices.[1] Techniques to systematically g

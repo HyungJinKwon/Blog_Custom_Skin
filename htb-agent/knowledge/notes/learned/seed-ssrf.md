@@ -27,3 +27,17 @@ url=gopher://127.0.0.1:6379/_<redis-payload>
 아웃바운드 허용목록·IMDSv2(토큰 필수)·메타데이터 차단·스킴/호스트 검증·리다이렉트 차단.
 
 - 출처(검증): https://portswigger.net/web-security/ssrf
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger SSRF
+- 출처: https://portswigger.net/web-security/ssrf
+- 승격일: 2026-10-07
+- 요약: Server-side request forgery (SSRF) In this section we explain what server-side request forgery (SSRF) is, and describe some common examples. We also show you how to find and exploit SSRF vulnerabilities. What is SSRF? Server-side request forgery is a web security vulnerability that allows an attacker to cause the server-side application to make requests to an unintended location. In a typical SSRF attack, the attacker might cause the server to make a connection to internal-only services within t
+
+### OWASP SSRF
+- 출처: https://owasp.org/www-community/attacks/Server_Side_Request_Forgery
+- 승격일: 2026-10-07
+- 요약: Server Side Request Forgery Overview In a Server-Side Request Forgery (SSRF) attack, the attacker can abuse functionality on the server to read or update internal resources. The attacker can supply or modify a URL which the code running on the server will read or submit data to, and by carefully selecting the URLs, the attacker may be able to read server configuration such as AWS metadata, connect to internal services like http enabled databases or perform post requests towards internal services

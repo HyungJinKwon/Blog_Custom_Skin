@@ -29,3 +29,17 @@ SIEM: 입력에 UNION/SLEEP/INFORMATION_SCHEMA·단일따옴표 급증. WAF/IDS:
 파라미터화 질의(Prepared Statement)·ORM·최소권한 DB계정·입력 허용목록·WAF. xp_cmdshell/INTO OUTFILE 비활성.
 
 - 출처(검증): https://owasp.org/www-community/attacks/SQL_Injection
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### OWASP SQL Injection
+- 출처: https://owasp.org/www-community/attacks/SQL_Injection
+- 승격일: 2026-10-07
+- 요약: SQL Injection Overview A SQL injection attack consists of insertion or “injection” of a SQL query via the input data from the client to the application. A successful SQL injection exploit can read sensitive data from the database, modify database data (Insert/Update/Delete), execute administration operations on the database (such as shutdown the DBMS), recover the content of a given file present on the DBMS file system and in some cases issue commands to the operating system. SQL injection attac
+
+### PortSwigger SQL Injection
+- 출처: https://portswigger.net/web-security/sql-injection
+- 승격일: 2026-10-07
+- 요약: SQL injection In this section, we explain: What SQL injection (SQLi) is. How to find and exploit different types of SQLi vulnerabilities. How to prevent SQLi. Labs If you're familiar with the basic concepts behind SQLi vulnerabilities and want to practice exploiting them on some realistic, deliberately vulnerable targets, you can access labs in this topic from the link below. View all SQL injection labs What is SQL injection (SQLi)? SQL injection (SQLi) is a web security vulnerability that allow

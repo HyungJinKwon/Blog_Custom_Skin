@@ -24,3 +24,12 @@ LDAP 대량 조회·SAMR/LSARPC 열거·비정상 세션 수집 활동.
 LDAP 조회 모니터링·최소권한·ACL 정리·티어링.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1087/002/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK T1087.002 Domain Account Discovery
+- 출처: https://attack.mitre.org/techniques/T1087/002/
+- 승격일: 2026-10-07
+- 요약: Account Discovery: Domain Account Adversaries may attempt to get a listing of domain accounts. This information can help adversaries determine which domain accounts exist to aid in follow-on behavior such as targeting specific accounts which possess particular privileges. Commands such as net user /domain and net group /domain of the Net utility, dscacheutil -q group on macOS, and ldapsearch on Linux can list domain users and groups. PowerShell cmdlets including Get-ADUser and Get-ADGroupMember

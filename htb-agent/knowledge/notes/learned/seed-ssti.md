@@ -26,3 +26,12 @@ tplmap -u '<url>?name=*'                        # 자동화
 로직리스 템플릿·사용자입력 템플릿화 금지·샌드박스·허용목록 변수.
 
 - 출처(검증): https://portswigger.net/web-security/server-side-template-injection
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger SSTI
+- 출처: https://portswigger.net/web-security/server-side-template-injection
+- 승격일: 2026-10-07
+- 요약: Server-side template injection This technique was first documented by PortSwigger Research in the conference presentation Server-Side Template Injection: RCE for the Modern Web App. In this section, we'll discuss what server-side template injection is and outline the basic methodology for exploiting server-side template injection vulnerabilities. We'll also suggest ways of making sure that your own use of templates doesn't expose you to server-side template injection. Labs If you're already fami

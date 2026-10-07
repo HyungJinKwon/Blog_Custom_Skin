@@ -27,3 +27,17 @@ exiftool -Comment='<?php system($_GET[c]);?>' img.jpg
 확장자 허용목록·MIME+매직 검증·실행권한 제거·저장소 분리(비웹루트)·랜덤 파일명.
 
 - 출처(검증): https://portswigger.net/web-security/file-upload
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger File Upload
+- 출처: https://portswigger.net/web-security/file-upload
+- 승격일: 2026-10-07
+- 요약: File upload vulnerabilities In this section, you'll learn how simple file upload functions can be used as a powerful vector for a number of high-severity attacks. We'll show you how to bypass common defense mechanisms in order to upload a web shell, enabling you to take full control of a vulnerable web server. Given how common file upload functions are, knowing how to test them properly is essential knowledge. Labs If you're already familiar with the basic concepts behind file upload vulnerabili
+
+### OWASP Unrestricted File Upload
+- 출처: https://owasp.org/www-community/vulnerabilities/Unrestricted_File_Upload
+- 승격일: 2026-10-07
+- 요약: Unrestricted File Upload Description Uploaded files represent a significant risk to applications. The first step in many attacks is to get some code to the system to be attacked. Then the attack only needs to find a way to get the code executed. Using a file upload helps the attacker accomplish the first step. The consequences of unrestricted file upload can vary, including complete system takeover, an overloaded file system or database, forwarding attacks to back-end systems, client-side attack

@@ -25,3 +25,12 @@ XML 입력의 DOCTYPE/ENTITY/SYSTEM·file:// 참조. 파서의 외부 DTD fetch(
 외부개체·DTD 비활성(FEATURE_SECURE_PROCESSING)·JSON 대체·파서 강화.
 
 - 출처(검증): https://portswigger.net/web-security/xxe
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger XXE
+- 출처: https://portswigger.net/web-security/xxe
+- 승격일: 2026-10-07
+- 요약: XML external entity (XXE) injection In this section, we'll explain what XML external entity injection is, describe some common examples, explain how to find and exploit various kinds of XXE injection, and summarize how to prevent XXE injection attacks. What is XML external entity injection? XML external entity injection (also known as XXE) is a web security vulnerability that allows an attacker to interfere with an application's processing of XML data. It often allows an attacker to view files o

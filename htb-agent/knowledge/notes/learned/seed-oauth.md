@@ -24,3 +24,12 @@ redirect_uri=https://attacker/callback   # 검증 우회 시도
 redirect_uri 정확일치·state/PKCE 필수·1회성 코드·짧은 만료.
 
 - 출처(검증): https://portswigger.net/web-security/oauth
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### PortSwigger OAuth
+- 출처: https://portswigger.net/web-security/oauth
+- 승격일: 2026-10-07
+- 요약: OAuth 2.0 authentication vulnerabilities While browsing the web, you've almost certainly come across sites that let you log in using your social media account. The chances are that this feature is built using the popular OAuth 2.0 framework. OAuth 2.0 is highly interesting for attackers because it is both extremely common and inherently prone to implementation mistakes. This can result in a number of vulnerabilities, allowing attackers to obtain sensitive user data and potentially bypass authent

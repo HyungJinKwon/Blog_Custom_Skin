@@ -25,3 +25,17 @@ nmap -sU --top-ports 50 <target>               # UDP
 IDS/IPS·불필요 서비스 제거·레이트리밋·분할.
 
 - 출처(검증): https://nmap.org/book/man.html
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### Nmap Reference Guide
+- 출처: https://nmap.org/book/man.html
+- 승격일: 2026-10-07
+- 요약: Chapter 15. Nmap Reference Guide Name nmap — Network exploration tool and security / port scanner Synopsis nmap [ <Scan Type> ...] [ <Options> ] { <target specification> } Description Note This document describes the very latest version of Nmap available from https://nmap.org/download.html or https://nmap.org/dist/?C=M&O=D. Please ensure you are using the latest version before reporting that a feature doesn't work as described. Nmap (“Network Mapper”) is an open source tool for network explorati
+
+### NSE 문서
+- 출처: https://nmap.org/book/nse.html
+- 승격일: 2026-10-07
+- 요약: Chapter 9. Nmap Scripting Engine Introduction The Nmap Scripting Engine (NSE) is one of Nmap's most powerful and flexible features. It allows users to write (and share) simple scripts to automate a wide variety of networking tasks. Those scripts are then executed in parallel with the speed and efficiency you expect from Nmap. Users can rely on the growing and diverse set of scripts distributed with Nmap, or write their own to meet custom needs. We designed NSE to be versatile, with the following

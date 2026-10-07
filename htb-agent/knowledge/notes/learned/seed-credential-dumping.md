@@ -23,3 +23,12 @@ LSASS 핸들 접근(Sysmon 10)·vssadmin/ntdsutil 실행·SAM 비정상 접근.
 Credential Guard·LSA 보호(RunAsPPL)·최소권한·LAPS.
 
 - 출처(검증): https://attack.mitre.org/techniques/T1003/
+
+## 최신 보강(승격)
+
+> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
+
+### ATT&CK T1003 OS Credential Dumping
+- 출처: https://attack.mitre.org/techniques/T1003/
+- 승격일: 2026-10-07
+- 요약: OS Credential Dumping Adversaries may attempt to dump credentials to obtain account login and credential material, normally in the form of a hash or a clear text password. Credentials can be obtained from OS caches, memory, or structures.[1] Credentials can then be used to perform Lateral Movement and access restricted information. Several of the tools mentioned in associated sub-techniques may be used by both adversaries and professional security testers. Additional custom tools likely exist as
