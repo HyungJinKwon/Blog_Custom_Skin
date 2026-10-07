@@ -41,7 +41,7 @@
 | 지능 | 규칙 기반(기본) + 지식베이스(RAG) + 선택형 LLM(Claude / Ollama / hybrid) |
 | 지식 | 59개 주제 번들 시드로 누구나 같은 지식으로 시작 → 학습으로 성장 → 검증 후 모두에게 자동 공유 |
 | 산출 | 라이트업(HTB v5 / Tistory 13섹션) · JSON · HTML 대시보드 · 감사 로그 |
-| 의존성 | Python 3.10+ 표준 라이브러리만(LLM 사용 시에만 추가 설치) |
+| 의존성 | Python 3.10+ 표준 라이브러리만(선택 기능만 추가: LLM=anthropic/Ollama · YAML 설정=pyyaml · PDF 수집=pdftotext 또는 pypdf) |
 
 원칙: 승인제 · 외부 라이트업 미참조(사용자 자료·권위 출처만) · 무한루프 없음(모든 반복에 상한) · 증거 기반 판정(약하면 〔추정〕).
 
@@ -65,7 +65,7 @@ sudo openvpn your-htb.ovpn               # (HTB) tun0 → 공격자 IP 자동탐
 | `pip install -e .` | `pip` | `-e`: 편집 가능 설치(소스 수정이 바로 반영) | `.`: 현재 디렉토리 패키지 |
 | `sudo openvpn your-htb.ovpn` | `openvpn` | (없음) | 플랫폼에서 받은 VPN 설정 파일 |
 
-설치 카테고리: `recon` `web` `smb` `ad` `creds` `cloud` `traffic` `re` `pwn` `forensic` `pivot` `llm`
+설치 카테고리: `recon` `web` `smb` `ad` `creds` `cloud` `pivot` `wordlist` `traffic` `re` `pwn` `forensic` `llm`
 
 ### 2.2 설치 없이 실행
 
@@ -222,7 +222,7 @@ knowledge/
 ### 9.2 지식이 자라는 전체 흐름
 
 ```
-① 번들 시드(59개 주제)  ── 누구나 clone 즉시 같은 지식으로 시작(오프라인 포함)
+① 번들 시드(카탈로그 59개 주제 + 보조 3개 = 62개)  ── 누구나 clone 즉시 같은 지식으로 시작(오프라인 포함)
         │
 ② 각자 학습  ── --learn / --learn-gaps / --web-learn / --ingest  → 내 로컬에만 쌓임
         │
@@ -242,7 +242,7 @@ knowledge/
 | `assassin --learn all` | 59개 주제 전체를 한 번에 학습 |
 | `assassin --ingest ./my-writeups/` | 내 자료(.md/.txt/.pdf)를 노트로 학습. 본인 자료는 풀이 중 참조 허용 |
 | `assassin <t> --learn-gaps` | 풀이 중 모르는 기술을 만나면 권위 출처에서 자동 학습(autonomous 기본) |
-| `assassin <t> --web-learn` | 카탈로그 밖 공백을 인터넷 검색으로 학습. HTB 라이트업은 출처 불문 차단, 교차검증 통과분만(autonomous 기본) |
+| `assassin <t> --web-learn` | 카탈로그 밖 공백을 인터넷 검색으로 학습(`--learn-gaps` 를 함께 켬). HTB 라이트업은 출처 불문 차단, 교차검증 통과분만(autonomous 기본) |
 
 - 학습 내용은 노트로만 저장된다(실행·명령화하지 않음).
 - 오프라인이면 출처 포인터만 남고, 시작 지식은 번들 시드가 보장한다.
@@ -303,7 +303,7 @@ GitHub Actions **`KB 자동 승격`** (`.github/workflows/kb-auto-promote.yml`)
 
 | 명령 | 동작 |
 |---|---|
-| `assassin --kb-sync` | 지금 바로 동기화하고 결과 출력 |
+| `assassin --kb-sync` | 지금 바로 동기화하고 결과 출력(`--offline` 과 함께 쓰면 접속하지 않고 오류) |
 | `assassin <t> --no-kb-sync` | 이번 실행만 끄기 |
 | `export ASSASSIN_NO_KB_SYNC=1` | 항상 끄기 |
 | `assassin <t> --offline` | 네트워크 수집 전부 끄기(동기화 포함) |
@@ -342,7 +342,7 @@ GitHub Actions **`KB 자동 승격`** (`.github/workflows/kb-auto-promote.yml`)
 
 ## 12. 설정 파일
 
-우선순위: **CLI > 설정 파일 > 기본값**
+우선순위: **CLI > 설정 파일 > 기본값** — `--learn`·`--promote`·`--kb-sync`·`--ingest` 같은 단독 명령도 설정의 `knowledge_dir` 를 따른다.
 
 ```bash
 assassin 10.129.1.5 --config config/config.example.json
@@ -366,7 +366,7 @@ assassin 10.129.1.5 --config config/config.example.json
 }
 ```
 
-- YAML(`config/config.example.yaml`)도 지원한다.
+- YAML(`config/config.example.yaml`)도 지원한다(`pip install pyyaml` 필요).
 - 알 수 없는 키는 경고와 함께 무시된다.
 - 개인 설정은 `config/config.yaml` 에 두면 git 에 올라가지 않는다.
 
@@ -471,6 +471,8 @@ assassin 10.129.1.5 --auto --json out/result.json
 | `공유 시드 동기화 실패` | 오프라인·차단·저장소 비공개 | 무시해도 됨(기존 시드로 동작). 즉시 재시도는 `assassin --kb-sync` |
 | `✗ seed-x.md — 로컬 수정본(미커밋) 보존` | 내가 편집 중인 시드 | 의도된 동작. 커밋하거나 되돌리면 다음 동기화부터 반영 |
 | 주간 워크플로가 PR 단계에서 실패 | Actions 권한 미설정 | §9.5 저장소 설정 확인 |
+| `함께 쓸 수 없는 단독 명령` / `타겟 없이 단독으로 실행` | `--learn`·`--promote`·`--doctor` 등 단독 명령을 둘 이상 또는 타겟과 같이 지정 | 하나씩, 타겟 없이 실행 |
+| `'…' 가 출력 경로로 읽혔습니다` | `--html 10.129.1.5` 처럼 타겟이 출력 옵션 뒤에 옴 | 타겟을 맨 앞에: `assassin 10.129.1.5 --html` |
 | 프롬프트에서 멈춘 것 같음 | 사람 확인 대기(`[y/N]`) | `y` 실행 / 엔터 건너뜀. 무인 실행은 `--auto` |
 
 더 자세한 운영 가이드: [OPERATIONS.md](OPERATIONS.md)

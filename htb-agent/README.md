@@ -128,7 +128,7 @@ assassin 10.129.1.5 --config config/config.example.json
 > 풀이 중 **모르는 기술/제품을 만나면 스스로 권위 출처에서 찾아 배워** KB 에 즉시
 > 반영한다(예: MongoDB 관측 → NoSQLi 지식 자동 연결·학습). 매핑 불가한 용어는
 > 지어내지 않고 '미해석 공백'으로 기록(수동 조사 안내). allowlist·P1 유지.
-> **인터넷 검색 학습**: `assassin <target> --web-learn` (autonomous 기본 활성) —
+> **인터넷 검색 학습**: `assassin <target> --web-learn` (autonomous 기본 활성 · 공백 탐지 `--learn-gaps` 를 함께 켬) —
 > 카탈로그 밖 '미해석 공백'을 **넓은 인터넷 검색**으로 학습해 KB 에 반영한다. 단
 > **HTB 라이트업은 출처 불문(공식·제3자) 전부 차단**(HTB 라이트업은 오직 사용자
 > 본인 ingest 로만 유입). 일반 기법 아티클·공식 문서는 허용하되 **교차검증**(출처 신뢰등급 A/B 또는 독립 출처 상호확인 + 보안 관련성) 통과분만 채택. 가져온 내용은 노트로만
@@ -201,7 +201,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 54 스위트 1429 테스트
+cd htb-agent && python3 tests/run_all.py     # 54 스위트 1452 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
@@ -228,7 +228,7 @@ cd htb-agent && python3 tests/run_all.py     # 54 스위트 1429 테스트
 | `--promote` `TOPIC` | 로컬 학습 노트(learned-&lt;주제&gt;.md) 중 품질 관문을 통과한 항목을 번들 시드의 '최신 보강(승격)' 섹션으로 승격. 결과를 커밋·PR 하면 모든 사용자에게 공유. 예: --promote sqli / 전체: --promote all |
 | `--kb-sync` | 공유 저장소의 최신 번들 시드를 지금 동기화(검증 통과분만 로컬 캐시에 적용). 타겟 실행 시에는 하루 1회 자동 |
 | `--no-kb-sync` | 실행 시 공유 시드 자동 동기화 끄기(환경변수 ASSASSIN_NO_KB_SYNC=1 도 동일) |
-| `--ingest` `PATH` | 사용자 제공 자료(.md/.txt 파일 또는 디렉터리)를 지식베이스 노트로 미리 학습. 예: --ingest ./my-writeups/ |
+| `--ingest` `PATH` | 사용자 제공 자료(.md/.txt/.pdf 파일 또는 디렉터리)를 지식베이스 노트로 미리 학습. 예: --ingest ./my-writeups/ |
 | `--cloud` `NAME` | AWS/S3 열거 자동 준비(생성 안 실행). 호스트명/도메인에서 버킷명 후보+비인증 점검 생성. 예: --cloud acme.htb. 권한 확인 자산 전용 |
 | `--privesc` `OS` | 권한상승 플레이북 자동 준비(생성 안 실행). OS 별 열거·점검·LPE 체크리스트 생성. 예: --privesc linux. 획득한 대상 셸에서 직접 실행 |
 | `--crack` `HASH` | 해시 크래킹 자동 준비(생성 안 실행). 해시 종류 식별 + john/hashcat 명령 생성. 예: --crack '$krb5tgs$23$...'. 권한 확인 자산 해시 전용 |
@@ -246,7 +246,7 @@ cd htb-agent && python3 tests/run_all.py     # 54 스위트 1429 테스트
 | `--no-enrich` | CVE/CWE 자동 수집(NVD/GitHub) 비활성 |
 | `--learn-gaps` | 자율 지식 획득: 풀이 중 모르는 기술을 권위 출처에서 자동 학습해 KB 에 즉시 반영(allowlist·P1 유지). autonomous 모드에선 기본 활성 |
 | `--no-learn-gaps` | 자율 지식 획득 비활성(autonomous 모드에서도 끔) |
-| `--web-learn` | 인터넷 검색 학습: 카탈로그 밖 '미해석 공백'을 웹 검색으로 학습해 KB 반영. HTB 라이트업(공식·제3자)은 가드로 차단. autonomous 기본 활성 |
+| `--web-learn` | 인터넷 검색 학습: 카탈로그 밖 '미해석 공백'을 웹 검색으로 학습해 KB 반영(--learn-gaps 를 함께 켬). HTB 라이트업(공식·제3자)은 가드로 차단. autonomous 기본 활성 |
 | `--no-web-learn` | 인터넷 검색 학습 비활성(autonomous 모드에서도 끔) |
 | `--offline` | 오프라인: 네트워크 수집 금지(캐시만 사용) |
 | `--enrich-cache` | CVE 캐시 디렉토리 (기본 &lt;knowledge&gt;/cve_cache) |

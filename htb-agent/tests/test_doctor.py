@@ -60,7 +60,7 @@ r = FakeRunner(lambda c: RunOutput(c, stdout=XML) if c.startswith("nmap")
                else RunOutput(c, stdout="ok"))
 buf = io.StringIO()
 with redirect_stdout(buf):
-    code = main(["10.129.1.5", "--auto", "--no-save"], runner=r)
+    code = main(["10.129.1.5", "--auto", "--no-save", "--no-audit"], runner=r)
 check("일반 실행 종료코드 0", code == 0)
 
 print("\n=== OLLAMA_MODEL 환경 오버라이드(하이브리드 편의) ===")

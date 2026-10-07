@@ -1,14 +1,14 @@
 # htb-agent 아키텍처
 
-HTB 머신 승인제 자동 풀이 에이전트의 구조·흐름·안전 모델을 한 곳에 정리한 문서.
+승인제 자동 풀이 에이전트(HTB · Dreamhack · CTF)의 구조·흐름·안전 모델을 한 곳에 정리한 문서.
 (이전의 조각난 ROADMAP 을 대체하는 단일 기준 문서)
 
 ---
 
 ## 1. 한눈에 보기
 
-- **목적**: 권한이 확인된 HTB 머신을 모의해킹 **표준 단계 순서**로 풀이 보조.
-- **원칙**: 승인제(사람이 실행 승인) · 외부 라이트업 미참조(사용자 자료만) ·
+- **목적**: 권한이 확인된 대상(HTB 머신 · Dreamhack/CTF 챌린지)을 모의해킹 **표준 단계 순서**로 풀이 보조.
+- **원칙**: 승인제(사람이 실행 승인) · 외부 라이트업 미참조(사용자 자료·권위 출처만) ·
   무한루프 금지(유한 상한) · 증거기반 판단(〔확인〕/〔추정〕).
 - **실행 환경**: Kali/Ubuntu + HTB VPN (개발·테스트는 어디서나, 표준 라이브러리만).
 
@@ -95,7 +95,7 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 |---|---|---|
 | **안전** | `scope_guard.py` | Target-Binding, 범위밖 기본거부. 가드가 점4자리로 해석 못 하는 숫자형 호스트 표기·IPv6 리터럴·비-HTTP 스킴 호스트도 분류해 확인 필요로 올림(fail-closed, 네트워크 도구 호스트 위치 한정으로 숫자 인자 오탐 방지). 파일 확장자 제외 목록은 IANA TLD 와 겹치지 않는 것만 추가하며, 이미 겹치는 md·py·sh·so·zip 은 네트워크 도구의 호스트 위치에 오면 호스트로 분류(scp/rsync 는 ':' 있는 인자만, ssh 는 첫 위치 인자만, 리다이렉트 대상은 파일) |
 | | `command_validator.py` | 문법·base64·16/10진수·포트·해시·파괴명령 |
-| | `approval.py` | 승인 게이트 + 바이너리/옵션/파라미터 3분할 해설 |
+| | `approval.py` | 승인 게이트(스마트=범위밖만 확인 / auto / manual) + 바이너리/옵션/파라미터 3분할 해설 |
 | **관측** | `observation/parsers.py` | nmap(XML/텍스트)·HTTP 파싱 |
 | | `observation/web.py` | gobuster·ffuf·feroxbuster·nikto·whatweb |
 | | `observation/smb.py` | smbclient·smbmap·netexec |
@@ -137,7 +137,6 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 | | `ui.py` | 터미널 렌더링(블루/네이비 색상·박스·정렬, NO_COLOR/비-TTY 자동 무색) |
 | | `profiles.py` | 플랫폼 프로파일(HTB/Dreamhack/CTF: 스코프·플래그·카테고리) |
 | | `enrich.py` | CVE/CWE 자동 수집(NVD·GitHub PoC, 주입식 fetcher·캐시·오프라인 안전) |
-| | `approval.py` | 승인 게이트(스마트=범위밖만 확인 / auto / manual) + 3분할 해설 |
 | | `writeup.py` | 라이트업 생성(htb-ctf-writeup-v5 / Tistory 13섹션) |
 | | `report_export.py` | 결과 내보내기 — 기계판독 JSON · 블루/네이비 HTML 대시보드 |
 
@@ -146,7 +145,7 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 ## 5. 데이터·성장·운영 저장소
 
 - **학습데이터(성장)**: `knowledge/rules/*.json`(단계별 액션) · `notes/*.md`(노하우) ·
-  `vulns/*.json`(버전→CVE). 파일을 추가할수록 제안이 풍부해진다. 외부 검색 없음.
+  `vulns/*.json`(버전→CVE). 파일을 추가할수록 제안이 풍부해진다. 외부 라이트업 검색 없음(권위 출처 학습·검증된 웹 학습·CVE 수집·공유 시드 동기화만, `--offline` 으로 모두 끔).
 - **세션 상태**: `state/<타겟>.json` — 포트·OS·발견·크리덴셜·플래그·이력 (중단/재개).
 - **감사 로그**: `state/audit_<타겟>.jsonl` — 모든 제안·검증·승인·실행·플래그.
 - (모두 `.gitignore` 처리 — 로컬·민감정보)
@@ -158,11 +157,9 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 ```bash
 cd htb-agent
 sudo ./scripts/install_tools.sh                 # Kali 보안 도구 일괄 설치
-pip install -e .                                # 에이전트 설치 → 'htb-agent' 명령
+pip install -e .                                # 에이전트 설치 → 'assassin' 명령(htb-agent 는 별칭)
 assassin 10.129.1.5                            # 승인제 풀이
-assassin 10.129.1.5 --auto \
-  --cred administrator:Passw0rd \               # 자격증명 → access/flag 승격
-  --llm claude --writeup                        # LLM 두뇌 + 라이트업 생성
+assassin 10.129.1.5 --auto --cred administrator:Passw0rd --llm claude --writeup   # 자격증명 승격 + LLM + 라이트업
 assassin 10.129.1.5 --resume                   # 중단 지점 재개
 ```
 
@@ -173,7 +170,7 @@ assassin 10.129.1.5 --resume                   # 중단 지점 재개
 ## 7. 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py        # 54 스위트 1429 테스트
+cd htb-agent && python3 tests/run_all.py        # 54 스위트 1452 테스트
 ```
 
 네트워크·도구 없이도 **러너 주입**으로 전 로직 검증하며, 통합 테스트는 `main()` 을

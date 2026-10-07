@@ -51,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-kb-sync", action="store_true", dest="no_kb_sync",
                    help="실행 시 공유 시드 자동 동기화 끄기(환경변수 ASSASSIN_NO_KB_SYNC=1 도 동일)")
     p.add_argument("--ingest", metavar="PATH", default=None,
-                   help="사용자 제공 자료(.md/.txt 파일 또는 디렉터리)를 지식베이스 노트로 "
+                   help="사용자 제공 자료(.md/.txt/.pdf 파일 또는 디렉터리)를 지식베이스 노트로 "
                         "미리 학습. 예: --ingest ./my-writeups/")
     p.add_argument("--cloud", metavar="NAME", default=None,
                    help="AWS/S3 열거 자동 준비(생성 안 실행). 호스트명/도메인에서 버킷명 "
@@ -102,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="자율 지식 획득 비활성(autonomous 모드에서도 끔)")
     p.add_argument("--web-learn", action="store_true", dest="web_learn",
                    help="인터넷 검색 학습: 카탈로그 밖 '미해석 공백'을 웹 검색으로 학습해 "
-                        "KB 반영. HTB 라이트업(공식·제3자)은 가드로 차단. autonomous 기본 활성")
+                        "KB 반영(--learn-gaps 를 함께 켬). HTB 라이트업(공식·제3자)은 가드로 차단. autonomous 기본 활성")
     p.add_argument("--no-web-learn", action="store_true", dest="no_web_learn",
                    help="인터넷 검색 학습 비활성(autonomous 모드에서도 끔)")
     p.add_argument("--offline", action="store_true",
@@ -196,7 +196,29 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     from . import ui
+    from .config import Config, ConfigError, load_config, pick
     from .profiles import get_profile
+
+    # 단독 명령은 하나만, 타겟 없이 — 조합 시 조용히 하나만 실행되던 문제 방지
+    standalone = [flag for flag, v in (
+        ("--doctor", args.doctor), ("--revshell", args.revshell), ("--cloud", args.cloud),
+        ("--privesc", args.privesc), ("--crack", args.crack), ("--ingest", args.ingest),
+        ("--kb-sync", args.kb_sync), ("--promote", args.promote), ("--learn", args.learn))
+        if v not in (None, False)]
+    if len(standalone) > 1:
+        parser.error(f"함께 쓸 수 없는 단독 명령: {' '.join(standalone)}")
+    if standalone and args.target:
+        parser.error(f"{standalone[0]} 은(는) 타겟 없이 단독으로 실행합니다")
+
+    # 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값) — 단독 명령도 같은 설정을 따른다
+    try:
+        cfg = load_config(args.config) if args.config else Config()
+    except ConfigError as e:
+        print(ui.mark_err(f"설정 오류: {e}"), file=sys.stderr)
+        return 2
+    for w in cfg.warnings:
+        print(ui.mark_warn(f"설정 경고: {w}"), file=sys.stderr)
+    knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, "knowledge")
 
     # 환경 자가진단(스캔 안 함) — 완전 초보자 권장 첫 실행
     if args.doctor:
@@ -238,11 +260,12 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         print(crack.render(args.crack))
         return 0
 
-    # 사용자 제공 자료 수집(스캔 안 함) — .md/.txt 를 지식베이스 노트로 미리 학습
-    if args.ingest:
-        from . import learn
+    # 사용자 제공 자료 수집(스캔 안 함) — .md/.txt/.pdf 를 지식베이스 노트로 미리 학습
+    if args.ingest is not None:
         import os as _osing
-        kdir = args.knowledge or "knowledge"
+
+        from . import learn
+        kdir = knowledge_dir
         paths = learn.ingest(args.ingest,
                              dest_dir=_osing.path.join(kdir, "notes", "ingested"))
         if paths:
@@ -250,51 +273,54 @@ def main(argv: list[str] | None = None, runner=None) -> int:
             for p in paths[:50]:
                 print("  " + ui.dim(p))
         else:
-            print(ui.mark_err(f"수집할 .md/.txt 자료 없음: {args.ingest}"), file=sys.stderr)
+            print(ui.mark_err(f"수집할 .md/.txt/.pdf 자료 없음: {args.ingest}"), file=sys.stderr)
         return 0 if paths else 2
 
-    # 학습 노트 → 번들 시드 승격(스캔·네트워크 없음). 커밋·PR 로 모든 사용자에게 공유.
+    # 공유 저장소 최신 시드를 지금 동기화(검증 통과분만 로컬 캐시에)
     if args.kb_sync:
-        from . import kb_sync as _kbs
-        kdir = args.knowledge or "knowledge"
-        r = _kbs.sync(kdir)
-        if r.error:
-            print(ui.mark_err(f"공유 시드 동기화 실패: {r.error}"))
+        if args.offline:
+            print(ui.mark_err("--offline 에서는 공유 시드 동기화를 하지 않습니다"), file=sys.stderr)
             return 2
-        _print_kb_sync(r, verbose=True)
+        from . import kb_sync as _kbs
+        sres = _kbs.sync(knowledge_dir)
+        if sres.error:
+            print(ui.mark_err(f"공유 시드 동기화 실패: {sres.error}"), file=sys.stderr)
+            return 2
+        _print_kb_sync(sres, verbose=True)
         return 0
 
-    if args.promote:
+    # 학습 노트 → 번들 시드 승격(스캔·네트워크 없음). 커밋·PR 로 모든 사용자에게 공유.
+    if args.promote is not None:
         import os as _ospr
 
         from . import promote as _promote
-        kdir = args.knowledge or "knowledge"
-        ndir = _ospr.path.join(kdir, "notes", "learned")
+        ndir = _ospr.path.join(knowledge_dir, "notes", "learned")
         key = args.promote.strip().lower()
-        results = (_promote.promote_all(ndir, ndir) if key == "all"
-                   else [_promote.promote(key, ndir, ndir)])
-        if not results:
-            print(ui.mark_warn("승격할 학습 노트 없음 — 먼저 'assassin --learn all' 실행"))
+        presults = (_promote.promote_all(ndir, ndir) if key == "all"
+                    else [_promote.promote(key, ndir, ndir)])
+        if not presults:
+            print(ui.mark_warn("승격할 학습 노트 없음 — 먼저 'assassin --learn all' 실행"),
+                  file=sys.stderr)
             return 2
         changed = 0
-        for r in results:
-            if r.error:
-                print(ui.mark_err(f"{r.topic}: {r.error}"))
+        for pr in presults:
+            if pr.error:
+                print(ui.mark_err(f"{pr.topic}: {pr.error}"), file=sys.stderr)
                 continue
-            head = f"{r.topic}: 승격 {len(r.accepted)}건 · 거부 {len(r.rejected)}건"
-            print((ui.mark_ok(head) if r.changed else ui.dim("  " + head + " (변경 없음)")))
-            for title, reason in r.rejected:
+            head = f"{pr.topic}: 승격 {len(pr.accepted)}건 · 거부 {len(pr.rejected)}건"
+            print((ui.mark_ok(head) if pr.changed else ui.dim("  " + head + " (변경 없음)")))
+            for title, reason in pr.rejected:
                 print(ui.dim(f"     ✗ {title} — {reason}"))
-            for title in r.pruned:
-                print(ui.dim(f"     − {title} — 카탈로그에서 빠진 출처라 시드에서 정리"))
-            changed += r.changed
+            for title, why in pr.pruned:
+                print(ui.dim(f"     − {title} — 시드에서 정리({why})"))
+            changed += int(pr.changed)
         if changed:
             print(ui.ok(f"\n시드 {changed}개 갱신 — 'git diff {ndir}/seed-*.md' 로 검토 후 커밋·PR 하면 "
                         "병합 시 모든 사용자에게 반영됩니다."))
-        return 0 if not any(r.error for r in results) else 2
+        return 0 if not any(pr.error for pr in presults) else 2
 
     # 권위 출처 자가학습(스캔 안 함) — 지식베이스에 노트 저장(P1 유지)
-    if args.learn:
+    if args.learn is not None:
         from . import learn
         key = args.learn.strip().lower()
         if key in ("list", "topics", "?"):
@@ -302,35 +328,30 @@ def main(argv: list[str] | None = None, runner=None) -> int:
             print("  " + ", ".join(learn.topics()))
             return 0
         import os as _oslearn
-        kdir = args.knowledge or "knowledge"
-        learner = learn.ReferenceLearner(
-            cache_dir=_oslearn.path.join(kdir, "notes", "learned"),
+        ref_learner = learn.ReferenceLearner(
+            cache_dir=_oslearn.path.join(knowledge_dir, "notes", "learned"),
             enabled=not args.offline)
         if key == "all":   # 전체 주제 일괄 사전 학습(미리 학습)
-            results = learner.learn_all()
-            ok = sum(1 for r in results if r.refs)
-            print(ui.heading(f"전체 사전 학습 — {ok}/{len(results)} 주제 노트 생성", "📚"))
+            lresults = ref_learner.learn_all()
+            n_ok = sum(1 for lr in lresults if lr.refs)
+            print(ui.heading(f"전체 사전 학습 — {n_ok}/{len(lresults)} 주제 노트 생성", "📚"))
             if not args.offline:
                 print(ui.dim("  (라이브 수집: 허용 도메인에서 요약 수집)"))
             else:
                 print(ui.dim("  (오프라인: 출처 포인터 저장 — 번들 시드 노트가 보강)"))
-            return 0
-        res = learner.learn(args.learn)
+            return 0 if n_ok else 2
+        res = ref_learner.learn(args.learn)
         print(res.summary())
         return 0 if res.refs else 2
 
     if not args.target:
+        swallowed = [v for v in (args.writeup, args.json_out, args.html_out)
+                     if v not in (None, "__auto__")]
+        if swallowed:   # 'assassin --html 10.129.1.5' 처럼 타겟이 경로로 읽힌 경우
+            parser.error(f"타겟이 없습니다 — '{swallowed[0]}' 가 출력 경로로 읽혔습니다. "
+                         "타겟을 맨 앞에 두세요: assassin <타겟> --html")
         parser.error("target 이 필요합니다 (또는 --doctor / --revshell / --cloud / --privesc / --crack / --learn / --promote / --kb-sync / --ingest). 예: assassin 10.129.1.5")
 
-    # 0) 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값)
-    from .config import load_config, pick, Config, ConfigError
-    try:
-        cfg = load_config(args.config) if args.config else Config()
-    except ConfigError as e:
-        print(ui.mark_err(f"설정 오류: {e}"), file=sys.stderr)
-        return 2
-    for w in cfg.warnings:
-        print(ui.mark_warn(f"설정 경고: {w}"), file=sys.stderr)
     # 플랫폼 프로파일(HTB/Dreamhack/CTF)
     try:
         profile = get_profile(pick(args.platform, cfg.platform, "htb"))
@@ -350,15 +371,18 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     max_sweeps = _auto_def(args.max_sweeps, cfg.max_sweeps, 3, 2)
     max_parallel = _auto_def(args.max_parallel, getattr(cfg, "max_parallel", None), 4, 1)
     max_variants = _auto_def(args.variants, cfg.max_variants, 3, 2)
-    knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, "knowledge")
     llm_kind = pick(args.llm, cfg.llm_backend, "none")
     llm_tier = pick(args.llm_tier, cfg.llm_tier, "standard")
     state_dir = pick(args.state_dir, cfg.state_dir, "state")
 
     # 1) Scope Guard 구성 + 타겟 바인딩 (플랫폼별 대역강제/호스트명 허용)
-    guard = ScopeGuard.from_cidr_strings(
-        ranges, enforce_ranges=profile.enforce_ranges,
-        allow_hostname_target=profile.allow_hostname_target)
+    try:
+        guard = ScopeGuard.from_cidr_strings(
+            ranges, enforce_ranges=profile.enforce_ranges,
+            allow_hostname_target=profile.allow_hostname_target)
+    except ValueError as e:
+        print(ui.mark_err(f"허용 대역(--range / allowed_ranges) 오류: {e}"), file=sys.stderr)
+        return 2
     try:
         guard.bind_target(args.target)
     except ScopeViolation as e:
@@ -376,9 +400,9 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     # 3) 환경 프리플라이트
     pf = preflight(required_tool_keys=["nmap"])
     print(pf.render())
-    _mode = ("능동적 완전자동(autonomous)" if (args.autonomous and not args.manual)
+    _mode = ("완전수동" if args.manual           # 승인자 선택과 같은 우선순위(manual 이 최우선)
+             else "능동적 완전자동(autonomous)" if args.autonomous
              else "완전자동" if args.auto
-             else "완전수동" if args.manual
              else "스마트(범위밖만 확인)")
     _plat = ui.accent2(profile.name) + ui.dim(f"  ({profile.flag_kind}")
     _plat += ui.dim(f" · {args.category})") if (profile.is_jeopardy and args.category) \
@@ -397,7 +421,10 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     #    실제 실행이면 하루 1회 공유 저장소의 최신 시드를 검증 후 로컬 캐시에 반영
     if runner is None and not args.offline and not args.no_kb_sync:
         from . import kb_sync as _kbs
-        _print_kb_sync(_kbs.auto_sync(knowledge_dir))
+        try:
+            _print_kb_sync(_kbs.auto_sync(knowledge_dir))
+        except Exception as e:   # noqa: BLE001 — 지식 동기화 실패가 풀이를 막지 않게
+            print(ui.mark_warn(f"공유 시드 동기화 건너뜀: {e}"), file=sys.stderr)
     kb = KnowledgeBase.load(base_dir=knowledge_dir)
     from .vuln import VulnKB
     vuln_kb = VulnKB.load(base_dir=knowledge_dir)
@@ -452,7 +479,9 @@ def main(argv: list[str] | None = None, runner=None) -> int:
 
     # 6.7) 자율 지식 획득기 — 모르는 기술을 권위 출처에서 자동 학습(allowlist·P1)
     #      autonomous 기본 활성, --learn-gaps 로 명시 활성, --no-learn-gaps 로 끔.
-    learn_gaps = (args.learn_gaps or args.autonomous) and not args.no_learn_gaps
+    # --web-learn 은 '미해석 공백'을 웹에서 배우므로 공백 탐지(learn-gaps)를 함께 켠다
+    learn_gaps = ((args.learn_gaps or args.autonomous or args.web_learn)
+                  and not args.no_learn_gaps)
     learner = None
     if learn_gaps:
         from .learn import ReferenceLearner
@@ -485,6 +514,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         approver = smart_approver
     orchestrator = Orchestrator(guard, runner or SubprocessRunner(), kb, approver,
                                 max_enum=max_enum,
+                                max_llm=pick(None, cfg.max_llm, 5),
                                 recon_max_attempts=max_attempts,
                                 max_rounds=max_rounds,
                                 max_sweeps=max_sweeps,
@@ -525,12 +555,12 @@ def main(argv: list[str] | None = None, runner=None) -> int:
             print(f"\n⚠️ 라이트업 저장 실패: {e}", file=sys.stderr)
 
     # 9) 구조화 결과 내보내기(선택) — JSON(기계판독) / HTML(대시보드)
-    try:
-        from . import kb_sync as _kbs
-        report.knowledge = _kbs.knowledge_summary(knowledge_dir)
-    except Exception:   # noqa: BLE001 — 현황 집계 실패가 산출물을 막지 않게
-        report.knowledge = {}
     if args.json_out is not None or args.html_out is not None:
+        try:
+            from . import kb_sync as _kbs
+            report.knowledge = _kbs.knowledge_summary(knowledge_dir)
+        except Exception:   # noqa: BLE001 — 현황 집계 실패가 산출물을 막지 않게
+            report.knowledge = {}
         from . import report_export
         from .state import StateStore
         safe = StateStore._safe(args.target)

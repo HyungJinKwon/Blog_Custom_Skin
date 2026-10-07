@@ -16,8 +16,9 @@ Promote — 로컬 학습 노트를 검토 가능한 '번들 시드' 보강으�
   - 관문: 허용(권위) 출처 · 충분한 요약 길이 · 웹페이지 군더더기 없음 · HTB 라이트업
     신호 없음 · 제어문자 없음. 하나라도 걸리면 그 항목은 승격하지 않는다.
   - 같은 출처 URL 은 새 내용으로 교체(중복 누적 없음), 주제당 항목 수 상한.
-  - 승격분은 그 주제의 현재 카탈로그(learn.SOURCES) 출처만. 카탈로그에서 교체·삭제된
-    출처의 기존 승격 항목은 다음 승격 때 정리된다(낡은 발췌가 상한 자리를 차지하지 않게).
+  - 승격분은 그 주제의 현재 카탈로그(learn.SOURCES) 출처만. 카탈로그에서 교체·삭제됐거나
+    현재 관문을 통과하지 못하는 기존 승격 항목은 다음 승격 때 정리된다.
+  - 시드 전문은 RAG 반영 상한(NOTE_CHARS) 안으로 유지(넘치면 오래된 승격분부터 버림).
   - CI 가 커밋된 시드의 승격 섹션을 같은 관문으로 재검사한다(tests/test_promote.py).
   - 가져온 내용은 신뢰불가 데이터 — 노트로만 저장, 실행·명령화하지 않는다.
 """
@@ -60,7 +61,7 @@ class PromoteResult:
     accepted: list[Candidate] = field(default_factory=list)
     rejected: list[tuple[str, str]] = field(default_factory=list)   # (제목, 사유)
     seed_path: str = ""
-    pruned: list[str] = field(default_factory=list)                 # 카탈로그에서 빠져 정리된 항목 제목
+    pruned: list[tuple[str, str]] = field(default_factory=list)     # (제목, 사유) 시드에서 정리된 항목
     changed: bool = False
     error: str = ""
 
@@ -109,14 +110,28 @@ def parse_learned(text: str) -> list[Candidate]:
     return _parse_entries(text.splitlines())
 
 
+def _norm(text: str) -> str:
+    return text.replace("\r\n", "\n")
+
+
 def split_seed(text: str) -> tuple[str, list[Candidate]]:
-    """시드를 (승격 섹션 앞 본문, 기존 승격 항목) 으로 나눈다."""
+    """시드를 (사람이 쓴 본문, 승격 항목 전부) 로 나눈다.
+    승격 섹션 뒤에 사람이 덧붙인 '## ' 절이 있으면 본문으로 보존한다(다음 승격 때 승격 섹션
+    앞으로 옮겨질 뿐 지워지지 않음). 출처 없는 항목도 돌려줘 관문이 걸러내게 한다."""
+    text = _norm(text)
     idx = text.find(PROMOTED_HEADER)
     if idx < 0:
         return text.rstrip() + "\n", []
-    body = text[:idx].rstrip() + "\n"
-    rest = text[idx + len(PROMOTED_HEADER):].splitlines()
-    return body, [c for c in _parse_entries(rest) if c.url]
+    before = text[:idx].rstrip()
+    section: list[str] = []
+    tail: list[str] = []
+    for line in text[idx + len(PROMOTED_HEADER):].splitlines():
+        if tail or (line.startswith("## ") and not line.startswith("### ")):
+            tail.append(line)
+        else:
+            section.append(line)
+    body = before + ("\n\n" + "\n".join(tail).strip() if "".join(tail).strip() else "")
+    return body.rstrip() + "\n", _parse_entries(section)
 
 
 def render_seed(body: str, entries: list[Candidate]) -> str:
@@ -131,11 +146,45 @@ def render_seed(body: str, entries: list[Candidate]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def stray_lines(text: str) -> list[str]:
+    """승격 섹션 안에서 항목 형식(### 제목 / - 출처·승격일·요약 / 안내문)에 속하지 않는 줄.
+    promote 는 이런 줄이 있으면 지우지 않고 중단한다(사람이 쓴 내용 보호)."""
+    text = _norm(text)
+    idx = text.find(PROMOTED_HEADER)
+    if idx < 0:
+        return []
+    out = []
+    for line in text[idx + len(PROMOTED_HEADER):].splitlines():
+        s = line.strip()
+        if line.startswith("## ") and not line.startswith("### "):
+            break                 # 뒤따르는 사람의 절 — 보존 대상
+        if (not s or s == PROMOTED_NOTE or _ENTRY_TITLE.match(line.rstrip())
+                or s.startswith(("- 출처:", "- 요약:", "- 승격일:"))):
+            continue
+        out.append(s)
+    return out
+
+
+def is_canonical(text: str) -> bool:
+    """승격 섹션이 promote 가 쓰는 형식 그대로인가(섹션 안 임의 문장·출처 없는 항목 등 차단)."""
+    if PROMOTED_HEADER not in text:
+        return True
+    body, entries = split_seed(text)
+    def lines(t: str) -> list[str]:   # 줄 끝 공백 차이는 무시(무해)
+        return [ln.rstrip() for ln in _norm(t).rstrip().splitlines()]
+    return lines(text) == lines(render_seed(body, entries))
+
+
 def merge(existing: list[Candidate], new: list[Candidate]) -> list[Candidate]:
-    """새 항목 우선, 같은 URL 은 교체, 상한 개수만 유지."""
+    """기존 항목은 제자리에서 같은 URL 의 새 내용으로 교체하고, 처음 보는 URL 만 앞에
+    붙인다(일시적 수집 실패로 순서가 바뀌는 diff 방지). 상한을 넘으면 뒤(오래된 것)부터 버림."""
+    fresh: dict[str, Candidate] = {}
+    for c in new:
+        fresh.setdefault(c.url, c)
+    known = {e.url for e in existing}
     out: list[Candidate] = []
     seen: set[str] = set()
-    for c in new + existing:
+    for c in [c for u, c in fresh.items() if u not in known] + [fresh.get(e.url, e) for e in existing]:
         if c.url in seen:
             continue
         seen.add(c.url)
@@ -145,7 +194,8 @@ def merge(existing: list[Candidate], new: list[Candidate]) -> list[Candidate]:
 
 def promote(topic: str, learned_dir: str, seed_dir: str,
             today: str | None = None) -> PromoteResult:
-    """주제 하나를 승격. 관문을 통과한 항목이 있을 때만 시드를 다시 쓴다."""
+    """주제 하나를 승격. 반영할 항목이나 정리할 항목이 있을 때만 시드를 다시 쓴다."""
+    from .knowledge import NOTE_CHARS
     key = topic.strip().lower()
     res = PromoteResult(topic=key)
     if key not in learn.topics():
@@ -162,32 +212,52 @@ def promote(topic: str, learned_dir: str, seed_dir: str,
         return res
     stamp = today or date.today().isoformat()
     catalog = {u for _, u in learn.SOURCES.get(key, [])}
-    with open(lpath, encoding="utf-8") as f:
+    with open(lpath, encoding="utf-8", errors="replace") as f:
         cands = parse_learned(f.read())
+    seen: set[str] = set()
     for c in cands:
+        c.summary = re.sub(r"\s+", " ", c.summary).strip()   # 정규화한 뒤에 관문 검사
         reason = check_candidate(c)
         if not reason and c.url not in catalog:
             reason = "현재 카탈로그에 없는 출처(교체·삭제됨 — 다시 --learn)"
+        if not reason and c.url in seen:
+            reason = "같은 출처 중복(앞 항목만 사용)"
         if reason:
             res.rejected.append((c.title, reason))
             continue
-        c.summary = re.sub(r"\s+", " ", c.summary).strip()[:MAX_SUMMARY]
+        seen.add(c.url)
+        c.summary = c.summary[:MAX_SUMMARY].strip()
         c.promoted_on = stamp
         res.accepted.append(c)
     with open(spath, encoding="utf-8") as f:
         old = f.read()
+    stray = stray_lines(old)
+    if stray:
+        res.error = (f"승격 섹션 안에 형식 밖 문장 {len(stray)}줄 — 지우지 않고 중단"
+                     f"(예: {stray[0][:40]!r}). 본문으로 옮기거나 '## ' 절로 분리 후 재실행")
+        return res
     body, existing = split_seed(old)
-    res.pruned = [e.title for e in existing if e.url not in catalog]
+    kept: list[Candidate] = []
+    for e in existing:            # 기존 승격분도 현재 카탈로그·관문으로 다시 확인
+        why = ("카탈로그에서 빠진 출처" if e.url not in catalog else check_candidate(e))
+        if why:
+            res.pruned.append((e.title, why))
+        else:
+            kept.append(e)
     if not res.accepted and not res.pruned:
         return res
-    kept = [e for e in existing if e.url in catalog]
     prev = {e.url: e for e in kept}
     for c in res.accepted:        # 내용이 같으면 최초 승격일 유지(주기 실행 시 날짜만 바뀌는 diff 방지)
         old_e = prev.get(c.url)
         if old_e and old_e.title == c.title and old_e.summary == c.summary and old_e.promoted_on:
             c.promoted_on = old_e.promoted_on
-    new_text = render_seed(body, merge(kept, res.accepted))
-    if new_text != old:
+    entries = merge(kept, res.accepted)
+    new_text = render_seed(body, entries)
+    while len(new_text) > NOTE_CHARS and entries:   # RAG 반영 상한(전문 로드) 안으로
+        dropped = entries.pop()
+        res.pruned.append((dropped.title, f"시드 길이 상한({NOTE_CHARS}자)"))
+        new_text = render_seed(body, entries)
+    if new_text != _norm(old):
         with open(spath, "w", encoding="utf-8") as f:
             f.write(new_text)
         res.changed = True

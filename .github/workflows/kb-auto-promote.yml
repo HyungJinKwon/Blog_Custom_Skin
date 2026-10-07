@@ -8,10 +8,11 @@ name: KB 자동 승격
 #   Settings → Actions → General → Workflow permissions
 #     · "Read and write permissions"
 #     · "Allow GitHub Actions to create and approve pull requests" 체크
-#   (선택) Settings → General → "Allow auto-merge" — 필수 체크가 있는 보호 브랜치면 그 통과 후 병합
 #
 # 참고: GITHUB_TOKEN 으로 만든 PR 에는 다른 워크플로(htb-agent CI)가 돌지 않는다.
 #       그래서 이 워크플로가 PR 을 열기 전에 같은 전체 테스트를 직접 실행해 검증한다.
+#       기본 브랜치에 '필수 상태 체크' 보호 규칙을 걸면 그 체크가 시작되지 않아 자동 병합이
+#       영영 대기하므로, 이 PR 에 필수 체크를 요구하지 않거나 PAT/GitHub App 토큰을 쓸 것.
 
 on:
   schedule:

@@ -187,6 +187,14 @@ def _esc(s) -> str:
     return html.escape(str(s), quote=True)
 
 
+def _link(url) -> str:
+    """http(s) 주소만 링크로, 그 외(javascript: 등)는 글자로만 표시."""
+    u = str(url or "")
+    if u.lower().startswith(("http://", "https://")):
+        return f"<a href='{_esc(u)}'>{_esc(u)}</a>"
+    return _esc(u)
+
+
 def _sev_class(sev: str) -> str:
     return {"critical": "b-crit", "high": "b-high",
             "medium": "b-med"}.get((sev or "").lower(), "b-low")
@@ -235,8 +243,8 @@ def _html_enriched(report) -> str:
     for e in report.enriched:
         meta = " ".join(x for x in [e.severity, (f"CVSS {e.cvss}" if e.cvss else "")] if x)
         url = Enricher.cve_url(e.id)
-        refs = "".join(f"<li><a href='{_esc(r)}'>{_esc(r)}</a></li>" for r in e.references[:3])
-        pocs = "".join(f"<li><a href='{_esc(p)}'>{_esc(p)}</a></li>" for p in e.poc_repos[:3])
+        refs = "".join(f"<li>{_link(r)}</li>" for r in e.references[:3])
+        pocs = "".join(f"<li>{_link(p)}</li>" for p in e.poc_repos[:3])
         out.append(
             f"<div class='panel'><b><a href='{_esc(url)}'>{_esc(e.id)}</a></b> "
             f"<span class='badge {_sev_class(e.severity)}'>{_esc(meta or 'n/a')}</span>"
@@ -348,7 +356,7 @@ def _html_knowledge(report) -> str:
         latest = k.get("promoted_latest") or "-"
         sync = (k.get("last_sync") or "").replace("T", " ").replace("Z", " UTC") or "아직 없음"
         lines += [
-            f"번들 시드 {k.get('seed_topics', 0)}개 — 누구나 clone 즉시 같은 지식으로 시작(오프라인 포함)",
+            f"번들 시드 {_esc(k.get('seed_topics', 0))}개 — 누구나 clone 즉시 같은 지식으로 시작(오프라인 포함)",
             f"주간 자동 승격(품질 관문 + 전체 테스트 통과분만) — 최근 승격일 {_esc(latest)}",
             f"실행 시 하루 1회 공유 저장소와 검증 동기화 — 마지막 동기화 {_esc(sync)}",
         ]

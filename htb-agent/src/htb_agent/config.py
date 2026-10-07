@@ -99,7 +99,7 @@ class Config:
             max_sweeps=d.get("max_sweeps"),
             max_parallel=d.get("max_parallel"),
             max_variants=d.get("max_variants"),
-            knowledge_dir=d.get("knowledge_dir", d.get("knowledge")),
+            knowledge_dir=d.get("knowledge_dir") or d.get("knowledge"),
             state_dir=d.get("state_dir"),
         )
 

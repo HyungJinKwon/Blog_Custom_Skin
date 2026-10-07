@@ -57,6 +57,7 @@ assassin 10.129.1.5                      # 승인제 포트스캔+열거 시작
 | 스마트(기본) | `assassin <t>` | 범위내+검증통과 자동실행 · 파괴명령 자동거부 · 범위밖만 사람확인 |
 | 완전자동 | `assassin <t> --auto` | 범위밖은 조용히 건너뜀(무프롬프트) |
 | 완전수동 | `assassin <t> --manual` | 모든 명령 실행 전 확인 |
+| 능동적 완전자동 | `assassin <t> --autonomous` (=`--hackathon`) | 범위내 자동승인 + 깊은 스윕·병렬 열거·변형 학습·자동 학습 · 범위밖 실행 안 함 · `--manual` 이 우선 |
 
 | 플랫폼 | 명령 | 특징 |
 |---|---|---|
@@ -83,7 +84,7 @@ CVE 자동수집: 기본 활성(NVD/GitHub) · 끄기 `--no-enrich` · 오프라
 ### 4.3 도구 미설치(NO_BINARY 경고)
 - 증상: `'<도구>' 미설치 — 실행환경(Kali)에서 확인 필요`.
 - 조치: `sudo ./scripts/install_tools.sh [카테고리]`. 카테고리:
-  `recon web smb ad creds cloud traffic re pwn forensic pivot`.
+  `recon web smb ad creds cloud pivot wordlist traffic re pwn forensic llm`.
 
 ### 4.4 LLM 백엔드 사용 불가
 - 증상: `hybrid 사용 불가: ollama(Connection refused) / claude(anthropic SDK 미설치)`.

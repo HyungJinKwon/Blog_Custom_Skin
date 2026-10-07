@@ -73,8 +73,10 @@ def validate_seed(name: str, text: str) -> str | None:
     size = len(text.encode("utf-8"))
     if size < MIN_BYTES:
         return f"너무 짧음(<{MIN_BYTES}B)"
-    if len(text) > _promote_note_chars():
+    if len(text) > _note_chars():
         return "RAG 반영 상한 초과"
+    if not _promote.is_canonical(text):
+        return "승격 섹션이 정규 형식 아님(섹션 안 임의 문장 등)"
     body, entries = _promote.split_seed(text)
     missing = [h for h in REQUIRED if h not in body]
     if missing:
@@ -92,7 +94,7 @@ def validate_seed(name: str, text: str) -> str | None:
     return None
 
 
-def _promote_note_chars() -> int:
+def _note_chars() -> int:
     from .knowledge import NOTE_CHARS
     return NOTE_CHARS
 
@@ -194,31 +196,62 @@ def sync(knowledge_dir: str, fetch: Callable[[str], bytes | None] | None = None,
     if not isinstance(listing, list):
         res.error = "공유 저장소 목록 조회 실패(오프라인·비공개·차단)"
         return res
+    try:
+        _sync_into_cache(knowledge_dir, sdir, listing, fetch, repo, res)
+    except OSError as e:          # 읽기 전용 설치·디스크 가득 등 — 실행을 막지 않고 보고만
+        res.error = f"캐시 쓰기 실패: {e}"
+    return res
+
+
+def _known_locally(sdir: str, sha: str) -> bool:
+    """공유본 블롭이 로컬 git 객체에 이미 있으면 True — 로컬 추적 시드가 그 버전을 거쳐
+    커밋된(더 새로운) 상태이므로 캐시로 덮지 않는다. git 이 없거나 저장소가 아니면 False."""
+    if not re.fullmatch(r"[0-9a-f]{40}", sha):
+        return False
+    try:
+        out = subprocess.run(["git", "-C", sdir, "cat-file", "-e", sha],
+                             capture_output=True, timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return out.returncode == 0
+
+
+def _sync_into_cache(knowledge_dir: str, sdir: str, listing: list,
+                     fetch: Callable[[str], bytes | None], repo: str, res: SyncResult) -> None:
     cdir = cache_dir(knowledge_dir)
     os.makedirs(cdir, exist_ok=True)
     manifest = _load_manifest(cdir)
     edited = _locally_modified(sdir)
+    listed: set[str] = set()
+
+    def clear(name: str) -> None:
+        if manifest.pop(name, None) is not None or os.path.exists(os.path.join(cdir, name)):
+            _remove(os.path.join(cdir, name))
+            res.cleared.append(name)
+
     for item in listing:
         if not isinstance(item, dict):
             continue
         name, sha, url = item.get("name", ""), item.get("sha", ""), item.get("download_url", "")
         if not (isinstance(name, str) and _SEED_NAME.match(name) and isinstance(sha, str)):
             continue
+        listed.add(name)
         local = _read_bytes(os.path.join(sdir, name))
         if local is None:            # 로컬에 없는 새 주제는 코드(카탈로그)와 함께 와야 한다
             continue
         base = blob_sha(local)
-        ent = manifest.get(name) if isinstance(manifest.get(name), dict) else {}
+        raw_ent = manifest.get(name)
+        ent: dict = raw_ent if isinstance(raw_ent, dict) else {}
         if sha == base:               # 로컬이 이미 최신 → 캐시본 정리
-            if ent:
-                manifest.pop(name, None)
-                _remove(os.path.join(cdir, name))
-                res.cleared.append(name)
+            clear(name)
             continue
         if ent.get("sha") == sha and ent.get("base") == base:
             continue                  # 이 버전은 이미 처리함
         if name in edited:
             res.rejected.append((name, "로컬 수정본(미커밋) 보존 — 동기화 안 함"))
+            continue
+        if _known_locally(sdir, sha):  # 로컬이 공유본을 거쳐 커밋된 더 새 버전
+            clear(name)
             continue
         if not _download_ok(url, repo):
             res.rejected.append((name, "다운로드 주소가 공유 저장소 원본이 아님"))
@@ -236,7 +269,8 @@ def sync(knowledge_dir: str, fetch: Callable[[str], bytes | None] | None = None,
             res.rejected.append((name, "UTF-8 아님"))
             continue
         if text.replace("\r\n", "\n") == local.decode("utf-8", "replace").replace("\r\n", "\n"):
-            manifest[name] = {"sha": sha, "base": base, "applied": False}   # 줄바꿈만 다름
+            clear(name)               # 줄바꿈만 다름(Windows autocrlf) — 로컬이 최신
+            manifest[name] = {"sha": sha, "base": base, "applied": False}
             continue
         reason = validate_seed(name, text)
         if reason:
@@ -248,15 +282,16 @@ def sync(knowledge_dir: str, fetch: Callable[[str], bytes | None] | None = None,
         os.replace(tmp, os.path.join(cdir, name))
         manifest[name] = {"sha": sha, "base": base, "applied": True}
         res.applied.append(name)
+    for name in [n for n in list(manifest) if n not in listed]:   # 공유 저장소에서 사라진 시드
+        clear(name)
     _save_manifest(cdir, manifest)
     _touch(os.path.join(cdir, STAMP))
-    return res
 
 
 def auto_sync(knowledge_dir: str, fetch: Callable[[str], bytes | None] | None = None,
               now: float | None = None, interval: int = INTERVAL) -> SyncResult:
     """실행 시 자동 동기화. 끄기 설정·간격 미도래면 건너뛴다."""
-    if os.environ.get("ASSASSIN_NO_KB_SYNC", "").strip() not in ("", "0", "false", "no"):
+    if os.environ.get("ASSASSIN_NO_KB_SYNC", "").strip().lower() not in ("", "0", "false", "no", "off"):
         return SyncResult(skipped="ASSASSIN_NO_KB_SYNC")
     stamp = os.path.join(cache_dir(knowledge_dir), STAMP)
     now = time.time() if now is None else now
@@ -307,7 +342,7 @@ def _touch(path: str) -> None:
 def knowledge_summary(knowledge_dir: str) -> dict:
     """리포트(심사위원용 '한눈에 보기')에 싣는 지식 기반 현황. 파일만 읽는다(네트워크 없음).
     seed_topics: 번들 시드 수 / catalog_topics·catalog_covered: 카탈로그 주제 수·시드 보유 수 /
-    promoted: 승격 발췌 수(공유 캐시본 기준) / promoted_latest: 최근 승격일 /
+    promoted: 승격 발췌 수(공유 캐시본이 있으면 그것, 없으면 추적 시드 기준) / promoted_latest: 최근 승격일 /
     shared_overlays: 공유 저장소 최신본으로 대체된 시드 수 / last_sync: 마지막 동기화(UTC ISO) /
     local_learned: 내 로컬 학습 노트 수 / ingested: 내가 넣은 자료 수."""
     sdir = _seed_dir(knowledge_dir)
