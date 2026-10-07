@@ -1,0 +1,187 @@
+"""
+Promote — 로컬 학습 노트를 검토 가능한 '번들 시드' 보강으로 승격
+====================================================================
+
+문제: 번들 시드(seed-<주제>.md)는 저장소에 커밋되어 모든 사용자가 동일하게
+시작한다(완성형 베이스라인). 반면 `--learn`·자율 지식 획득이 만드는 learned-*.md 는
+환경마다 달라 .gitignore 된다 — 그래서 '성장'이 각자 따로 일어나 성능이 갈린다.
+
+해결(검토 후 승격): 각자 학습한 노트 중 **품질 관문을 통과한 항목만** 시드의
+`## 최신 보강(승격)` 섹션으로 옮긴다. 사용자가 그 diff 를 커밋·PR 하면, 리뷰·CI 를
+거쳐 병합되는 순간 모든 사용자의 베이스라인이 함께 자란다.
+
+원칙
+  - 사람이 다듬은 시드 본문(개요·핵심 기법·표준 도구·블루팀 탐지·완화)은 건드리지
+    않는다. 승격분은 전용 섹션에만 쓴다.
+  - 관문: 허용(권위) 출처 · 충분한 요약 길이 · 웹페이지 군더더기 없음 · HTB 라이트업
+    신호 없음 · 제어문자 없음. 하나라도 걸리면 그 항목은 승격하지 않는다.
+  - 같은 출처 URL 은 새 내용으로 교체(중복 누적 없음), 주제당 항목 수 상한.
+  - CI 가 커밋된 시드의 승격 섹션을 같은 관문으로 재검사한다(tests/test_promote.py).
+  - 가져온 내용은 신뢰불가 데이터 — 노트로만 저장, 실행·명령화하지 않는다.
+"""
+from __future__ import annotations
+
+import os
+import re
+from dataclasses import dataclass, field
+from datetime import date
+
+from . import learn
+
+PROMOTED_HEADER = "## 최신 보강(승격)"
+PROMOTED_NOTE = ("> `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. "
+                 "수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.")
+MAX_ENTRIES = 3          # 주제당 승격 항목 상한(시드 비대화 방지)
+MIN_SUMMARY = 120        # 이보다 짧은 요약은 정보가 부족하다고 본다
+MAX_SUMMARY = 500        # 승격 시 요약 길이 상한(RAG 반영 상한 안에 시드 전문 유지)
+
+# 요약 앞부분에 나타나면 본문이 아니라 웹페이지 군더더기로 보는 신호
+_JUNK = re.compile(
+    r"(?i)(enable javascript|javascript (is )?(disabled|required)|turn on javascript|"
+    r"we use cookies|accept (all )?cookies|cookie (policy|settings)|skip to (main )?content|"
+    r"\bmy account\b|\bproducts\b.{0,40}\bsolutions\b|\bsign in\b.{0,40}\b(sign up|register)\b)")
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_ENTRY_TITLE = re.compile(r"^#{2,3} (.+)$")
+
+
+@dataclass
+class Candidate:
+    title: str
+    url: str = ""
+    summary: str = ""
+    promoted_on: str = ""
+
+
+@dataclass
+class PromoteResult:
+    topic: str
+    accepted: list[Candidate] = field(default_factory=list)
+    rejected: list[tuple[str, str]] = field(default_factory=list)   # (제목, 사유)
+    seed_path: str = ""
+    changed: bool = False
+    error: str = ""
+
+
+def check_candidate(c: Candidate) -> str | None:
+    """승격 관문. 통과하면 None, 아니면 거부 사유."""
+    if not c.url:
+        return "출처 URL 없음"
+    if not learn.is_allowed(c.url):
+        return "허용(권위) 출처 아님"
+    if _CONTROL.search(c.title + c.url + c.summary):
+        return "제어문자 포함"
+    if not c.summary.strip():
+        return "요약 없음(오프라인 수집 등)"
+    if len(c.summary.strip()) < MIN_SUMMARY:
+        return f"요약이 너무 짧음(<{MIN_SUMMARY}자)"
+    if _JUNK.search(c.summary[:150]):
+        return "웹페이지 군더더기 의심"
+    from .web_search import is_htb_writeup
+    if is_htb_writeup(c.url, c.title, c.summary):
+        return "HTB 라이트업 신호"
+    return None
+
+
+def _parse_entries(lines: list[str]) -> list[Candidate]:
+    """'## 제목' 또는 '### 제목' + '- 출처: / - 요약: / - 승격일:' 블록을 읽는다."""
+    out: list[Candidate] = []
+    cur: Candidate | None = None
+    for line in lines:
+        m = _ENTRY_TITLE.match(line.rstrip())
+        if m:
+            cur = Candidate(title=m.group(1).strip())
+            out.append(cur)
+            continue
+        if cur is None:
+            continue
+        s = line.strip()
+        for key, attr in (("- 출처:", "url"), ("- 요약:", "summary"), ("- 승격일:", "promoted_on")):
+            if s.startswith(key):
+                setattr(cur, attr, s[len(key):].strip())
+    return out
+
+
+def parse_learned(text: str) -> list[Candidate]:
+    """learned-<주제>.md 의 항목들."""
+    return _parse_entries(text.splitlines())
+
+
+def split_seed(text: str) -> tuple[str, list[Candidate]]:
+    """시드를 (승격 섹션 앞 본문, 기존 승격 항목) 으로 나눈다."""
+    idx = text.find(PROMOTED_HEADER)
+    if idx < 0:
+        return text.rstrip() + "\n", []
+    body = text[:idx].rstrip() + "\n"
+    rest = text[idx + len(PROMOTED_HEADER):].splitlines()
+    return body, [c for c in _parse_entries(rest) if c.url]
+
+
+def render_seed(body: str, entries: list[Candidate]) -> str:
+    if not entries:
+        return body
+    lines = [body.rstrip(), "", PROMOTED_HEADER, "", PROMOTED_NOTE, ""]
+    for c in entries:
+        lines += [f"### {c.title}", f"- 출처: {c.url}"]
+        if c.promoted_on:
+            lines.append(f"- 승격일: {c.promoted_on}")
+        lines += [f"- 요약: {c.summary}", ""]
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def merge(existing: list[Candidate], new: list[Candidate]) -> list[Candidate]:
+    """새 항목 우선, 같은 URL 은 교체, 상한 개수만 유지."""
+    out: list[Candidate] = []
+    seen: set[str] = set()
+    for c in new + existing:
+        if c.url in seen:
+            continue
+        seen.add(c.url)
+        out.append(c)
+    return out[:MAX_ENTRIES]
+
+
+def promote(topic: str, learned_dir: str, seed_dir: str,
+            today: str | None = None) -> PromoteResult:
+    """주제 하나를 승격. 관문을 통과한 항목이 있을 때만 시드를 다시 쓴다."""
+    key = topic.strip().lower()
+    res = PromoteResult(topic=key)
+    if key not in learn.topics():
+        res.error = "지원 주제 아님(--learn list 참고)"
+        return res
+    lpath = os.path.join(learned_dir, f"learned-{key}.md")
+    spath = os.path.join(seed_dir, f"seed-{key}.md")
+    res.seed_path = spath
+    if not os.path.isfile(lpath):
+        res.error = f"학습 노트 없음 — 먼저 'assassin --learn {key}' 실행"
+        return res
+    if not os.path.isfile(spath):
+        res.error = "번들 시드 없음"
+        return res
+    stamp = today or date.today().isoformat()
+    with open(lpath, encoding="utf-8") as f:
+        cands = parse_learned(f.read())
+    for c in cands:
+        reason = check_candidate(c)
+        if reason:
+            res.rejected.append((c.title, reason))
+            continue
+        c.summary = re.sub(r"\s+", " ", c.summary).strip()[:MAX_SUMMARY]
+        c.promoted_on = stamp
+        res.accepted.append(c)
+    if not res.accepted:
+        return res
+    with open(spath, encoding="utf-8") as f:
+        old = f.read()
+    body, existing = split_seed(old)
+    new_text = render_seed(body, merge(existing, res.accepted))
+    if new_text != old:
+        with open(spath, "w", encoding="utf-8") as f:
+            f.write(new_text)
+        res.changed = True
+    return res
+
+
+def promote_all(learned_dir: str, seed_dir: str, today: str | None = None) -> list[PromoteResult]:
+    """학습 노트가 있는 모든 지원 주제를 승격 시도."""
+    return [promote(t, learned_dir, seed_dir, today) for t in learn.topics()
+            if os.path.isfile(os.path.join(learned_dir, f"learned-{t}.md"))]

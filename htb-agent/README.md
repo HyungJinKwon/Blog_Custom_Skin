@@ -108,6 +108,11 @@ assassin 10.129.1.5 --config config/config.example.json
 > 불변식으로 완비·깊이·섹션 강제). 웹 취약점·AD 공격체인·서비스 열거·전술 전반 포괄.
 > **일괄 온라인 보강**: `assassin --learn all` — 59개 주제의 최신 본문을 권위
 > 출처에서 한 번에 덧씌움(오프라인이면 출처 포인터만, 시작 지식은 번들 시드가 보장).
+> **성장 공유(검토 후 승격)**: 학습 노트(`learned-*.md`)는 환경마다 달라 커밋하지 않으므로,
+> 그대로 두면 사람마다 성장이 따로 일어난다. `assassin --promote <주제|all>` 은 그중 **품질 관문**
+> (권위 출처 · 충분한 요약 · 웹페이지 군더더기 없음 · 라이트업 신호 없음)을 통과한 항목만 번들 시드의
+> `## 최신 보강(승격)` 섹션으로 옮긴다(사람이 다듬은 본문은 그대로, 같은 출처는 교체, 주제당 3건 상한).
+> 결과 diff 를 커밋·PR → 리뷰·CI(같은 관문 재검사) 통과로 병합되면 **모든 사용자의 시작 지식이 함께 자란다.**
 > **내 자료 학습**: `assassin --ingest ./my-writeups/` — .md/.txt/.pdf 파일/디렉터리를
 > 지식베이스 노트로 학습(원문 보존). 본인이 올린 자료는 **참조 허용** — RAG 가 풀이 중 참조(P1 금지는 외부 라이트업 자동수집뿐).
 > **자율 지식 획득**: `assassin <target> --learn-gaps` (autonomous 모드 기본 활성) —
@@ -187,7 +192,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 52 스위트 1330 테스트
+cd htb-agent && python3 tests/run_all.py     # 53 스위트 1359 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
@@ -211,6 +216,7 @@ cd htb-agent && python3 tests/run_all.py     # 52 스위트 1330 테스트
 | `--doctor` | 환경 자가진단(도구·LLM·VPN 점검, 스캔 안 함). 완전 초보자 권장 첫 실행 |
 | `--revshell` `LHOST:LPORT` | 리버스쉘 페이로드 생성(실행 안 함). 'IP:PORT' 또는 'PORT'(공격자 IP 자동/--attacker-ip). 권한 확인 대상 전용 |
 | `--learn` `TOPIC` | 권위 출처 자가학습(도구·공격기법·개념·프로토콜)을 지식베이스에 저장. 예: --learn kerberoasting / burp / http. 전체 일괄: --learn all. 목록: --learn list |
+| `--promote` `TOPIC` | 로컬 학습 노트(learned-&lt;주제&gt;.md) 중 품질 관문을 통과한 항목을 번들 시드의 '최신 보강(승격)' 섹션으로 승격. 결과를 커밋·PR 하면 모든 사용자에게 공유. 예: --promote sqli / 전체: --promote all |
 | `--ingest` `PATH` | 사용자 제공 자료(.md/.txt 파일 또는 디렉터리)를 지식베이스 노트로 미리 학습. 예: --ingest ./my-writeups/ |
 | `--cloud` `NAME` | AWS/S3 열거 자동 준비(생성 안 실행). 호스트명/도메인에서 버킷명 후보+비인증 점검 생성. 예: --cloud acme.htb. 권한 확인 자산 전용 |
 | `--privesc` `OS` | 권한상승 플레이북 자동 준비(생성 안 실행). OS 별 열거·점검·LPE 체크리스트 생성. 예: --privesc linux. 획득한 대상 셸에서 직접 실행 |

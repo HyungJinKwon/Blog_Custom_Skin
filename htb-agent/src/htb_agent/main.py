@@ -41,6 +41,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--learn", metavar="TOPIC", default=None,
                    help="권위 출처 자가학습(도구·공격기법·개념·프로토콜)을 지식베이스에 저장. "
                         "예: --learn kerberoasting / burp / http. 전체 일괄: --learn all. 목록: --learn list")
+    p.add_argument("--promote", metavar="TOPIC", default=None,
+                   help="로컬 학습 노트(learned-<주제>.md) 중 품질 관문을 통과한 항목을 번들 시드의 "
+                        "'최신 보강(승격)' 섹션으로 승격. 결과를 커밋·PR 하면 모든 사용자에게 공유. "
+                        "예: --promote sqli / 전체: --promote all")
     p.add_argument("--ingest", metavar="PATH", default=None,
                    help="사용자 제공 자료(.md/.txt 파일 또는 디렉터리)를 지식베이스 노트로 "
                         "미리 학습. 예: --ingest ./my-writeups/")
@@ -234,6 +238,34 @@ def main(argv: list[str] | None = None, runner=None) -> int:
             print(ui.mark_err(f"수집할 .md/.txt 자료 없음: {args.ingest}"), file=sys.stderr)
         return 0 if paths else 2
 
+    # 학습 노트 → 번들 시드 승격(스캔·네트워크 없음). 커밋·PR 로 모든 사용자에게 공유.
+    if args.promote:
+        import os as _ospr
+
+        from . import promote as _promote
+        kdir = args.knowledge or "knowledge"
+        ndir = _ospr.path.join(kdir, "notes", "learned")
+        key = args.promote.strip().lower()
+        results = (_promote.promote_all(ndir, ndir) if key == "all"
+                   else [_promote.promote(key, ndir, ndir)])
+        if not results:
+            print(ui.mark_warn("승격할 학습 노트 없음 — 먼저 'assassin --learn all' 실행"))
+            return 2
+        changed = 0
+        for r in results:
+            if r.error:
+                print(ui.mark_err(f"{r.topic}: {r.error}"))
+                continue
+            head = f"{r.topic}: 승격 {len(r.accepted)}건 · 거부 {len(r.rejected)}건"
+            print((ui.mark_ok(head) if r.changed else ui.dim("  " + head + " (변경 없음)")))
+            for title, reason in r.rejected:
+                print(ui.dim(f"     ✗ {title} — {reason}"))
+            changed += r.changed
+        if changed:
+            print(ui.ok(f"\n시드 {changed}개 갱신 — 'git diff {ndir}/seed-*.md' 로 검토 후 커밋·PR 하면 "
+                        "병합 시 모든 사용자에게 반영됩니다."))
+        return 0 if not any(r.error for r in results) else 2
+
     # 권위 출처 자가학습(스캔 안 함) — 지식베이스에 노트 저장(P1 유지)
     if args.learn:
         from . import learn
@@ -261,7 +293,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         return 0 if res.refs else 2
 
     if not args.target:
-        parser.error("target 이 필요합니다 (또는 --doctor / --revshell / --cloud / --privesc / --crack / --learn / --ingest). 예: assassin 10.129.1.5")
+        parser.error("target 이 필요합니다 (또는 --doctor / --revshell / --cloud / --privesc / --crack / --learn / --promote / --ingest). 예: assassin 10.129.1.5")
 
     # 0) 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값)
     from .config import load_config, pick, Config, ConfigError
