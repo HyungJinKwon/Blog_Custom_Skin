@@ -65,6 +65,14 @@ class EnumFinding:
     phase: str = "enum"
 
 
+GATE_KEYS = ("proposed", "executed", "run_failed", "tool_missing", "rejected_validate",
+             "rejected_scope", "denied_review", "denied_scope")
+
+
+def _new_gate_stats() -> dict:
+    return {k: 0 for k in GATE_KEYS}
+
+
 @dataclass
 class OrchestrationReport:
     target: str
@@ -75,6 +83,8 @@ class OrchestrationReport:
     world: "object | None" = None     # world.WorldModel — 구조화 상태(단일 상태원)
     analysis: str = ""                # LLM 분석가(B3) — 가설·공격경로·다음집중·확신도
     phase_status: dict = field(default_factory=dict)   # A2 단계 게이팅 상태(phase→상태)
+    # 3관문 결과 집계(열거·LLM 명령 기준, 정찰 포트스캔 제외) — 리포트·대시보드용
+    gate_stats: dict = field(default_factory=_new_gate_stats)
     enum_findings: list[EnumFinding] = field(default_factory=list)
     llm_findings: list[EnumFinding] = field(default_factory=list)
     manual_suggestions: list[str] = field(default_factory=list)
@@ -942,15 +952,19 @@ class Orchestrator:
         finding = EnumFinding(command=cmd, phase=phase)
         findings.append(finding)
         self.audit.event("proposed", cmd=cmd, phase=phase)
+        gs = report.gate_stats
+        gs["proposed"] += 1
 
         binary = binary_of(cmd)
         if binary and not self.is_tool_available(binary):
             finding.note = f"건너뜀: '{binary}' 미설치"
+            gs["tool_missing"] += 1
             self.audit.event("skipped", cmd=cmd, reason="tool-missing", binary=binary)
             return None
         vrep: ValidationReport = validate(cmd)
         if not vrep.ok:
             finding.note = "검증 실패: " + "; ".join(str(i) for i in vrep.errors)
+            gs["rejected_validate"] += 1
             self.audit.event("rejected", cmd=cmd, stage="validate",
                              errors=[str(i) for i in vrep.errors])
             return None
@@ -958,6 +972,7 @@ class Orchestrator:
             sres: CommandScopeResult = self.guard.inspect_command(cmd, hosts_map=self.hosts_map)
         except ScopeViolation as e:
             finding.note = f"범위 오류: {e}"
+            gs["rejected_scope"] += 1
             self.audit.event("rejected", cmd=cmd, stage="scope", reason=str(e))
             return None
         if not self.approver(cmd, vrep, sres):
@@ -965,11 +980,13 @@ class Orchestrator:
             if review:
                 # 동적·원격 코드 실행: 자동실행 대신 수동 제안으로 강등(사람이 내용 확인)
                 finding.note = "미승인(실행위험): " + "; ".join(review)
+                gs["denied_review"] += 1
                 entry = cmd + "   # (실행위험 — 내용 확인 후 수동)"
                 if entry not in report.manual_suggestions:
                     report.manual_suggestions.append(entry)
             else:
                 finding.note = "미승인(범위밖/사용자 거부)"
+                gs["denied_scope"] += 1
             self.audit.event("denied", cmd=cmd, in_scope=sres.auto_allowed, review=review)
             return None
         return finding
@@ -979,6 +996,7 @@ class Orchestrator:
         반드시 단일 스레드에서, 제출 순서대로 호출한다(병렬 실행과 분리)."""
         cmd = finding.command
         finding.ran = out.launched
+        report.gate_stats["executed" if out.launched else "run_failed"] += 1
         if not out.launched:
             finding.note = f"실행 실패: {out.error}"
             self.audit.event("executed", cmd=cmd, launched=False, error=out.error)

@@ -89,39 +89,6 @@ def _canned_fetch(url: str) -> str | None:
     return None
 
 
-class DemoAudit:
-    """감사 이벤트를 메모리에 모은다(3관문 통계용). AuditLog 와 같은 인터페이스."""
-    path = None
-
-    def __init__(self) -> None:
-        self.events: list[dict] = []
-
-    def event(self, etype: str, **data) -> None:
-        self.events.append({"event": etype, **data})
-
-    def close(self) -> None:
-        pass
-
-
-def gate_stats(events: list[dict]) -> dict[str, int]:
-    """감사 이벤트 → 3관문 결과 집계(열거·LLM 명령 기준)."""
-    st = {"proposed": 0, "executed": 0, "tool_missing": 0, "rejected_validate": 0,
-          "rejected_scope": 0, "denied_review": 0, "denied_scope": 0}
-    for e in events:
-        et = e.get("event")
-        if et == "proposed":
-            st["proposed"] += 1
-        elif et == "executed" and e.get("launched"):
-            st["executed"] += 1
-        elif et == "skipped":
-            st["tool_missing"] += 1
-        elif et == "rejected":
-            st["rejected_validate" if e.get("stage") == "validate" else "rejected_scope"] += 1
-        elif et == "denied":
-            st["denied_review" if e.get("review") else "denied_scope"] += 1
-    return st
-
-
 def _fake_llm(system: str, user: str, tier) -> str:
     """역할 구분 가짜 LLM(오프라인·결정적). 분석가 호출엔 분석문, 명령 생성엔 명령 후보.
     명령 후보에는 3관문 시연용으로 '검토 대상' 1건과 '범위 밖' 1건을 일부러 섞는다."""
@@ -138,8 +105,9 @@ def _fake_llm(system: str, user: str, tier) -> str:
     ])
 
 
-def build_demo(audit=None):
-    """데모 파이프라인 실행 → (OrchestrationReport, FakeRunner). 네트워크 없음."""
+def build_demo():
+    """데모 파이프라인 실행 → (OrchestrationReport, FakeRunner). 네트워크 없음.
+    3관문 집계는 report.gate_stats(오케스트레이터가 직접 기록)."""
     guard = ScopeGuard.from_cidr_strings()
     guard.bind_target(TARGET)
     guard.add_attacker_ip(ATTACKER)
@@ -159,11 +127,10 @@ def build_demo(audit=None):
     enricher = Enricher(cache_dir=os.path.join("/tmp", "assassin_demo_cache"),
                         fetch_fn=_canned_fetch, enabled=True, want_poc=True)
 
-    kwargs = {"audit": audit} if audit is not None else {}
     orch = Orchestrator(
         guard, runner, KnowledgeBase.load(), auto_approve_in_scope,
         vuln_kb=VulnKB.load(), llm_router=llm, enricher=enricher,
-        is_tool_available=lambda b: True, **kwargs)
+        is_tool_available=lambda b: True)
     return orch.run(), runner
 
 
@@ -190,8 +157,7 @@ def run_live(pace: float = 0.0) -> int:
         print(ui.mark_ok("거부: ") + ui.dim(str(e)))
     print(ui.mark_ok(f"허용: {TARGET} (HTB 대역) 바인딩 → 이후 모든 명령은 이 타겟 기준으로 판정"))
 
-    audit = DemoAudit()
-    report, runner = build_demo(audit)
+    report, runner = build_demo()
 
     stage(2, "정찰·식별 — 관측 근거로 OS/역할 판정")
     if report.host:
@@ -214,7 +180,7 @@ def run_live(pace: float = 0.0) -> int:
     for f in blocked:
         print(ui.mark_warn(f.command))
         print(ui.dim(f"     사유: {f.note}"))
-    st = gate_stats(audit.events)
+    st = report.gate_stats
     print()
     print(ui.kv("제안", str(st["proposed"]), 15))
     print(ui.kv("실행", str(st["executed"]), 15))
@@ -232,6 +198,7 @@ def run_live(pace: float = 0.0) -> int:
     print(ui.kv("수동 제안", f"{len(report.manual_suggestions)}건 (사람이 골라 승인)", 10))
     print(ui.kv("라이트업", "htb-ctf-writeup-v5 / Tistory 13섹션 자동 생성", 10))
     print(ui.dim("  전체 산출물: python3 scripts/demo.py --write OUT  (MD·JSON·HTML)"))
+    print(ui.dim("  HTML 상단 '한눈에 보기'에 위 3관문 지표·플래그 출처·안전 경계가 요약됨"))
 
     print(ui.ok("\n라이브 데모 완료 — 실제 대상은 권한 확인된 환경의 Kali 에서 `assassin <target>`"))
     return 1 if executed_risky else 0

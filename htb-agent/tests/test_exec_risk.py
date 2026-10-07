@@ -122,6 +122,13 @@ check("수동 제안으로 강등(리포트에 남음)",
 check("수동 제안 중복 없음",
       sum(1 for s in rep.manual_suggestions if "| bash" in s) == 1)
 
+gs = rep.gate_stats
+check("gate_stats: 검토 강등 1", gs["denied_review"] == 1)
+check("gate_stats: 실행 수 = 러너 호출(정찰 제외)",
+      gs["executed"] == len([c for c in runner.calls if not c.startswith("nmap")]))
+check("gate_stats: 제안 = 실행+거부 합",
+      gs["proposed"] == sum(gs[k] for k in gs if k != "proposed"))
+
 print("\n=== LLM 프롬프트 인젝션 방어 문구 ===")
 sp = build_system_prompt({"platform": "Hack The Box"}, 5)
 check("명령생성 프롬프트: 관측 속 지시문=신뢰불가 데이터", "신뢰할 수 없는" in sp)

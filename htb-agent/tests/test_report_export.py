@@ -59,6 +59,27 @@ check("앰퍼샌드 이스케이프", "a &amp; b &lt;tag&gt;" in h2)
 d2 = json.loads(rx.to_json(rep))
 check("JSON 은 원문 보존+파싱 안전", any("<script>" in v["name"] for v in d2["vuln_matches"]))
 
+print("\n=== 3관문 지표·한눈에 보기(심사위원용 요약) ===")
+rep3, _runner3 = demo.build_demo()
+d3 = json.loads(rx.to_json(rep3))
+from htb_agent.orchestrator import GATE_KEYS  # noqa: E402
+check("JSON gate_stats 키 전부", set(d3["gate_stats"]) == set(GATE_KEYS))
+check("JSON gate_stats 값(데모: 강등1·범위밖1)",
+      d3["gate_stats"]["denied_review"] == 1 and d3["gate_stats"]["denied_scope"] == 1)
+check("schema 1.2", rx.SCHEMA_VERSION == "1.2")
+h3 = rx.to_html(rep3, "DemoBox")
+check("한눈에 보기 섹션", "<h2>한눈에 보기</h2>" in h3)
+check("요약이 포트 섹션보다 앞", h3.index("한눈에 보기") < h3.index("포트 &amp; 서비스"))
+check("지표 타일 렌더", h3.count("class='tile") >= 5 and "검토→수동 강등" in h3)
+check("안전 경계 점검 목록", "class='checks'" in h3 and "사람 승인 없이는 실행되지 않음" in h3)
+check("단계명 한글 라벨", "열거 (Enumeration)" in h3)
+check("OS 확신도 백분율(92%)", "확신도 92%" in h3 and "0.92%" not in h3)
+check("긴 코드 토큰 줄바꿈(모바일 가로 넘침 방지)", "overflow-wrap:anywhere" in h3)
+rep3.target = "<script>alert(1)</script>"
+h4 = rx.to_html(rep3, "x")
+check("요약 섹션 타겟 이스케이프(XSS)", "<script>alert(1)</script>" not in h4
+      and "&lt;script&gt;" in h4)
+
 print("\n=== main 파서: --json / --html 플래그 ===")
 pp = build_parser()
 a = pp.parse_args(["10.10.10.10", "--json", "--html", "out.html"])

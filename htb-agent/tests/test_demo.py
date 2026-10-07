@@ -46,9 +46,8 @@ check("라이트업에 CVE 레퍼런스 섹션", "CVE 레퍼런스" in md)
 check("라이트업 순수 MD(HTML 없음)", "<div" not in md and "<span" not in md)
 
 print("\n=== 라이브 데모: 3관문 시연 ===")
-audit = demo.DemoAudit()
-rep2, runner = demo.build_demo(audit)
-st = demo.gate_stats(audit.events)
+rep2, runner = demo.build_demo()
+st = rep2.gate_stats
 check("검토 대상 1건 이상 수동 강등", st["denied_review"] >= 1)
 check("범위 밖 1건 이상 미실행", st["denied_scope"] >= 1)
 check("실행 수 = 실제 러너 호출(정찰 제외)",
