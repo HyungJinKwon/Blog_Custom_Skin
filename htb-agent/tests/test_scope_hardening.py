@@ -86,6 +86,17 @@ for c in SAFE:
 nc = res(f"snmpwalk -v2c -c public {T} 1.3.6.1.2.1.1").needs_confirmation
 check("OID 에 비정규 표기 사유 추가 없음", not any("→" in x for x in nc))
 
+print("\n=== 파일명 오탐: 비-TLD 확장자 파일은 호스트로 보지 않음 ===")
+for c in ["head -c 20000000 big.bin", "strings a.out", "sqlite3 users.db .dump", "file chall.elf",
+          "tshark -r cap.pcap", "john hash.hashes", "keepass2john vault.kdbx",
+          f"certipy auth -pfx administrator.pfx -dc-ip {T}"]:
+    check(f"파일 인자 자동허용: {c[:44]}", auto(c))
+print("\n=== 확장자 목록 안전장치: 실제 TLD 호스트는 계속 확인 필요 ===")
+# 실제 TLD(IANA) — 파일 확장자처럼 보여도 제외 목록에 넣으면 fail-open 이 되므로 넣지 않았다
+for host in ["evil.pub", "evil.rs", "evil.pl", "evil.mov", "evil.cab", "evil.java"]:
+    check(f"bare 호스트 확인 필요: curl {host}", not auto(f"curl {host}"))
+check("URL 호스트는 확장자와 무관하게 분류(evil.bin)", not auto("curl http://evil.bin/"))
+
 print("\n=== 승인 연동: 무프롬프트 모드에서 실행 안 됨 ===")
 c = "curl 167772161"
 check("auto/autonomous 승인자 거부", auto_approve_in_scope(c, validate(c), res(c)) is False)
