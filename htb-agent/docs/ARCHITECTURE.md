@@ -125,7 +125,7 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 |---|---|---|
 | **안전** | `scope_guard.py` | Target-Binding, 범위밖 기본거부. 가드가 점4자리로 해석 못 하는 숫자형 호스트 표기·IPv6 리터럴·비-HTTP 스킴 호스트도 분류해 확인 필요로 올림(fail-closed, 네트워크 도구 호스트 위치 한정으로 숫자 인자 오탐 방지). 파일 확장자 제외 목록은 IANA TLD 와 겹치지 않는 것만 추가하며, 이미 겹치는 md·py·sh·so·zip 은 네트워크 도구의 호스트 위치에 오면 호스트로 분류(scp/rsync 는 ':' 있는 인자만, ssh 는 첫 위치 인자만, 리다이렉트 대상은 파일) |
 | | `command_validator.py` | 문법·base64·16/10진수·포트·해시·파괴명령 |
-| | `approval.py` | 승인 게이트(스마트=범위 밖·동적/원격 실행(review)만 사람 확인 / auto / manual) + 바이너리/옵션/파라미터 3분할 해설 |
+| | `approval.py` | 승인 게이트(스마트=범위 밖·동적/원격 실행(review)만 사람 확인 / auto / manual) + 바이너리/옵션/파라미터 3분할 해설 + 목적 한 줄 설명·안전한 대안 제시 + **사람 관찰 입력**(`--observe`: 건너뛴 명령 대신 직접 확인 내용을 '사람 관찰'로 기록) |
 | **관측** | `observation/parsers.py` | nmap(XML/텍스트)·HTTP 파싱 |
 | | `observation/web.py` | gobuster·ffuf·feroxbuster·nikto·whatweb |
 | | `observation/smb.py` | smbclient·smbmap·netexec |

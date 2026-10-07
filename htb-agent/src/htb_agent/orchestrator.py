@@ -382,6 +382,7 @@ class Orchestrator:
                  max_parallel: int = 1,
                  time_budget: float = 0.0,
                  max_cost: float = 0.0,
+                 observer: Callable[[str], str] | None = None,
                  clock=None,
                  learner=None,
                  learn_gaps: bool = False,
@@ -415,6 +416,8 @@ class Orchestrator:
         self.max_parallel = max(1, max_parallel)   # 열거 동시 실행 수(1=순차)
         self.time_budget = max(0.0, time_budget)   # 해커톤 시간 예산(분, 0=무제한)
         self.max_cost = max(0.0, max_cost)         # LLM 누적 추정 비용 상한(USD, 0=무제한)
+        # 사람 관찰 입력(선택): 건너뛴 명령 대신 사람이 직접 확인한 내용을 받아 기록한다
+        self.observer = observer
         self._clock = clock or time.monotonic      # 테스트 주입용(단조 시계)
         self.enricher = enricher
         # 자율 지식 획득 — 모르는 기술을 권위 출처에서 자동 학습(learner 주입 시)
@@ -1224,8 +1227,28 @@ class Orchestrator:
                 finding.note = "미승인(범위밖/사용자 거부)"
                 gs["denied_scope"] += 1
             self.audit.event("denied", cmd=cmd, in_scope=sres.auto_allowed, review=review)
+            self._record_observation(finding)
             return None
         return finding
+
+    def _record_observation(self, finding: EnumFinding) -> None:
+        """사람 관찰 입력(선택). 건너뛴 명령 대신 사람이 브라우저 등으로 직접 확인한 내용을
+        '사람 관찰'로 표시해 남긴다 — 에이전트가 검증한 결과와 섞이지 않고, 다음 분석·명령
+        생성의 맥락(관측 목록)에는 들어간다. 입력이 없으면 아무것도 하지 않는다."""
+        if self.observer is None:
+            return
+        try:
+            text = (self.observer(finding.command) or "").strip()
+        except (EOFError, KeyboardInterrupt):
+            return
+        if not text:
+            return
+        text = text[:500]
+        finding.output = f"[사람 관찰] {text}"
+        finding.note = (finding.note + " · " if finding.note else "") + "👁 사람 관찰 기록"
+        if self.world is not None:
+            self.world.add_loot(f"사람 관찰: {text[:80]}", source="사람 관찰")
+        self.audit.event("human_observation", cmd=finding.command, text=text)
 
     def _process(self, report: OrchestrationReport, finding: EnumFinding, out) -> None:
         """실행 결과를 반영(파싱·플래그/해시/크리덴셜 스캔). 공유상태를 변경하므로
