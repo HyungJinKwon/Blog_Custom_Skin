@@ -25,6 +25,12 @@ Scope Guard — 교육용 경계 강제 모듈 (Target-Binding 모델)
      즉 하드 차단이 아니라 '기본 거부 + 사람이 확인하면 허용'.
 
   5. **Fail-closed** : 바인딩 전에는 어떤 명령도 검사/실행 대상이 아니다.
+
+  6. **비정규 주소 표기 = 확인 필요** : 가드가 점4자리로 해석하지 못하는 숫자형 호스트
+     표기(libc inet_aton 이 수용하는 형태)와 IPv6 리터럴은, 해석 결과와 무관하게 '추가
+     확인' 대상으로 올린다. 정상 도구 사용에선 필요 없는 표기이므로 오탐 비용(1회 확인)이
+     미탐 비용(범위 이탈)보다 훨씬 작다. 숫자 인자 오탐을 막기 위해 bare 토큰은 네트워크
+     도구의 호스트 위치에서만 검사한다.
 """
 
 from __future__ import annotations
@@ -32,6 +38,7 @@ from __future__ import annotations
 import ipaddress
 import logging
 import re
+import shlex
 import subprocess
 from dataclasses import dataclass, field
 from enum import Enum
@@ -43,7 +50,22 @@ logger = logging.getLogger("htb_agent.scope_guard")
 DEFAULT_HTB_RANGES: tuple[str, ...] = ("10.10.10.0/23", "10.129.0.0/16")
 
 _IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
-_URL_HOST_RE = re.compile(r"https?://(?:[^@/\s]+@)?([A-Za-z0-9.\-]+)", re.I)
+# 스킴 일반화(http 외 ldap/smb/mongodb/ftp 등) — 비-HTTP URL 의 호스트도 분류 대상
+_URL_HOST_RE = re.compile(r"[a-z][a-z0-9+.\-]*://(?:[^@/\s\[]+@)?([A-Za-z0-9.\-]+)", re.I)
+_URL_V6_RE = re.compile(r"[a-z][a-z0-9+.\-]*://(?:[^@/\s\[]+@)?\[([^\]\s]+)\]", re.I)
+# 숫자형 호스트 표기(1~4 파트, 각 10진/0x16진/0선행 8진) — inet_aton 수용 형태 후보
+_NUMERIC_HOST_RE = re.compile(r"^(?:0x[0-9a-f]+|\d+)(?:\.(?:0x[0-9a-f]+|\d+)){0,3}$", re.I)
+# bare 토큰을 호스트로 받는 네트워크 도구(이 도구들의 호스트 위치에서만 숫자형 표기 검사)
+_NET_TOOLS = {
+    "curl", "wget", "nc", "ncat", "netcat", "socat", "ssh", "scp", "sftp", "telnet", "ftp",
+    "tftp", "ping", "traceroute", "nmap", "masscan", "rustscan", "naabu", "nikto", "whatweb",
+    "hydra", "medusa", "ncrack", "smbclient", "smbmap", "rpcclient", "enum4linux",
+    "enum4linux-ng", "nxc", "netexec", "crackmapexec", "evil-winrm", "xfreerdp", "rdesktop",
+    "mysql", "psql", "redis-cli", "mongo", "mongosh", "ldapsearch", "kerbrute", "dig",
+    "nslookup", "host", "snmpwalk", "snmpget", "onesixtyone", "showmount", "rsync", "sqlmap",
+    "wpscan", "ffuf", "gobuster", "feroxbuster", "wfuzz", "dirb", "http", "openssl",
+}
+_WRAPPERS = {"sudo", "proxychains", "proxychains4", "torsocks", "env", "nohup", "stdbuf"}
 _HOSTLIKE_RE = re.compile(r"^[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)+$")
 # 호스트로 오인하기 쉬운 파일 확장자(점 포함 토큰) 제외 → 오탐 방지
 _NONHOST_EXT = {
@@ -98,6 +120,104 @@ def normalize_target(raw: str) -> str:
     if t.count(":") == 1:
         t = t.split(":", 1)[0]
     return t
+
+
+def decode_ipv4_literal(token: str) -> str | None:
+    """숫자형 호스트 표기를 inet_aton(3) 규칙으로 점4자리 IPv4 로 정규화.
+    1~4 파트(a / a.b / a.b.c / a.b.c.d), 각 파트 10진·0x16진·0선행 8진.
+    해석 불가하면 None. (curl·ping·wget 등 libc 해석기가 같은 규칙을 쓴다)"""
+    t = (token or "").strip().lower()
+    if not t or not _NUMERIC_HOST_RE.fullmatch(t):
+        return None
+    parts: list[int] = []
+    for p in t.split("."):
+        if p.startswith("0x"):
+            if len(p) == 2:
+                return None
+            v = int(p, 16)
+        elif len(p) > 1 and p.startswith("0"):
+            if any(c not in "01234567" for c in p):
+                return None
+            v = int(p, 8)
+        else:
+            v = int(p)
+        parts.append(v)
+    n = len(parts)
+    if any(v > 255 for v in parts[:-1]) or parts[-1] >= 1 << (8 * (5 - n)):
+        return None
+    val = 0
+    for v in parts[:-1]:
+        val = (val << 8) | v
+    val = (val << (8 * (5 - n))) | parts[-1]
+    return str(ipaddress.IPv4Address(val))
+
+
+def _ipv6_literal(token: str) -> ipaddress.IPv6Address | None:
+    """IPv6 리터럴(대괄호·zone 허용)이면 주소, 아니면 None."""
+    t = (token or "").strip().strip("[]").split("%", 1)[0]
+    if t.count(":") < 2:
+        return None
+    try:
+        return ipaddress.IPv6Address(t)
+    except ValueError:
+        return None
+
+
+def _host_position_tokens(command: str) -> list[tuple[str, bool]]:
+    """네트워크 도구 명령에서 호스트 위치 후보 토큰을 (토큰, positional) 로 뽑는다.
+    positional=False 는 옵션 바로 뒤 값(--opt val / --opt=val). user@·:port 는 제거.
+    URL(://)은 URL 경로가 처리하므로 제외. 파이프·;·&& 로 나뉜 각 구간을 따로 본다."""
+    out: list[tuple[str, bool]] = []
+    for seg in re.split(r"\|\|?|&&|;|&|\n", command):
+        try:
+            toks = shlex.split(seg)
+        except ValueError:
+            toks = seg.split()
+        i = 0
+        while i < len(toks):
+            t = toks[i]
+            if re.fullmatch(r"[A-Za-z_]\w*=.*", t) or t in _WRAPPERS:
+                i += 1
+                continue
+            if t == "timeout":
+                i += 1
+                while i < len(toks) and (toks[i].startswith("-") or toks[i][:1].isdigit()):
+                    i += 1
+                continue
+            break
+        if i >= len(toks):
+            continue
+        binary = toks[i].rsplit("/", 1)[-1].lower()
+        if binary not in _NET_TOOLS and not binary.startswith("impacket-"):
+            continue
+        after_opt = False
+        for t in toks[i + 1:]:
+            if t.startswith("-"):
+                if "=" in t:
+                    out.append((t.split("=", 1)[1], False))
+                after_opt = True
+                continue
+            if "://" not in t:
+                c = t.rsplit("@", 1)[-1]
+                if c.count(":") == 1:
+                    c = c.split(":", 1)[0]
+                out.append((c, not after_opt))
+            after_opt = False
+    return out
+
+
+def _needs_numeric_check(tok: str, positional: bool) -> bool:
+    """bare 숫자형 토큰을 '비정규 주소 표기'로 볼지(오탐 억제 규칙).
+    단일 숫자는 2^24 이상만(포트·카운트 제외), 2~3 파트는 위치 인자이거나 비10진
+    파트가 있을 때만(옵션 값 2.5 등 제외), 4 파트는 정규 점4자리가 아닐 때만."""
+    parts = tok.lower().split(".")
+    nondec = any(p.startswith("0x") or (len(p) > 1 and p.startswith("0")) for p in parts)
+    if len(parts) == 1:
+        dec = decode_ipv4_literal(tok)
+        return dec is not None and int(ipaddress.IPv4Address(dec)) >= 1 << 24
+    if len(parts) in (2, 3):
+        return positional or nondec
+    return not _IPV4_RE.fullmatch(tok)
 
 
 @dataclass
@@ -221,14 +341,38 @@ class ScopeGuard:
 
         for ip in _IPV4_RE.findall(command):
             cls = self.classify_ip(ip)
-            result.classified.append((ip, cls, ""))
+            dec = decode_ipv4_literal(ip)
+            note = f"(비정규 표기→{dec})" if (cls == IPClass.UNKNOWN and dec and dec != ip) else ""
+            result.classified.append((ip, cls, note))
             if cls == IPClass.UNKNOWN:
                 result.needs_confirmation.append(ip)
+
+        for raw in _URL_V6_RE.findall(command):
+            self._flag_ipv6(result, raw)
+
+        seen_tok: set[str] = set()
+        for tok, positional in _host_position_tokens(command):
+            if tok in seen_tok:
+                continue
+            if _ipv6_literal(tok):
+                seen_tok.add(tok)
+                self._flag_ipv6(result, tok)
+            elif _needs_numeric_check(tok, positional):
+                dec = decode_ipv4_literal(tok)
+                if dec:
+                    seen_tok.add(tok)
+                    self._flag_encoded(result, tok, dec)
 
         for host in self._extract_hosts(command):
             # CTF 호스트명 타겟: 바인딩된 호스트는 TARGET 으로 자동 허용
             if self.bound_host is not None and host.lower() == self.bound_host:
                 result.classified.append((host, IPClass.TARGET, "(바인딩 타겟)"))
+                continue
+            dec = decode_ipv4_literal(host)
+            if dec:                              # URL 의 숫자형 호스트(비정규 표기)
+                if host not in seen_tok:
+                    seen_tok.add(host)
+                    self._flag_encoded(result, host, dec)
                 continue
             resolved = hosts_map.get(host.lower())
             if resolved:
@@ -248,6 +392,20 @@ class ScopeGuard:
         return result
 
     # ── 보조 ────────────────────────────────────────────────────────
+    def _flag_encoded(self, result: CommandScopeResult, tok: str, dec: str) -> None:
+        """비정규 숫자형 표기: 해석 결과와 무관하게 확인 필요(fail-closed)."""
+        result.classified.append((tok, self.classify_ip(dec), f"(비정규 표기→{dec} · 확인 필요)"))
+        result.needs_confirmation.append(f"{tok}(→{dec})")
+
+    def _flag_ipv6(self, result: CommandScopeResult, raw: str) -> None:
+        """IPv6 리터럴: ::1 만 loopback 허용, 그 외는 미지원 → 확인 필요."""
+        addr = _ipv6_literal(raw)
+        if addr is not None and addr == ipaddress.IPv6Address("::1"):
+            result.classified.append((raw, IPClass.LOOPBACK, "(IPv6 loopback)"))
+            return
+        result.classified.append((raw, IPClass.UNKNOWN, "(IPv6 — 미지원 · 확인 필요)"))
+        result.needs_confirmation.append(f"{raw}(IPv6)")
+
     @staticmethod
     def _extract_hosts(command: str) -> set[str]:
         hosts: set[str] = set()

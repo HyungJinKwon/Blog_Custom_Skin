@@ -17,7 +17,8 @@
 > (비-TTY·파이프·`NO_COLOR` 환경에서는 색 자동 비활성 → 로그/CI 안전).
 
 > ⚠️ **대상 범위**: 대회/플랫폼이 명시한 권한 확인 대상만. 그 외 자산 사용 금지
-> (Scope Guard 가 코드로 강제). 실제 공격 실행은 사용자 Kali 환경에서.
+> (Scope Guard 가 코드로 강제 — 가드가 해석하지 못하는 주소 표기는 기본 확인 대상).
+> 실제 공격 실행은 사용자 Kali 환경에서.
 
 **승인 모드**(기본=스마트): 범위내·검증통과 명령은 자동 실행, 검증실패(파괴명령 포함)는
 자동 거부, **범위 밖만 사람 확인**. `--auto`(완전자동)·`--manual`(완전수동)로 조절.
@@ -183,7 +184,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 50 스위트 1163 테스트
+cd htb-agent && python3 tests/run_all.py     # 51 스위트 1209 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

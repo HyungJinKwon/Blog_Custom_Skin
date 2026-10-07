@@ -62,7 +62,7 @@ A1 스윕에서 상태가 자라면(크리덴셜 확보 등) 다음 스윕에 �
 ```mermaid
 flowchart LR
   P[KB / LLM 제안] --> V[① 검증<br/>문법·base64·해시·포트·파괴명령<br/>+ 동적·원격 실행 표시]
-  V --> S[② 범위<br/>Target-Binding: 타겟/공격자/loopback]
+  V --> S[② 범위<br/>Target-Binding: 타겟/공격자/loopback<br/>비정규 주소 표기·IPv6 = 확인 필요]
   S --> A[③ 승인<br/>3분할 해설 + 사용자 승인]
   A --> X[실행 Runner]
   X --> O[출력 파싱·요약 + 플래그 스캔]
@@ -93,7 +93,7 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 
 | 영역 | 모듈 | 역할 |
 |---|---|---|
-| **안전** | `scope_guard.py` | Target-Binding, 범위밖 기본거부 |
+| **안전** | `scope_guard.py` | Target-Binding, 범위밖 기본거부. 가드가 점4자리로 해석 못 하는 숫자형 호스트 표기·IPv6 리터럴·비-HTTP 스킴 호스트도 분류해 확인 필요로 올림(fail-closed, 네트워크 도구 호스트 위치 한정으로 숫자 인자 오탐 방지) |
 | | `command_validator.py` | 문법·base64·16/10진수·포트·해시·파괴명령 |
 | | `approval.py` | 승인 게이트 + 바이너리/옵션/파라미터 3분할 해설 |
 | **관측** | `observation/parsers.py` | nmap(XML/텍스트)·HTTP 파싱 |
@@ -171,7 +171,7 @@ assassin 10.129.1.5 --resume                   # 중단 지점 재개
 ## 7. 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py        # 50 스위트 1163 테스트
+cd htb-agent && python3 tests/run_all.py        # 51 스위트 1209 테스트
 ```
 
 네트워크·도구 없이도 **러너 주입**으로 전 로직 검증하며, 통합 테스트는 `main()` 을
