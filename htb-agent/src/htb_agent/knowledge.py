@@ -160,6 +160,16 @@ class KnowledgeBase:
         auto_runnable = _PLACEHOLDER.search(cmd) is None
         return cmd, auto_runnable
 
+    def _lowered_notes(self) -> list[str]:
+        """노트 소문자 사본 캐시. RAG 는 라운드마다 호출되므로 매번 수백 KB 를
+        lower() 하지 않는다. 노트가 추가/교체되면(길이·마지막 원소 변화) 재구성."""
+        cache = getattr(self, "_lower_cache", None)
+        sig = (len(self.notes), id(self.notes[-1]) if self.notes else None)
+        if cache is None or cache[0] != sig:
+            cache = (sig, [n.lower() for n in self.notes])
+            self._lower_cache = cache
+        return cache[1]
+
     def relevant_notes(self, terms: list[str], limit: int = 3) -> list[str]:
         """B5(경량 RAG): 쿼리 용어와의 키워드 겹침으로 노트를 관련도 랭킹해 상위 N개.
         임베딩 없이 소문자 단어 집합 교집합으로 점수화한다(각 용어 1회만 가산).
@@ -169,9 +179,10 @@ class KnowledgeBase:
         q = {t.lower() for t in terms if t and len(t) >= 2}
         if not q:
             return self.notes[:limit]
+        lowered = self._lowered_notes()
         scored: list[tuple[int, int, str]] = []
         for i, note in enumerate(self.notes):
-            low = note.lower()
+            low = lowered[i]
             score = sum(1 for t in q if t in low)
             scored.append((score, -i, note))   # -i: 동점 시 원래 순서 유지
         scored.sort(key=lambda x: (x[0], x[1]), reverse=True)

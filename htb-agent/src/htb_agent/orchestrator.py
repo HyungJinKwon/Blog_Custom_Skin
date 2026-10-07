@@ -205,7 +205,7 @@ class OrchestrationReport:
                 lines.append("  " + ui.warn(
                     f"※ {len(susp)}건은 공략 유래가 아닐 수 있음 — 사람이 실제 공략 경로 확인"))
         from . import recommend as _recommend
-        _recs = _recommend.propose(self)
+        _recs = _recommend.propose(self, repetition=_rr)   # 반복 분석 1회만
         if _recs.has_items:
             lines.append("\n" + ui.heading(
                 "NEXT OPTIONS  (다음 선택지 — 사람이 골라 승인. 자동 실행 아님)", "🧭"))
