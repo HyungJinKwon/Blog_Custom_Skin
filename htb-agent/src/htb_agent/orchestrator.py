@@ -964,7 +964,7 @@ class Orchestrator:
             review = [i.message for i in vrep.review]
             if review:
                 # 동적·원격 코드 실행: 자동실행 대신 수동 제안으로 강등(사람이 내용 확인)
-                finding.note = "미승인(실행위험 — 사람 검토 필요): " + "; ".join(review)
+                finding.note = "미승인(실행위험): " + "; ".join(review)
                 entry = cmd + "   # (실행위험 — 내용 확인 후 수동)"
                 if entry not in report.manual_suggestions:
                     report.manual_suggestions.append(entry)

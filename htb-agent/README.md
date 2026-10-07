@@ -146,6 +146,8 @@ assassin 10.129.1.5 --config config/config.example.json
 > 단독 실행: `assassin --crack '$krb5tgs$23$...'`.
 
 > **데모(네트워크·실도구 없이 전체 흐름 보기)**: `python3 scripts/demo.py`
+> · **발표용 라이브 시연**: `python3 scripts/demo.py --live [--pace 2]` — 범위 밖 바인딩 거부 →
+> 정찰·식별 → 열거 → **3관문 작동(검토 강등·범위 밖 미실행·통계)** → 산출의 5단계를 순서대로 보여줌
 > (라이트업 저장: `python3 scripts/demo.py --write out/`). 실전 운영·트러블슈팅은
 > **[docs/OPERATIONS.md](docs/OPERATIONS.md)** 참고.
 
@@ -184,7 +186,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 51 스위트 1212 테스트
+cd htb-agent && python3 tests/run_all.py     # 51 스위트 1224 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

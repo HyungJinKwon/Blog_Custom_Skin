@@ -45,5 +45,31 @@ with open(os.path.join(out, "demo_writeup_htb.md"), encoding="utf-8") as f:
 check("라이트업에 CVE 레퍼런스 섹션", "CVE 레퍼런스" in md)
 check("라이트업 순수 MD(HTML 없음)", "<div" not in md and "<span" not in md)
 
+print("\n=== 라이브 데모: 3관문 시연 ===")
+audit = demo.DemoAudit()
+rep2, runner = demo.build_demo(audit)
+st = demo.gate_stats(audit.events)
+check("검토 대상 1건 이상 수동 강등", st["denied_review"] >= 1)
+check("범위 밖 1건 이상 미실행", st["denied_scope"] >= 1)
+check("실행 수 = 실제 러너 호출(정찰 제외)",
+      st["executed"] == len([c for c in runner.calls if not c.startswith("nmap")]))
+check("파이프→셸 명령 실제 실행 0", not any("| bash" in c for c in runner.calls))
+check("범위 밖 주소 실제 실행 0", not any(demo.OUT_OF_SCOPE in c for c in runner.calls))
+check("강등 명령이 수동 제안에 남음",
+      any("| bash" in s and "실행위험" in s for s in rep2.manual_suggestions))
+check("ANALYSIS 에 명령이 아닌 분석문", rep2.analysis.startswith("가설:"))
+
+import contextlib  # noqa: E402
+import io  # noqa: E402
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    rc = demo.main(["--live"])
+live = buf.getvalue()
+check("--live 반환 0", rc == 0)
+check("5단계 모두 출력", all(f"STEP {i}." in live for i in range(1, 6)))
+check("범위 밖 바인딩 거부 장면", "거부:" in live and "8.8.8.8" in live)
+check("위험 명령 실행 0건 확인 문구", "실제 실행 0건" in live)
+check("--pace 잘못된 값 → 2", demo.main(["--live", "--pace", "x"]) == 2)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

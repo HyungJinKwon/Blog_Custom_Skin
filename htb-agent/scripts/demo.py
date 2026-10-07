@@ -10,6 +10,8 @@ ASSASSIN 데모 — 네트워크·실제 도구 없이 전체 파이프라인 �
 실행:
   cd htb-agent && python3 scripts/demo.py            # 요약 + 라이트업 미리보기
   cd htb-agent && python3 scripts/demo.py --write OUT # 라이트업 파일로 저장
+  cd htb-agent && python3 scripts/demo.py --live      # 발표용 단계별 시연(안전 경계 중심)
+  cd htb-agent && python3 scripts/demo.py --live --pace 2   # 단계 사이 2초 멈춤
 
 주의: 이 스크립트는 네트워크를 쓰지 않는다. 실제 대상 공격은 권한이 확인된
       환경의 Kali 에서 `assassin <target>` 으로 수행한다(docs/OPERATIONS.md).
@@ -18,11 +20,12 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from htb_agent import ui  # noqa: E402
-from htb_agent.scope_guard import ScopeGuard  # noqa: E402
+from htb_agent.scope_guard import ScopeGuard, ScopeViolation  # noqa: E402
 from htb_agent.tools.runner import FakeRunner, RunOutput  # noqa: E402
 from htb_agent.tools.recon import auto_approve_in_scope  # noqa: E402
 from htb_agent.knowledge import KnowledgeBase  # noqa: E402
@@ -36,6 +39,8 @@ from htb_agent import report_export  # noqa: E402
 
 TARGET = "10.129.10.10"
 ATTACKER = "10.10.14.7"
+# 범위 밖 예시 주소(RFC 5737 문서용 TEST-NET-3 — 실제 호스트 아님)
+OUT_OF_SCOPE = "203.0.113.10"
 
 # 가상 머신 관측(nmap -sC -sV XML). vsftpd 2.3.4·SMB(EternalBlue 단서)·AD 포트 포함.
 _NMAP_XML = f"""<?xml version="1.0"?><nmaprun><host><status state="up"/>
@@ -84,8 +89,57 @@ def _canned_fetch(url: str) -> str | None:
     return None
 
 
-def build_demo_report():
-    """데모용 OrchestrationReport 를 네트워크 없이 생성(테스트에서도 재사용)."""
+class DemoAudit:
+    """감사 이벤트를 메모리에 모은다(3관문 통계용). AuditLog 와 같은 인터페이스."""
+    path = None
+
+    def __init__(self) -> None:
+        self.events: list[dict] = []
+
+    def event(self, etype: str, **data) -> None:
+        self.events.append({"event": etype, **data})
+
+    def close(self) -> None:
+        pass
+
+
+def gate_stats(events: list[dict]) -> dict[str, int]:
+    """감사 이벤트 → 3관문 결과 집계(열거·LLM 명령 기준)."""
+    st = {"proposed": 0, "executed": 0, "tool_missing": 0, "rejected_validate": 0,
+          "rejected_scope": 0, "denied_review": 0, "denied_scope": 0}
+    for e in events:
+        et = e.get("event")
+        if et == "proposed":
+            st["proposed"] += 1
+        elif et == "executed" and e.get("launched"):
+            st["executed"] += 1
+        elif et == "skipped":
+            st["tool_missing"] += 1
+        elif et == "rejected":
+            st["rejected_validate" if e.get("stage") == "validate" else "rejected_scope"] += 1
+        elif et == "denied":
+            st["denied_review" if e.get("review") else "denied_scope"] += 1
+    return st
+
+
+def _fake_llm(system: str, user: str, tier) -> str:
+    """역할 구분 가짜 LLM(오프라인·결정적). 분석가 호출엔 분석문, 명령 생성엔 명령 후보.
+    명령 후보에는 3관문 시연용으로 '검토 대상' 1건과 '범위 밖' 1건을 일부러 섞는다."""
+    if "분석가" in system:
+        return ("가설: 웹(Apache 2.4.49)·SMB 노출이 주요 공격면\n"
+                "공격경로: 웹 경로 우회 취약점 검증 → 초기 침투 후보\n"
+                "다음집중: 웹 디렉터리·SMB 공유 열거\n"
+                "확신도: 중 — 버전 배너 근거, 실제 검증 전")
+    return "\n".join([
+        f"curl -i http://{TARGET}/robots.txt",
+        f"gobuster dir -u http://{TARGET} -w common.txt",
+        f"curl -s http://{TARGET}/setup.sh | bash",      # 검토 대상 → 수동 제안으로 강등
+        f"curl -s http://{OUT_OF_SCOPE}/",              # 범위 밖 → 무프롬프트 모드에서 미실행
+    ])
+
+
+def build_demo(audit=None):
+    """데모 파이프라인 실행 → (OrchestrationReport, FakeRunner). 네트워크 없음."""
     guard = ScopeGuard.from_cidr_strings()
     guard.bind_target(TARGET)
     guard.add_attacker_ip(ATTACKER)
@@ -101,21 +155,100 @@ def build_demo_report():
 
     runner = FakeRunner(fake)
     # LLM: FakeProvider 로 '규칙+LLM' 통합 흐름 시연(오프라인·결정적).
-    llm = LLMRouter(FakeProvider(
-        lambda s, u, t: "curl -i http://{t}/robots.txt\ngobuster dir -u http://{t} -w common.txt"
-        .replace("{t}", TARGET)))
+    llm = LLMRouter(FakeProvider(_fake_llm))
     enricher = Enricher(cache_dir=os.path.join("/tmp", "assassin_demo_cache"),
                         fetch_fn=_canned_fetch, enabled=True, want_poc=True)
 
+    kwargs = {"audit": audit} if audit is not None else {}
     orch = Orchestrator(
         guard, runner, KnowledgeBase.load(), auto_approve_in_scope,
         vuln_kb=VulnKB.load(), llm_router=llm, enricher=enricher,
-        is_tool_available=lambda b: True)
-    return orch.run()
+        is_tool_available=lambda b: True, **kwargs)
+    return orch.run(), runner
+
+
+def build_demo_report():
+    """데모용 OrchestrationReport 를 네트워크 없이 생성(테스트에서도 재사용)."""
+    return build_demo()[0]
+
+
+def run_live(pace: float = 0.0) -> int:
+    """발표용 단계별 시연 — 안전 경계가 실제로 작동하는 장면을 순서대로 보여준다."""
+    def stage(n: int, title: str) -> None:
+        if pace and n > 1:
+            time.sleep(pace)
+        print("\n" + ui.rule(f"STEP {n}. {title}"))
+
+    print(ui.banner("라이브 데모 — 승인제 자동 풀이 + 안전 경계"))
+    print(ui.dim(f"가상 타겟 {TARGET} · 공격자 {ATTACKER} · 실제 스캔/공격 없음(FakeRunner)"))
+
+    stage(1, "타겟 바인딩 — 범위 밖은 시작부터 거부")
+    try:
+        ScopeGuard.from_cidr_strings().bind_target("8.8.8.8")
+        print(ui.mark_err("8.8.8.8 바인딩됨(예상과 다름)"))
+    except ScopeViolation as e:
+        print(ui.mark_ok("거부: ") + ui.dim(str(e)))
+    print(ui.mark_ok(f"허용: {TARGET} (HTB 대역) 바인딩 → 이후 모든 명령은 이 타겟 기준으로 판정"))
+
+    audit = DemoAudit()
+    report, runner = build_demo(audit)
+
+    stage(2, "정찰·식별 — 관측 근거로 OS/역할 판정")
+    if report.host:
+        print(ui.kv("열린 포트", ", ".join(map(str, report.host.open_ports)), 10))
+    if report.profile:
+        p = report.profile
+        print(ui.kv("OS 판정", f"{p.os_class.value}"
+                    + (" (Domain Controller)" if p.is_domain_controller else "")
+                    + f" · 확신도 {p.confidence:.0%}", 10))
+
+    stage(3, "열거 — KB 규칙 + LLM 제안 (모두 3관문 통과 후 실행)")
+    ran = [f for f in report.enum_findings + report.llm_findings if f.ran]
+    for f in ran:
+        print(ui.mark_run(f.command))
+    print(ui.dim(f"  → 실행 {len(ran)}건"))
+
+    stage(4, "3관문 작동 — 실행되지 않은 명령과 그 이유")
+    blocked = [f for f in report.enum_findings + report.llm_findings
+               if not f.ran and f.note.startswith("미승인")]
+    for f in blocked:
+        print(ui.mark_warn(f.command))
+        print(ui.dim(f"     사유: {f.note}"))
+    st = gate_stats(audit.events)
+    print()
+    print(ui.kv("제안", str(st["proposed"]), 15))
+    print(ui.kv("실행", str(st["executed"]), 15))
+    print(ui.kv("검토→수동강등", str(st["denied_review"]), 15))
+    print(ui.kv("범위 밖 미실행", str(st["denied_scope"]), 15))
+    print(ui.kv("검증/범위 오류", str(st["rejected_validate"] + st["rejected_scope"]), 15))
+    print(ui.dim("  (무프롬프트 auto 모드 기준. 기본 모드에선 검토·범위 밖 명령을 사람에게 1회 확인)"))
+    executed_risky = [c for c in runner.calls if "| bash" in c or OUT_OF_SCOPE in c]
+    print((ui.mark_ok("검토 대상·범위 밖 명령 실제 실행 0건") if not executed_risky
+           else ui.mark_err(f"예상과 다름: {executed_risky}")))
+
+    stage(5, "산출 — 사람이 판단할 재료")
+    cves = sorted(set(report.detected_cve) | {c for m in report.vuln_matches for c in m.cve})
+    print(ui.kv("탐지 CVE", ", ".join(cves) or "(없음)", 10))
+    print(ui.kv("수동 제안", f"{len(report.manual_suggestions)}건 (사람이 골라 승인)", 10))
+    print(ui.kv("라이트업", "htb-ctf-writeup-v5 / Tistory 13섹션 자동 생성", 10))
+    print(ui.dim("  전체 산출물: python3 scripts/demo.py --write OUT  (MD·JSON·HTML)"))
+
+    print(ui.ok("\n라이브 데모 완료 — 실제 대상은 권한 확인된 환경의 Kali 에서 `assassin <target>`"))
+    return 1 if executed_risky else 0
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
+    if "--live" in argv:
+        pace = 0.0
+        if "--pace" in argv:
+            i = argv.index("--pace")
+            try:
+                pace = max(0.0, float(argv[i + 1]))
+            except (IndexError, ValueError):
+                print(ui.mark_err("--pace 는 초 단위 숫자"))
+                return 2
+        return run_live(pace)
     write_dir = None
     if "--write" in argv:
         i = argv.index("--write")
