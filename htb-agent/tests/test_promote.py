@@ -8,6 +8,7 @@ import shutil
 import sys
 import tempfile
 sys.path.insert(0, "src")
+from htb_agent import learn  # noqa: E402
 from htb_agent import promote as P  # noqa: E402
 from htb_agent.knowledge import NOTE_CHARS  # noqa: E402
 from htb_agent.main import main  # noqa: E402
@@ -35,6 +36,13 @@ def workspace(learned_text):
 def read(p):
     with open(p, encoding="utf-8") as f:
         return f.read()
+
+# 관문·병합 규칙 시험용 가상 출처를 sqli 카탈로그에 잠시 추가(CI 불변식 전에 원복)
+_REAL_SQLI = list(learn.SOURCES["sqli"])
+learn.SOURCES["sqli"] = _REAL_SQLI + [(u, u) for u in
+    ["https://owasp.org/a", "https://owasp.org/c", "https://owasp.org/d", "https://owasp.org/h",
+     "https://owasp.org/g", "https://blog.example.com/b", "https://blog.example.com/x"]
+    + [f"https://owasp.org/e{i}" for i in range(5)]]
 
 print("=== 관문(check_candidate) ===")
 C = P.Candidate
@@ -71,6 +79,9 @@ check("필수 섹션 유지", all(s in new for s in REQ))
 print("\n=== 멱등·교체·상한 ===")
 r2 = P.promote("sqli", d, d, today="2026-10-07")
 check("같은 입력 재실행 → 변경 없음", r2.changed is False and read(os.path.join(d, "seed-sqli.md")) == new)
+r2b = P.promote("sqli", d, d, today="2026-10-14")
+check("다음 주 같은 내용 재실행 → 날짜만 바뀌지 않음(변경 없음)",
+      r2b.changed is False and read(os.path.join(d, "seed-sqli.md")) == new)
 with open(os.path.join(d, "learned-sqli.md"), "w", encoding="utf-8") as f:
     f.write(entry("Good One v2", "https://owasp.org/a", "Updated " + LONG))
 P.promote("sqli", d, d, today="2026-10-08")
@@ -86,6 +97,31 @@ d2 = workspace(entry("Huge", "https://owasp.org/h", "word " * 400))
 P.promote("sqli", d2, d2)
 _, e2 = P.split_seed(read(os.path.join(d2, "seed-sqli.md")))
 check(f"요약 길이 상한 {P.MAX_SUMMARY}자", len(e2[0].summary) <= P.MAX_SUMMARY)
+
+print("\n=== 카탈로그 연동: 빠진 출처는 승격 거부 + 기존 승격분 정리 ===")
+d4 = workspace(entry("Good", "https://owasp.org/a", LONG) + entry("Retired", "https://owasp.org/r", LONG))
+r4 = P.promote("sqli", d4, d4, today="2026-10-07")
+check("카탈로그에 없는 출처 → 거부", [t for t, _ in r4.rejected] == ["Retired"]
+      and "카탈로그" in r4.rejected[0][1])
+learn.SOURCES["sqli"].append(("x", "https://owasp.org/r"))
+P.promote("sqli", d4, d4, today="2026-10-07")          # 카탈로그에 있을 때 승격된 상태를 만든 뒤
+learn.SOURCES["sqli"].pop()                              # 카탈로그에서 교체·삭제
+with open(os.path.join(d4, "learned-sqli.md"), "w", encoding="utf-8") as f:
+    f.write(entry("Good", "https://owasp.org/a", LONG))
+before4 = read(os.path.join(d4, "seed-sqli.md"))
+r5 = P.promote("sqli", d4, d4, today="2026-10-07")
+after4 = read(os.path.join(d4, "seed-sqli.md"))
+check("낡은 승격분 정리 기록", r5.pruned == ["Retired"] and r5.changed)
+check("정리 후 시드에서 사라지고 나머지는 유지",
+      "owasp.org/r" in before4 and "owasp.org/r" not in after4 and "### Good" in after4)
+check("정리 후 사람이 쓴 본문 유지", P.split_seed(after4)[0] == P.split_seed(before4)[0])
+with open(os.path.join(d4, "learned-sqli.md"), "w", encoding="utf-8") as f:
+    f.write(entry("Bad", "https://blog.example.com/x", LONG))
+learn.SOURCES["sqli"] = [s for s in learn.SOURCES["sqli"] if s[1] != "https://owasp.org/a"]
+r6 = P.promote("sqli", d4, d4)
+check("통과 항목이 없어도 정리할 것이 있으면 시드 갱신",
+      r6.pruned == ["Good"] and r6.changed and "### Good" not in read(os.path.join(d4, "seed-sqli.md")))
+learn.SOURCES["sqli"].append(("a", "https://owasp.org/a"))
 
 print("\n=== 오류 처리 ===")
 check("지원 주제 아님", P.promote("no-such-topic", d, d).error != "")
@@ -114,10 +150,14 @@ with contextlib.redirect_stdout(io.StringIO()):
     check("학습 노트 없으면 rc 2", main(["--promote", "all", "--knowledge", tempfile.mkdtemp()]) == 2)
 
 print("\n=== CI 불변식: 커밋된 시드의 승격 섹션도 관문 통과 ===")
-bad, over, long_ = [], [], []
+learn.SOURCES["sqli"] = _REAL_SQLI   # 시험용 가상 출처 원복 — 실제 카탈로그로 검사
+bad, over, long_, stale = [], [], [], []
 for p in sorted(glob.glob(os.path.join(SEED_DIR, "seed-*.md"))):
     txt = read(p)
     _, es = P.split_seed(txt)
+    topic = os.path.basename(p)[len("seed-"):-len(".md")]
+    cat = {u for _, u in learn.SOURCES.get(topic, [])}
+    stale += [(topic, e.title) for e in es if e.url not in cat]
     if len(es) > P.MAX_ENTRIES:
         over.append(os.path.basename(p))
     bad += [(os.path.basename(p), e.title, P.check_candidate(e)) for e in es if P.check_candidate(e)]
@@ -126,6 +166,7 @@ for p in sorted(glob.glob(os.path.join(SEED_DIR, "seed-*.md"))):
 check(f"승격 항목 전부 관문 통과 (위반: {bad[:3] or '없음'})", not bad)
 check(f"주제당 승격 상한 준수 (위반: {over or '없음'})", not over)
 check(f"시드 전문이 RAG 반영 상한({NOTE_CHARS}자) 안 (위반: {long_ or '없음'})", not long_)
+check(f"승격 출처가 모두 현재 카탈로그에 있음 (위반: {stale[:3] or '없음'})", not stale)
 
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

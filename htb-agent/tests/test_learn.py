@@ -84,6 +84,8 @@ check("초록 없으면 'Status of this Memo' 다음부터",
 check("목차의 'Status of this Memo' 항목이 아니라 실제 절부터",
       ex("<pre>Network Working Group J. Case\n1. Status of this Memo ....... 1\n2. Intro ..... 2\n"
          "1. Status of this Memo\n This memo defines SNMP.</pre>") == "This memo defines SNMP.")
+check("DocBook 이전/다음 머리·꼬리(.navheader/.navfooter) 제거",
+      ex("<div class='navheader'>Prev Next</div><p>Body</p><div class='navfooter'>Up Home</div>") == "Body")
 check("목차(.toc) 제거", ex("<div class='toc'><p>Table of Contents Chapter 1</p></div><p>Body</p>") == "Body")
 check("RFC 아닌 문서의 'Abstract' 는 그대로", ex("<p>Abstract classes in Java</p>") == "Abstract classes in Java")
 check("머리글 뒤 본문이 없으면 원문 유지", ex("<pre>RFC 1 Title Abstract</pre>") == "RFC 1 Title Abstract")

@@ -30,9 +30,9 @@ tshark -r cap.pcap -z follow,tcp,ascii,0
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
 ### Wireshark User's Guide
-- 출처: https://www.wireshark.org/docs/wsug_html_chunked/
+- 출처: https://www.wireshark.org/docs/wsug_html_chunked/ChapterIntroduction.html
 - 승격일: 2026-10-07
-- 요약: Wireshark User’s Guide Next Wireshark User’s Guide Version 4.7.4 Richard Sharpe, Ed Warnicke, Ulf Lamping List of Figures 1.1. Wireshark captures packets and lets you examine their contents. 3.1. The Main window 3.2. The Menu 3.3. The “File” Menu 3.4. The “Edit” Menu 3.5. The “View” Menu 3.6. The “Go” Menu 3.7. The “Capture” Menu 3.8. The “Analyze” Menu 3.9. The “Statistics” Menu 3.10. The “Telephony” Menu 3.11. The “Wireless” Menu 3.12. The “Tools” Menu 3.13. The “Help” Menu 3.14. The “Main” to
+- 요약: Chapter 1. Introduction 1.1. What is Wireshark? Wireshark is a network packet analyzer. A network packet analyzer presents captured packet data in as much detail as possible. You could think of a network packet analyzer as a measuring device for examining what’s happening inside a network cable, just like an electrician uses a voltmeter for examining what’s happening inside an electric cable (but at a higher level, of course). In the past, such tools were either very expensive, proprietary, or b
 
 ### Display Filter Reference
 - 출처: https://www.wireshark.org/docs/dfref/

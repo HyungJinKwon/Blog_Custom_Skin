@@ -16,6 +16,8 @@ Promote — 로컬 학습 노트를 검토 가능한 '번들 시드' 보강으�
   - 관문: 허용(권위) 출처 · 충분한 요약 길이 · 웹페이지 군더더기 없음 · HTB 라이트업
     신호 없음 · 제어문자 없음. 하나라도 걸리면 그 항목은 승격하지 않는다.
   - 같은 출처 URL 은 새 내용으로 교체(중복 누적 없음), 주제당 항목 수 상한.
+  - 승격분은 그 주제의 현재 카탈로그(learn.SOURCES) 출처만. 카탈로그에서 교체·삭제된
+    출처의 기존 승격 항목은 다음 승격 때 정리된다(낡은 발췌가 상한 자리를 차지하지 않게).
   - CI 가 커밋된 시드의 승격 섹션을 같은 관문으로 재검사한다(tests/test_promote.py).
   - 가져온 내용은 신뢰불가 데이터 — 노트로만 저장, 실행·명령화하지 않는다.
 """
@@ -58,6 +60,7 @@ class PromoteResult:
     accepted: list[Candidate] = field(default_factory=list)
     rejected: list[tuple[str, str]] = field(default_factory=list)   # (제목, 사유)
     seed_path: str = ""
+    pruned: list[str] = field(default_factory=list)                 # 카탈로그에서 빠져 정리된 항목 제목
     changed: bool = False
     error: str = ""
 
@@ -158,22 +161,32 @@ def promote(topic: str, learned_dir: str, seed_dir: str,
         res.error = "번들 시드 없음"
         return res
     stamp = today or date.today().isoformat()
+    catalog = {u for _, u in learn.SOURCES.get(key, [])}
     with open(lpath, encoding="utf-8") as f:
         cands = parse_learned(f.read())
     for c in cands:
         reason = check_candidate(c)
+        if not reason and c.url not in catalog:
+            reason = "현재 카탈로그에 없는 출처(교체·삭제됨 — 다시 --learn)"
         if reason:
             res.rejected.append((c.title, reason))
             continue
         c.summary = re.sub(r"\s+", " ", c.summary).strip()[:MAX_SUMMARY]
         c.promoted_on = stamp
         res.accepted.append(c)
-    if not res.accepted:
-        return res
     with open(spath, encoding="utf-8") as f:
         old = f.read()
     body, existing = split_seed(old)
-    new_text = render_seed(body, merge(existing, res.accepted))
+    res.pruned = [e.title for e in existing if e.url not in catalog]
+    if not res.accepted and not res.pruned:
+        return res
+    kept = [e for e in existing if e.url in catalog]
+    prev = {e.url: e for e in kept}
+    for c in res.accepted:        # 내용이 같으면 최초 승격일 유지(주기 실행 시 날짜만 바뀌는 diff 방지)
+        old_e = prev.get(c.url)
+        if old_e and old_e.title == c.title and old_e.summary == c.summary and old_e.promoted_on:
+            c.promoted_on = old_e.promoted_on
+    new_text = render_seed(body, merge(kept, res.accepted))
     if new_text != old:
         with open(spath, "w", encoding="utf-8") as f:
             f.write(new_text)
