@@ -201,7 +201,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 54 스위트 1452 테스트
+cd htb-agent && python3 tests/run_all.py     # 55 스위트 1464 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
