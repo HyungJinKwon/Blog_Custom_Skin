@@ -204,6 +204,17 @@ class OrchestrationReport:
             if susp:
                 lines.append("  " + ui.warn(
                     f"※ {len(susp)}건은 공략 유래가 아닐 수 있음 — 사람이 실제 공략 경로 확인"))
+        from . import recommend as _recommend
+        _recs = _recommend.propose(self)
+        if _recs.has_items:
+            lines.append("\n" + ui.heading(
+                "NEXT OPTIONS  (다음 선택지 — 사람이 골라 승인. 자동 실행 아님)", "🧭"))
+            for i, r in enumerate(_recs.items, 1):
+                lines.append(f"  {ui.accent2(str(i) + '.')} {r.title}")
+                lines.append("      " + ui.dim("근거: " + r.rationale))
+                if r.ref:
+                    lines.append("      " + ui.dim("참고: " + r.ref[:72]))
+            lines.append("  " + ui.dim("→ 번호를 골라 해당 명령/각도를 승인하면 3관문을 거쳐 실행됩니다."))
         if self.detected_cve or self.detected_cwe or self.vuln_matches:
             lines.append("\n" + ui.heading(
                 "VULN  (탐지된 취약점 — 수동 검증/익스플로잇 필요)", "🛑"))

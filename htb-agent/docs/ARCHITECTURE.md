@@ -98,6 +98,7 @@ LLM 이 제안한 명령도 '신뢰하지 않는 데이터'로 간주되어 이 
 | | `diagnostics.py` | **실패 진단**(사람 보고용): 404/403/401/429·연결거부·타임아웃·DNS·도구부재를 분류해 '대상 응답' vs '환경/도구/네트워크'로 구분. 환경 실패는 경로 포기 근거 아님(오판 방지). 리포트 BLOCKERS 섹션. 자동 재공격 아님 |
 | | `provenance.py` | **플래그 출처 검증**(ctf-abacus류): 플래그를 만든 명령을 실행 트레이스로 분류 — 공략 유래 vs 로컬/지식/불명. 암기·검색·추측과 실제 공략을 구분해 사람에게 보고(점수 변경 없음) |
 | | `repetition.py` | **반복·정체 감지**(AutoPentester류 Repetition Identifier): 실행 트레이스에서 같은 서명 명령·같은 실패 범주 반복·정체를 감지해 리포트 REPETITION 섹션으로 사람에게 보고. 다음 명령 자동 변경 없음(효율·깊이우선함정 완화) |
+| | `recommend.py` | **다음 선택지 제안**(휴먼인더루프): 막힌 지점·정체·대기 단계를 근거와 함께 선택지로 정리해 리포트 NEXT OPTIONS 섹션으로 제시. 사람이 골라 승인하면 3관문 거쳐 실행 — 에이전트가 자동 선택·실행하지 않음(새 기법 생성 없이 진단힌트·KB 제안 정리) |
 | **실행** | `tools/runner.py` | Subprocess(실제) / Fake(테스트) |
 | | `tools/recon.py` | 유한 폴백 포트스캔 |
 | | `tools/registry.py` + `scripts/install_tools.sh` | 도구 목록·가용성 + 일괄 설치 |
@@ -154,7 +155,7 @@ assassin 10.129.1.5 --resume                   # 중단 지점 재개
 ## 7. 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py        # 46 스위트 1078 테스트
+cd htb-agent && python3 tests/run_all.py        # 47 스위트 1092 테스트
 ```
 
 네트워크·도구 없이도 **러너 주입**으로 전 로직 검증하며, 통합 테스트는 `main()` 을
