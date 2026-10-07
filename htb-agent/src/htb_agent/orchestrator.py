@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import time
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -118,6 +119,8 @@ class OrchestrationReport:
     # 플래그 출처 검증(실행 트레이스 기반) — list[provenance.FlagProvenance]
     flag_provenance: list = field(default_factory=list)
     goal_reached: bool = False        # 신뢰 가능한 플래그로 목표 달성 → 남은 단계 조기 종료
+    timed_out: bool = False           # 시간 예산 소진 → 남은 단계 조기 종료(상태 저장)
+    elapsed_sec: float = 0.0          # 이번 실행 경과 시간(초)
     # LLM 라우팅 집계(하이브리드일 때 main 이 채움): 로컬/강력/폴백/거절/빈응답/오류/미응답 + 차단 백엔드
     llm_routing: dict = field(default_factory=dict)
     message: str = ""
@@ -315,11 +318,40 @@ class OrchestrationReport:
                 for c in j.commands:
                     lines.append("    " + ui.accent2(f"[{c.tool}] ") + c.command)
         if self.manual_suggestions:
-            lines.append("\n" + ui.heading(
-                "수동 제안 (크리덴셜 등 필요 — 승인/입력 후 실행)", "✋"))
-            for s in self.manual_suggestions:
-                lines.append(ui.bullet(s, "·", "dim"))
+            lines.append("\n" + ui.heading("수동 제안 — 종류별 바로 적용하는 법", "✋"))
+            for title, how, items in _group_manual(self.manual_suggestions):
+                lines.append("  " + ui.bold(f"{title} ({len(items)})") + "  " + ui.info("→ " + how))
+                for s in items:
+                    lines.append(ui.bullet(s, "·", "dim"))
         return "\n".join(lines)
+
+
+# 수동 제안 분류: (제목, 초보자가 바로 하는 법, 판별 함수) — 위에서부터 먼저 맞는 것
+_MANUAL_KINDS = [
+    ("자격증명이 필요한 명령", "--cred 사용자:비밀번호 를 붙여 다시 실행하면 자동으로 채워 실행합니다",
+     lambda s: any(p in s for p in ("{user}", "{pass}", "{domain}", "{hash}"))),
+    ("실행 위험 — 내용 확인 필요", "각 줄의 '대안'대로 먼저 내용을 확인한 뒤 직접 실행하세요",
+     lambda s: "실행위험" in s),
+    ("상한 초과로 미실행", "--max-enum 을 늘리거나 --resume 으로 이어서 실행하세요",
+     lambda s: "상한 초과" in s),
+    ("무거운 점검(직접 실행 권장)", "시간이 오래 걸려 자동 실행하지 않았습니다 — 필요할 때 복사해 실행",
+     lambda s: "(수동)" in s),
+]
+
+
+def _group_manual(items: list[str]) -> list[tuple[str, str, list[str]]]:
+    groups: dict[str, list[str]] = {}
+    hows: dict[str, str] = {}
+    for s in items:
+        for title, how, match in _MANUAL_KINDS:
+            if match(s):
+                break
+        else:
+            title, how = "기타 안내", "단계·플랫폼별 참고 명령입니다 — 필요한 것을 골라 실행하세요"
+        groups.setdefault(title, []).append(s)
+        hows[title] = how
+    order = [k for k, _, _ in _MANUAL_KINDS] + ["기타 안내"]
+    return [(t, hows[t], groups[t]) for t in order if t in groups]
 
 
 class Orchestrator:
@@ -347,6 +379,8 @@ class Orchestrator:
                  revshell_port: int = 4444,
                  variant_stats=None,
                  max_parallel: int = 1,
+                 time_budget: float = 0.0,
+                 clock=None,
                  learner=None,
                  learn_gaps: bool = False,
                  max_gap_learn: int = 6,
@@ -377,6 +411,8 @@ class Orchestrator:
         self.revshell_port = revshell_port
         self.variant_stats = variant_stats   # 실행 결과 기반 변형 학습(없으면 미학습)
         self.max_parallel = max(1, max_parallel)   # 열거 동시 실행 수(1=순차)
+        self.time_budget = max(0.0, time_budget)   # 해커톤 시간 예산(분, 0=무제한)
+        self._clock = clock or time.monotonic      # 테스트 주입용(단조 시계)
         self.enricher = enricher
         # 자율 지식 획득 — 모르는 기술을 권위 출처에서 자동 학습(learner 주입 시)
         self.learner = learner
@@ -388,6 +424,9 @@ class Orchestrator:
         self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
 
     def run(self) -> OrchestrationReport:
+        # 경과 시간은 정찰부터 포함, 마감 확인은 스윕 루프에서(정찰은 유한 폴백으로 별도 관리)
+        self._start = self._clock()
+        self._deadline = (self._start + self.time_budget * 60) if self.time_budget else None
         if self.guard.bound_target is None and self.guard.bound_host is None:
             raise ScopeViolation("타겟 미바인딩 — bind_target() 먼저 호출하세요.")
         target = str(self.guard.bound_target or self.guard.bound_host)
@@ -454,7 +493,7 @@ class Orchestrator:
         interrupted = False
         try:
             for sweep in range(self.max_sweeps):
-                if self._goal_reached(report):
+                if self._goal_reached(report) or self._time_up():
                     break
                 before_fp = self._world_fingerprint(report)
                 # 지금까지의 출력에서 취약점(CVE/CWE·버전 매칭)을 먼저 반영 — 학습·분석·
@@ -464,6 +503,9 @@ class Orchestrator:
                 # KB 에 즉시 반영한다(이후 분석가·명령생성이 바로 활용). P1 유지.
                 self._acquire_knowledge(report, host, prof)
                 for key, label in self.phases:
+                    if self._time_up():
+                        report.phase_status.setdefault(key, "생략(시간 예산 소진)")
+                        continue
                     if self._goal_reached(report):
                         report.phase_status.setdefault(key, "생략(목표 달성)")
                         continue
@@ -485,7 +527,7 @@ class Orchestrator:
                                 report, host, prof, target, seen_cmds,
                                 self.max_llm - self._spent(report.llm_findings, self._llm_base),
                                 key)
-                        if added == 0 or self._goal_reached(report):
+                        if added == 0 or self._goal_reached(report) or self._time_up():
                             break
                     grew = len(report.enum_findings) + len(report.llm_findings) > phase_before
                     if grew and key not in phases_run:
@@ -503,6 +545,13 @@ class Orchestrator:
             # 사용자 중단(Ctrl+C): 지금까지의 결과를 저장해 --resume 으로 이어갈 수 있게 한다
             interrupted = True
             self.audit.event("interrupted", sweeps=sweeps_run)
+        report.timed_out = self._time_up()
+        report.elapsed_sec = round(self._clock() - self._start, 1)
+        if report.timed_out:
+            # 시간 예산 소진도 중단과 같은 경로: 남은 단계 생략, 상태 저장, 네트워크 수집 생략
+            interrupted = True
+            self.audit.event("timed_out", budget_min=self.time_budget,
+                             elapsed_sec=report.elapsed_sec, sweeps=sweeps_run)
 
         # ── PHASE 3.7: VULN (CVE/CWE 탐지 + 매핑) — 최종 출력까지 반영 ──
         self._run_vuln(report, host, target)
@@ -549,7 +598,10 @@ class Orchestrator:
 
         # ── PHASE 4: REPORT ──
         report.status = "interrupted" if interrupted else "done"
-        if interrupted:
+        if report.timed_out:
+            report.message += (f"시간 예산 {self.time_budget:g}분 소진(경과 {report.elapsed_sec:.0f}초) "
+                               "— 남은 단계 생략, 진행 상태 저장(--resume 으로 이어서 진행). ")
+        elif interrupted:
             report.message += "사용자 중단 — 진행 상태 저장(--resume 으로 이어서 진행). "
         elif self._goal_reached(report):
             report.goal_reached = True
@@ -621,6 +673,10 @@ class Orchestrator:
             return any(not pref or f.value.split("{", 1)[0].lower() in pref for f in hits)
         kinds = {f.kind for f in hits}
         return "user" in kinds and "root" in kinds
+
+    def _time_up(self) -> bool:
+        """해커톤 시간 예산 마감 도달 여부(예산 0=무제한이면 항상 False)."""
+        return self._deadline is not None and self._clock() >= self._deadline
 
     def _refresh_analysis(self, report: OrchestrationReport, prof: ProfileResult,
                           host: NmapHost, target: str) -> None:
@@ -1102,7 +1158,9 @@ class Orchestrator:
                 # 동적·원격 코드 실행: 자동실행 대신 수동 제안으로 강등(사람이 내용 확인)
                 finding.note = "미승인(실행위험): " + "; ".join(review)
                 gs["denied_review"] += 1
-                entry = cmd + "   # (실행위험 — 내용 확인 후 수동)"
+                from .approval import safer_alternative
+                alt = safer_alternative(cmd)
+                entry = cmd + "   # (실행위험 — 내용 확인 후 수동)" + (f" · 대안: {alt}" if alt else "")
                 if entry not in report.manual_suggestions:
                     report.manual_suggestions.append(entry)
             else:

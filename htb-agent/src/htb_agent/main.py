@@ -124,6 +124,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "병렬 — 게이트·결과처리는 순차로 안전")
     p.add_argument("--variants", type=int, default=None,
                    help="명령당 옵션 조합 변형 수 (기본 2, 1=변형끔). 경우의 수 시도")
+    p.add_argument("--time-budget", type=float, default=None, metavar="분",
+                   help="해커톤 시간 예산(분). 마감이 되면 진행 중 단계를 마치고 남은 단계를 "
+                        "생략한 뒤 상태를 저장한다(--resume 으로 이어감). 기본: 무제한")
     p.add_argument("--knowledge", default=None,
                    help="지식베이스 디렉토리 (기본 ./knowledge). 사용자 규칙/노트로 성장")
     p.add_argument("--llm", choices=["none", "claude", "ollama", "hybrid"], default=None,
@@ -388,6 +391,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     max_sweeps = _auto_def(args.max_sweeps, cfg.max_sweeps, 3, 2)
     max_parallel = _auto_def(args.max_parallel, getattr(cfg, "max_parallel", None), 4, 1)
     max_variants = _auto_def(args.variants, cfg.max_variants, 3, 2)
+    time_budget = pick(args.time_budget, cfg.time_budget, 0.0) or 0.0
     llm_kind = pick(args.llm, cfg.llm_backend, "none")
     llm_tier = pick(args.llm_tier, cfg.llm_tier, "standard")
     state_dir = pick(args.state_dir, cfg.state_dir, "state")
@@ -432,6 +436,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                         else ui.dim("(없음)")), 8),
         ui.kv("승인", ui.info(_mode), 8),
         ui.kv("플래그", ui.dim("접두 " + (", ".join(flag_prefixes) or "자동") + " · TAG{} 자동인식"), 8),
+        *([ui.kv("시간예산", ui.info(f"{time_budget:g}분 (마감 시 남은 단계 생략·상태 저장)"), 8)]
+          if time_budget else []),
     ], style="navy") + "\n")
 
     # 4) 지식베이스 + 취약점 KB 로드 (사용자 학습데이터로 성장)
@@ -546,6 +552,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 revshell_port=args.lport,
                                 variant_stats=variant_stats,
                                 max_parallel=max_parallel,
+                                time_budget=time_budget,
                                 learner=learner, learn_gaps=learn_gaps,
                                 web_learner=web_learner,
                                 state_store=store, resume=args.resume, audit=audit)
