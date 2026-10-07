@@ -110,7 +110,7 @@ class WorldModel:
     # ── 읽기(표현) ──
     def context_lines(self) -> list[str]:
         """LLM 컨텍스트용 정돈된 상태 요약(원시 로그 대신)."""
-        out = [f"OS={self.os_class}(확신 {self.os_confidence:.0f}%)"
+        out = [f"OS={self.os_class}(확신 {self.os_confidence:.0%})"
                + (" DC" if self.is_dc else "") + f", 권한레벨={self.access_level}"]
         if self.services:
             out.append("서비스: " + ", ".join(s.label() for s in self.services))
@@ -129,7 +129,7 @@ class WorldModel:
     def summary(self) -> str:
         from . import ui
         lines = [ui.kv("권한레벨", ui.accent2(self.access_level), 9),
-                 ui.kv("OS", f"{self.os_class} ({self.os_confidence:.0f}%)"
+                 ui.kv("OS", f"{self.os_class} ({self.os_confidence:.0%})"
                        + (" · DC" if self.is_dc else ""), 9),
                  ui.kv("서비스", str(len(self.services)) + "개", 9)]
         if self.creds:
