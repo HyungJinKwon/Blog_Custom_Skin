@@ -111,7 +111,7 @@ with open(os.path.join(d4, "learned-sqli.md"), "w", encoding="utf-8") as f:
 before4 = read(os.path.join(d4, "seed-sqli.md"))
 r5 = P.promote("sqli", d4, d4, today="2026-10-07")
 after4 = read(os.path.join(d4, "seed-sqli.md"))
-check("낡은 승격분 정리 기록", r5.pruned == ["Retired"] and r5.changed)
+check("낡은 승격분 정리 기록", [t for t, _ in r5.pruned] == ["Retired"] and r5.changed)
 check("정리 후 시드에서 사라지고 나머지는 유지",
       "owasp.org/r" in before4 and "owasp.org/r" not in after4 and "### Good" in after4)
 check("정리 후 사람이 쓴 본문 유지", P.split_seed(after4)[0] == P.split_seed(before4)[0])
@@ -120,8 +120,76 @@ with open(os.path.join(d4, "learned-sqli.md"), "w", encoding="utf-8") as f:
 learn.SOURCES["sqli"] = [s for s in learn.SOURCES["sqli"] if s[1] != "https://owasp.org/a"]
 r6 = P.promote("sqli", d4, d4)
 check("통과 항목이 없어도 정리할 것이 있으면 시드 갱신",
-      r6.pruned == ["Good"] and r6.changed and "### Good" not in read(os.path.join(d4, "seed-sqli.md")))
+      [t for t, _ in r6.pruned] == ["Good"] and r6.changed and "### Good" not in read(os.path.join(d4, "seed-sqli.md")))
 learn.SOURCES["sqli"].append(("a", "https://owasp.org/a"))
+
+print("\n=== 회귀: 멱등·순서·보존·관문 우회·길이·중복 ===")
+learn.SOURCES["sqli"] += [("b", "https://owasp.org/b2"), ("t", "https://owasp.org/t")]
+# 잘린 요약 끝 공백 → 재실행마다 날짜가 바뀌던 문제
+w = workspace(entry("Trim", "https://owasp.org/t", "x" * 499 + " " + "tail words here " * 10))
+P.promote("sqli", w, w, today="2026-10-01")
+check("요약 절단 끝 공백 — 다음 주 재실행 변경 없음", P.promote("sqli", w, w, today="2026-10-08").changed is False)
+# 일시적 수집 실패로 순서가 뒤집히던 문제
+w = workspace(entry("A", "https://owasp.org/a", LONG) + entry("B", "https://owasp.org/b2", LONG))
+P.promote("sqli", w, w, today="2026-10-01")
+order0 = [e.title for e in P.split_seed(read(os.path.join(w, "seed-sqli.md")))[1]]
+with open(os.path.join(w, "learned-sqli.md"), "w", encoding="utf-8") as f:
+    f.write(entry("A", "https://owasp.org/a", None) + entry("B", "https://owasp.org/b2", LONG))
+rr = P.promote("sqli", w, w, today="2026-10-08")
+check("일부 수집 실패해도 기존 순서 유지(변경 없음)",
+      rr.changed is False and [e.title for e in P.split_seed(read(os.path.join(w, "seed-sqli.md")))[1]] == order0)
+# 승격 섹션 뒤 사람이 덧붙인 절 보존
+w = workspace(entry("A", "https://owasp.org/a", LONG))
+P.promote("sqli", w, w, today="2026-10-01")
+with open(os.path.join(w, "seed-sqli.md"), "a", encoding="utf-8") as f:
+    f.write("\n## 참고\n사람이 덧붙인 참고 문단.\n")
+with open(os.path.join(w, "learned-sqli.md"), "w", encoding="utf-8") as f:
+    f.write(entry("A", "https://owasp.org/a", "Changed " + LONG))
+P.promote("sqli", w, w, today="2026-10-08")
+t = read(os.path.join(w, "seed-sqli.md"))
+check("승격 섹션 뒤 사람이 쓴 절 보존", "사람이 덧붙인 참고 문단." in t and P.is_canonical(t))
+# 출처 없는 항목·섹션 안 임의 문장은 정규형 검사로 차단
+base_txt = read(os.path.join(SEED_DIR, "seed-sqli.md"))
+body0 = P.split_seed(base_txt)[0]
+sneak = body0 + "\n" + P.PROMOTED_HEADER + "\n\n### HTB walkthrough\n- 요약: " + LONG + "\n자유 텍스트\n"
+check("출처 없는 항목도 관문에 걸림", any(P.check_candidate(e) for e in P.split_seed(sneak)[1]))
+check("섹션 안 임의 문장 → 정규형 아님", not P.is_canonical(sneak))
+check("promote 출력은 정규형", P.is_canonical(read(os.path.join(w, "seed-sqli.md"))))
+_sp = os.path.join(w, "seed-sqli.md")
+_before = read(_sp)
+with open(_sp, "a", encoding="utf-8") as f:
+    f.write("제목 없이 덧붙인 사람의 메모\n")
+rr = P.promote("sqli", w, w)
+check("섹션 안 형식 밖 문장 → 지우지 않고 중단(오류 보고)",
+      "형식 밖" in rr.error and "사람의 메모" in read(_sp) and not rr.changed)
+with open(_sp, "w", encoding="utf-8") as f:
+    f.write(_before)
+# 기존 승격분이 현재 관문을 못 넘으면 정리
+w = workspace(entry("A", "https://owasp.org/a", LONG))
+P.promote("sqli", w, w, today="2026-10-01")
+bad_old = read(os.path.join(w, "seed-sqli.md")).replace(LONG.strip(), "too short")
+with open(os.path.join(w, "seed-sqli.md"), "w", encoding="utf-8") as f:
+    f.write(bad_old)
+with open(os.path.join(w, "learned-sqli.md"), "w", encoding="utf-8") as f:
+    f.write(entry("Bx", "https://owasp.org/b2", LONG))
+rr = P.promote("sqli", w, w, today="2026-10-08")
+check("관문 미달 기존 승격분 정리", [t for t, _ in rr.pruned] == ["A"] and "too short" not in read(os.path.join(w, "seed-sqli.md")))
+# 학습 노트 안 같은 URL 중복 → 하나만 승격, 나머지는 사유와 함께 거부
+w = workspace(entry("A1", "https://owasp.org/a", LONG) + entry("A2", "https://owasp.org/a", "Other " + LONG))
+rr = P.promote("sqli", w, w)
+check("중복 URL: 승격 1 · 거부 1(사유 기록)", len(rr.accepted) == 1 and rr.rejected and "중복" in rr.rejected[0][1])
+# 길이 상한
+w = workspace(entry("A", "https://owasp.org/a", "w " * 300) + entry("B", "https://owasp.org/b2", "v " * 300))
+_sp = os.path.join(w, "seed-sqli.md")
+_t = read(_sp)
+_pad = NOTE_CHARS - 800 - len(P.split_seed(_t)[0])   # 본문+승격 1건은 상한 안, 2건이면 초과
+with open(_sp, "w", encoding="utf-8") as f:   # 사람이 쓴 본문(승격 섹션 앞)에 확장
+    f.write(_t.replace(P.PROMOTED_HEADER, ("본문 확장 문장. " * 1000)[:_pad] + "\n\n" + P.PROMOTED_HEADER, 1))
+rr = P.promote("sqli", w, w)
+check(f"시드 길이 {NOTE_CHARS}자 상한 유지(넘치면 오래된 승격분부터 버림)",
+      len(read(os.path.join(w, "seed-sqli.md"))) <= NOTE_CHARS and any("상한" in why for _, why in rr.pruned)
+      and len(P.split_seed(read(os.path.join(w, "seed-sqli.md")))[1]) == 1)
+learn.SOURCES["sqli"] = [x for x in learn.SOURCES["sqli"] if x[1] not in ("https://owasp.org/b2", "https://owasp.org/t")]
 
 print("\n=== 오류 처리 ===")
 check("지원 주제 아님", P.promote("no-such-topic", d, d).error != "")
@@ -167,6 +235,9 @@ check(f"승격 항목 전부 관문 통과 (위반: {bad[:3] or '없음'})", not
 check(f"주제당 승격 상한 준수 (위반: {over or '없음'})", not over)
 check(f"시드 전문이 RAG 반영 상한({NOTE_CHARS}자) 안 (위반: {long_ or '없음'})", not long_)
 check(f"승격 출처가 모두 현재 카탈로그에 있음 (위반: {stale[:3] or '없음'})", not stale)
+noncanon = [os.path.basename(p) for p in sorted(glob.glob(os.path.join(SEED_DIR, "seed-*.md")))
+            if not P.is_canonical(read(p))]
+check(f"승격 섹션이 정규형(임의 문장·출처 없는 항목 없음) (위반: {noncanon or '없음'})", not noncanon)
 
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

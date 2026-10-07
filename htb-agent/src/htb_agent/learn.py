@@ -19,6 +19,7 @@ from __future__ import annotations
 import html as _html
 import os
 import re
+import urllib.parse
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from typing import Callable
@@ -196,8 +197,15 @@ def _default_fetcher(timeout: int = 6) -> Callable[[str], str | None]:
 
 
 def _domain_of(url: str) -> str:
-    m = re.match(r"https?://([^/]+)", url, re.I)
-    return (m.group(1).lower() if m else "").split(":")[0]
+    """http(s) URL 의 실제 호스트(소문자). 'https://evil.com#.owasp.org' 같은 표기도
+    표준 파서로 해석해 evil.com 으로 본다. 그 외 스킴·형식 오류는 ''."""
+    try:
+        parts = urllib.parse.urlsplit((url or "").strip())
+    except ValueError:
+        return ""
+    if parts.scheme.lower() not in ("http", "https"):
+        return ""
+    return (parts.hostname or "").lower()
 
 
 def is_allowed(url: str) -> bool:
@@ -259,22 +267,43 @@ def _drop_by_attrs(attrs: list[tuple[str, str | None]]) -> bool:
     return bool(toks & _DROP_CLASS_TOKENS)
 
 
+# 끝 태그를 생략할 수 있는 요소(HTML 규칙): 같은 종류가 다시 열리거나 상위 블록이
+# 열리면 앞의 것이 닫힌 것으로 본다. 처리하지 않으면 버린 <p>/<li> 하나가 뒤의 형제를
+# 부모가 닫힐 때까지 전부 삼킨다.
+_IMPLIED_CLOSE = {
+    "p": {"p", "div", "ul", "ol", "dl", "table", "section", "article", "main", "pre",
+          "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "header", "footer", "nav",
+          "aside", "form", "details", "figure"},
+    "li": {"li"}, "dt": {"dt", "dd"}, "dd": {"dt", "dd"},
+    "tr": {"tr"}, "td": {"td", "th", "tr"}, "th": {"td", "th", "tr"},
+}
+# 이 요소를 넘어서는 암묵 닫기를 찾지 않는다(중첩 목록·표 안의 같은 태그 보호)
+_IMPLIED_BOUNDARY = {"ul", "ol", "dl", "table", "div", "section", "article", "main", "body",
+                     "blockquote", "td", "th", "li", "aside", "nav", "header", "footer"}
+
+
 class _TextExtractor(HTMLParser):
     """블록 단위 텍스트 수집기. 군더더기 영역은 버리고 본문 영역 여부를 함께 기록."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
-        self.stack: list[tuple[str, bool, bool]] = []   # (태그, 버림, 본문영역)
+        # (태그, 버림, 본문영역, 태그 자체로 버림(nav·footer 등))
+        self.stack: list[tuple[str, bool, bool, bool]] = []
         self.blocks: list[tuple[str, bool]] = []        # (텍스트, 본문영역 안)
         self._buf: list[str] = []
         self.saw_main = False
 
     def _state(self) -> tuple[bool, bool]:
-        # 본문 영역 안이면, 그 바깥 조상(래퍼 div 등)의 버림 판정은 적용하지 않는다 —
-        # <div class="site sidebar-left"> 같은 페이지 래퍼 때문에 본문이 통째로 사라지지 않게.
-        mains = [i for i, (_, _, m) in enumerate(self.stack) if m]
-        scope = self.stack[mains[0]:] if mains else self.stack
-        return (any(dropped for _, dropped, _ in scope), bool(mains))
+        # 본문 영역 안이면, 그 바깥 조상(래퍼 div 등)의 '클래스명' 버림 판정은 적용하지
+        # 않는다 — <div class="site sidebar-left"> 같은 래퍼 때문에 본문이 사라지지 않게.
+        # 단 <aside>/<footer>/<nav> 같은 태그 자체 버림은 안쪽 <article> 에도 적용한다.
+        mains = [i for i, e in enumerate(self.stack) if e[2]]
+        if not mains:
+            return (any(e[1] for e in self.stack), False)
+        first = mains[0]
+        dropped = (any(e[1] for e in self.stack[first:])
+                   or any(e[3] for e in self.stack[:first]))
+        return (dropped, True)
 
     def _flush(self) -> None:
         text = _WS.sub(" ", "".join(self._buf)).strip()
@@ -282,18 +311,33 @@ class _TextExtractor(HTMLParser):
         if text:
             self.blocks.append((text, self._state()[1]))
 
+    def _close_implied(self, tag: str) -> None:
+        for i in range(len(self.stack) - 1, -1, -1):
+            open_tag = self.stack[i][0]
+            if open_tag in _IMPLIED_CLOSE and tag in _IMPLIED_CLOSE[open_tag]:
+                self._flush()
+                del self.stack[i:]
+                return
+            if open_tag in _IMPLIED_BOUNDARY:
+                return
+
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
         if tag in _BLOCK_TAGS or tag == "br":
             self._flush()
         if tag in _VOID_TAGS:
             return
+        self._close_implied(tag)
         # 문서 골격·본문 태그는 클래스명만으로 버리지 않는다(<body class="has-navbar"> 등)
-        dropped = tag in _DROP_TAGS or (tag not in _NEVER_ATTR_DROP and _drop_by_attrs(attrs))
-        is_main = tag in _MAIN_TAGS or dict(attrs).get("role", "") == "main"
+        tag_dropped = tag in _DROP_TAGS
+        dropped = tag_dropped or (tag not in _NEVER_ATTR_DROP and _drop_by_attrs(attrs))
+        role = (dict(attrs).get("role") or "").lower()
+        # 태그 자체로 버린 영역(aside·footer 등) 안의 <article> 은 본문으로 치지 않는다
+        inside_tag_dropped = any(e[3] for e in self.stack)
+        is_main = (tag in _MAIN_TAGS or role == "main") and not inside_tag_dropped
         if is_main and not dropped:
             self.saw_main = True
-        self.stack.append((tag, dropped, is_main))
+        self.stack.append((tag, dropped, is_main, tag_dropped))
 
     def handle_startendtag(self, tag, attrs):   # <br/>·<svg/> 등 — 열린 영역 없음
         if tag.lower() in _BLOCK_TAGS or tag.lower() == "br":

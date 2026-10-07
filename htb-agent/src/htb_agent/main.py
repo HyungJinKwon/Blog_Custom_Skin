@@ -285,8 +285,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
             print((ui.mark_ok(head) if r.changed else ui.dim("  " + head + " (변경 없음)")))
             for title, reason in r.rejected:
                 print(ui.dim(f"     ✗ {title} — {reason}"))
-            for title in r.pruned:
-                print(ui.dim(f"     − {title} — 카탈로그에서 빠진 출처라 시드에서 정리"))
+            for title, why in r.pruned:
+                print(ui.dim(f"     − {title} — 시드에서 정리({why})"))
             changed += r.changed
         if changed:
             print(ui.ok(f"\n시드 {changed}개 갱신 — 'git diff {ndir}/seed-*.md' 로 검토 후 커밋·PR 하면 "
