@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from typing import Any
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
@@ -82,7 +83,7 @@ class SessionState:
 
     @classmethod
     def from_dict(cls, d: dict) -> "SessionState":
-        known = {f: d.get(f) for f in cls.__dataclass_fields__ if f in d}
+        known: dict[str, Any] = {f: d.get(f) for f in cls.__dataclass_fields__ if f in d}
         return cls(**known)
 
     def add_history(self, event: str) -> None:
