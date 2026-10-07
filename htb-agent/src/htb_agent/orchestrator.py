@@ -64,6 +64,7 @@ class EnumFinding:
     note: str = ""
     output: str = ""
     phase: str = "enum"
+    skipped: bool = False   # 도구 미설치로 시도조차 안 함 — 예산(max_enum/max_llm)을 쓰지 않는다
 
 
 GATE_KEYS = ("proposed", "executed", "run_failed", "tool_missing", "rejected_validate",
@@ -403,11 +404,17 @@ class Orchestrator:
         # 재개: 저장된 상태에 포트가 있으면 RECON 을 건너뛰고 재사용
         prior: SessionState | None = None
         host = None
+        seen_cmds: set[str] = set()
         if self.resume and self.state_store and self.state_store.exists(target):
             prior = self.state_store.load(target)
             if prior and prior.host:
                 host = host_from_dict(prior.host)
                 report.message = "(재개: 저장된 RECON 재사용 — 재스캔 생략) "
+            if prior:
+                self._restore(report, prior, seen_cmds)
+        # 예산은 '이번 실행' 기준(재개로 복원한 이전 결과는 예산을 쓰지 않음)
+        self._enum_base = len(report.enum_findings)
+        self._llm_base = len(report.llm_findings)
 
         # ── PHASE 1: RECON (유한 폴백) — 재개로 host 확보 시 생략 ──
         if host is None:
@@ -438,41 +445,63 @@ class Orchestrator:
         # 라운드를 돌린다. 한 스윕(전 단계 1회 통과) 뒤 '월드 상태가 성장'하면
         # (새 관측·크리덴셜·서비스로 이전 단계가 다시 유효해지면) 다음 스윕을 돈다.
         # 전역 상한(max_enum·max_llm)·명령 중복제거(seen_cmds)·상태정체 조기종료로 유한.
-        seen_cmds: set[str] = set()
         phases_run: list[str] = []
         sweeps_run = 0
-        for sweep in range(self.max_sweeps):
-            before_fp = self._world_fingerprint(report)
-            # 자율 지식 획득: 스윕 시작 시 관측된 기술 중 '모르는 것'을 권위 출처에서
-            # 자동 학습해 KB 에 즉시 반영한다(이후 분석가·명령생성이 바로 활용). P1 유지.
-            self._acquire_knowledge(report, host, prof)
-            # B3 분석가: 스윕 시작 시 현재 상태를 읽고 가설·경로·집중을 산출해
-            # 이후 명령 생성(_llm_round)을 유도한다. 매 스윕 상태가 자랐을 때만 갱신.
-            self._run_analyst(report, prof, host, target)
-            for key, label in self.phases:
-                # A2 단계 게이팅: 전제(권한레벨/크리덴셜) 미충족 단계는 KB 가이드(수동
-                # 제안)는 남기되 투기적 LLM 라운드는 건너뛴다(상태가 자라면 다음 스윕서 활성).
-                met, reason = self._prereq_met(key)
-                phase_before = len(report.enum_findings) + len(report.llm_findings)
-                for _rnd in range(self.max_rounds):
-                    added = self._enum_round(report, host, prof, target, seen_cmds,
-                                             self.max_enum - len(report.enum_findings), key)
+        self._analysis_fp: tuple | None = None
+        interrupted = False
+        try:
+            for sweep in range(self.max_sweeps):
+                if self._goal_reached(report):
+                    break
+                before_fp = self._world_fingerprint(report)
+                # 지금까지의 출력에서 취약점(CVE/CWE·버전 매칭)을 먼저 반영 — 학습·분석·
+                # 명령 생성이 '확인 취약점'을 보고 판단하도록(이전엔 루프가 끝난 뒤에야 계산)
+                self._run_vuln(report, host, target)
+                # 자율 지식 획득: 관측된 기술 중 '모르는 것'을 권위 출처에서 자동 학습해
+                # KB 에 즉시 반영한다(이후 분석가·명령생성이 바로 활용). P1 유지.
+                self._acquire_knowledge(report, host, prof)
+                for key, label in self.phases:
+                    if self._goal_reached(report):
+                        report.phase_status.setdefault(key, "생략(목표 달성)")
+                        continue
+                    # A2 단계 게이팅: 전제(권한레벨/크리덴셜) 미충족 단계는 KB 가이드(수동
+                    # 제안)는 남기되 투기적 LLM 라운드는 건너뛴다(상태가 자라면 다음 스윕서 활성).
+                    met, reason = self._prereq_met(key)
+                    # B3 분석가: 이 단계의 명령 생성 직전에, 마지막 분석 이후 상태가 자랐을
+                    # 때만 다시 판단한다(앞 단계 결과·새 크리덴셜·취약점을 계획에 반영).
                     if met and self.llm_router is not None:
-                        added += self._llm_round(report, host, prof, target, seen_cmds,
-                                                 self.max_llm - len(report.llm_findings), key)
-                    if added == 0:
-                        break
-                grew = len(report.enum_findings) + len(report.llm_findings) > phase_before
-                if grew and key not in phases_run:
-                    phases_run.append(key)
-                report.phase_status[key] = ("대기(" + reason + ")" if not met
-                                            else ("진행" if grew else "점검함"))
-            sweeps_run += 1
-            # 이번 스윕에서 상태가 더 자라지 않았으면(새 관측·예산 소진) 조기 종료 — 유한
-            if self._world_fingerprint(report) == before_fp:
-                break
+                        self._refresh_analysis(report, prof, host, target)
+                    phase_before = len(report.enum_findings) + len(report.llm_findings)
+                    for _rnd in range(self.max_rounds):
+                        added = self._enum_round(
+                            report, host, prof, target, seen_cmds,
+                            self.max_enum - self._spent(report.enum_findings, self._enum_base),
+                            key)
+                        if met and self.llm_router is not None and not self._goal_reached(report):
+                            added += self._llm_round(
+                                report, host, prof, target, seen_cmds,
+                                self.max_llm - self._spent(report.llm_findings, self._llm_base),
+                                key)
+                        if added == 0 or self._goal_reached(report):
+                            break
+                    grew = len(report.enum_findings) + len(report.llm_findings) > phase_before
+                    if grew and key not in phases_run:
+                        phases_run.append(key)
+                    # 한 번이라도 '진행'한 단계는 이후 스윕에서 새 명령이 없어도 '진행' 유지
+                    if report.phase_status.get(key) != "진행":
+                        report.phase_status[key] = ("대기(" + reason + ")" if not met
+                                                    else ("진행" if grew else "점검함"))
+                    self._run_vuln(report, host, target)   # 다음 단계가 새 취약점을 보도록
+                sweeps_run += 1
+                # 이번 스윕에서 상태가 더 자라지 않았으면(새 관측·예산 소진) 조기 종료 — 유한
+                if self._world_fingerprint(report) == before_fp:
+                    break
+        except KeyboardInterrupt:
+            # 사용자 중단(Ctrl+C): 지금까지의 결과를 저장해 --resume 으로 이어갈 수 있게 한다
+            interrupted = True
+            self.audit.event("interrupted", sweeps=sweeps_run)
 
-        # ── PHASE 3.7: VULN (CVE/CWE 탐지 + 매핑) ──
+        # ── PHASE 3.7: VULN (CVE/CWE 탐지 + 매핑) — 최종 출력까지 반영 ──
         self._run_vuln(report, host, target)
 
         # NSE 취약점 스크립트 보수적 제안(실행은 무겁고 길어 수동 제안으로)
@@ -482,7 +511,7 @@ class Orchestrator:
                 f"nmap -sV --script vuln -p {ports} {target}   # NSE 취약점 스캔(수동)")
 
         # ── CVE/CWE 레퍼런스 자동 수집(공식 출처, best-effort) ──
-        if self.enricher is not None:
+        if self.enricher is not None and not interrupted:   # 중단 시 네트워크 수집 생략
             all_cves = list(report.detected_cve)
             for m in report.vuln_matches:
                 all_cves += m.cve
@@ -516,7 +545,11 @@ class Orchestrator:
         self._prepare_crack(report)
 
         # ── PHASE 4: REPORT ──
-        report.status = "done"
+        report.status = "interrupted" if interrupted else "done"
+        if interrupted:
+            report.message += "사용자 중단 — 진행 상태 저장(--resume 으로 이어서 진행). "
+        elif self._goal_reached(report):
+            report.message += "목표 달성 — 남은 단계 조기 종료. "
         flag_state = f"user={'O' if report.user_flag else 'X'} root={'O' if report.root_flag else 'X'}"
         report.message += (f"OS={prof.os_class.value}({prof.tag}), "
                            f"스윕 {sweeps_run}회, "
@@ -528,6 +561,72 @@ class Orchestrator:
                          matches=[m.name for m in report.vuln_matches])
         self.audit.event("session_end", status=report.status, message=report.message)
         return report
+
+    def _restore(self, report: OrchestrationReport, prior: SessionState,
+                 seen: set[str]) -> None:
+        """재개: 이전 실행에서 '실제로 실행된' 명령과 결과·플래그·수동 제안을 복원한다.
+        실행된 명령은 seen 에 넣어 다시 돌리지 않고(중복 공격·시간 낭비 방지), 복원한 결과는
+        분석·명령 생성의 맥락이 되며 저장 시 이력이 사라지지 않는다. 실행되지 않은 명령
+        (거부·미설치·미승인)은 복원하지 않아 이번 실행에서 다시 판단된다."""
+        for src, dst in ((prior.enum_findings, report.enum_findings),
+                         (prior.llm_findings, report.llm_findings)):
+            for d in src or []:
+                cmd = (d or {}).get("command", "")
+                if not cmd or not d.get("ran") or cmd in seen:
+                    continue
+                seen.add(cmd)
+                dst.append(EnumFinding(command=cmd, ran=True, note=d.get("note", ""),
+                                       output=d.get("output", ""),
+                                       phase=d.get("phase") or "enum"))
+        for fd in prior.flags or []:
+            value, kind = (fd or {}).get("value", ""), fd.get("kind", "")
+            if not value or value in {f.value for f in report.flags}:
+                continue
+            report.flags.append(FlagHit(value, kind, fd.get("source", "")))
+            report.flag_provenance.append(
+                _prov.classify(kind, value, fd.get("source", "")))
+            if self.world is not None:
+                self.world.add_flag(kind, value)
+        for m in prior.manual_suggestions or []:
+            if m not in report.manual_suggestions:
+                report.manual_suggestions.append(m)
+        if report.enum_findings or report.llm_findings or report.flags:
+            self.audit.event("resumed", findings=len(report.enum_findings)
+                             + len(report.llm_findings), flags=len(report.flags))
+
+    @staticmethod
+    def _spent(findings: list[EnumFinding], base: int = 0) -> int:
+        """이번 실행에서 예산을 쓴 시도 수 — 도구 미설치로 건너뛴 명령은 제외."""
+        return sum(1 for f in findings[base:] if not f.skipped)
+
+    def _tool_ok(self, cmd: str) -> bool:
+        binary = binary_of(cmd)
+        return not binary or self.is_tool_available(binary)
+
+    def _goal_reached(self, report: OrchestrationReport) -> bool:
+        """목표 달성 여부 — 달성하면 남은 공격 단계를 돌리지 않는다(불필요한 대상 상호작용·
+        예산 낭비 방지). 대상 상호작용 출력에서 나온(provenance=exploit-derived) 플래그만
+        인정해, 로컬 명령 출력의 미끼/예시 문자열로 조기 종료하지 않는다.
+          · single(Jeopardy): 플래그 1개(접두 지정 시 그 접두)
+          · boot2root(HTB) : user + root 둘 다"""
+        trusted = {(p.kind, p.value) for p in report.flag_provenance
+                   if p.verdict == "exploit-derived"}
+        hits = [f for f in report.flags if (f.kind, f.value) in trusted]
+        if self.flag_kind == "single":
+            pref = tuple(p.lower() for p in self.flag_prefixes)
+            return any(not pref or f.value.split("{", 1)[0].lower() in pref for f in hits)
+        kinds = {f.kind for f in hits}
+        return "user" in kinds and "root" in kinds
+
+    def _refresh_analysis(self, report: OrchestrationReport, prof: ProfileResult,
+                          host: NmapHost, target: str) -> None:
+        """마지막 분석 이후 상태(관측·크리덴셜·취약점·권한)가 자랐을 때만 분석가를 다시
+        부른다 — 계획이 최신 근거를 따르되, 변화 없으면 LLM 호출을 아낀다."""
+        fp = self._world_fingerprint(report)
+        if fp == self._analysis_fp:
+            return
+        self._analysis_fp = fp
+        self._run_analyst(report, prof, host, target)
 
     def _persist(self, report: OrchestrationReport, prior: SessionState | None) -> None:
         """진행 상태를 저장(중단/재개용). state_store 없으면 no-op."""
@@ -543,7 +642,8 @@ class Orchestrator:
             st.profile = {"os_class": report.profile.os_class.value,
                           "confidence": report.profile.confidence,
                           "is_dc": report.profile.is_domain_controller}
-        fin = lambda f: {"command": f.command, "ran": f.ran, "note": f.note, "output": f.output}
+        fin = lambda f: {"command": f.command, "ran": f.ran, "note": f.note,
+                         "output": f.output, "phase": f.phase}
         if report.enum_findings:
             st.enum_findings = [fin(f) for f in report.enum_findings]
         if report.llm_findings:
@@ -572,6 +672,7 @@ class Orchestrator:
         recs = self.kb.query(prof.os_class.value, host.open_ports, services, phase=phase)
         # 실행 후보(base, vcmd) 수집 — seen·budget·수동제안 처리는 여기서(결정적)
         to_run: list[tuple[str, str]] = []
+        slots = 0   # 예산을 쓰는 후보 수(미설치 도구는 기록만 하고 예산 미사용)
         for rec in recs:
             for tmpl in rec.suggestions:
                 for cmd, runnable in self._expand(tmpl, target):
@@ -588,16 +689,20 @@ class Orchestrator:
                         if vcmd in seen:
                             continue
                         seen.add(vcmd)
-                        if len(to_run) >= budget:
+                        if slots >= budget:
                             report.manual_suggestions.append(vcmd + "   # (상한 초과 — 수동)")
                             continue
                         to_run.append((cmd, vcmd))
+                        if self._tool_ok(vcmd):
+                            slots += 1
         if not to_run:
             return 0
         base_by_cmd = {vcmd: base for base, vcmd in to_run}
         if self.max_parallel <= 1:
             # 순차(기본): 게이트→실행→처리→변형학습 기록
             for base_cmd, vcmd in to_run:
+                if self._goal_reached(report):   # 목표 달성 — 남은 후보는 실행하지 않음
+                    break
                 before = len(report.enum_findings)
                 self._attempt(report, report.enum_findings, vcmd, phase)
                 if len(report.enum_findings) > before:
@@ -806,9 +911,9 @@ class Orchestrator:
         for cmd in cmds:
             if cmd in seen:
                 continue
-            seen.add(cmd)
-            if attempted >= budget:
+            if attempted >= budget or self._goal_reached(report):
                 break
+            seen.add(cmd)
             self._attempt(report, report.llm_findings, cmd, phase)
             # B4: 구조화 출력의 가설·근거를 finding 비고에 덧붙임(어느 가설을 검증했는지 추적)
             m = meta.get(cmd) or {}
@@ -817,7 +922,8 @@ class Orchestrator:
             if tags and report.llm_findings:
                 f = report.llm_findings[-1]
                 f.note = (f.note + " · " if f.note else "") + " · ".join(tags)
-            attempted += 1
+            if self._tool_ok(cmd):
+                attempted += 1
         return attempted
 
     def _run_vuln(self, report: OrchestrationReport, host: NmapHost, target: str) -> None:
@@ -923,6 +1029,7 @@ class Orchestrator:
             len(w.creds) if w else 0,
             len(w.services) if w else 0,
             len(w.loot) if w else 0,
+            len(w.proven_vulns) if w else 0,
             w.access_level if w else "none",
         )
 
@@ -967,6 +1074,7 @@ class Orchestrator:
         binary = binary_of(cmd)
         if binary and not self.is_tool_available(binary):
             finding.note = f"건너뜀: '{binary}' 미설치"
+            finding.skipped = True
             gs["tool_missing"] += 1
             self.audit.event("skipped", cmd=cmd, reason="tool-missing", binary=binary)
             return None
