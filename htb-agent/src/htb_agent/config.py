@@ -18,7 +18,7 @@ class ConfigError(Exception):
 
 
 _INT_KEYS = ("max_attempts", "max_enum", "max_llm", "max_rounds", "max_sweeps",
-             "max_parallel", "max_variants", "time_budget")
+             "max_parallel", "max_variants", "time_budget", "max_cost")
 _LIST_KEYS = ("allowed_ranges", "attacker_ips")
 _STR_KEYS = ("platform", "knowledge_dir", "knowledge", "state_dir", "llm_backend", "llm_tier")
 _KNOWN_KEYS = set(_INT_KEYS) | set(_LIST_KEYS) | set(_STR_KEYS) | {"llm"}
@@ -77,6 +77,7 @@ class Config:
     max_parallel: int | None = None
     max_variants: int | None = None
     time_budget: float | None = None
+    max_cost: float | None = None
     knowledge_dir: str | None = None
     state_dir: str | None = None
     warnings: list[str] = field(default_factory=list)   # 무해한 문제(알 수 없는 키 등)
@@ -101,6 +102,7 @@ class Config:
             max_parallel=d.get("max_parallel"),
             max_variants=d.get("max_variants"),
             time_budget=d.get("time_budget"),
+            max_cost=d.get("max_cost"),
             knowledge_dir=d.get("knowledge_dir") or d.get("knowledge"),
             state_dir=d.get("state_dir"),
         )

@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from . import recommend as _recommend
 from .enrich import CWE_NAMES, Enricher
 
-SCHEMA_VERSION = "1.4"   # 1.1: blockers·flag_provenance·learn·next_options / 1.2: gate_stats / 1.3: knowledge / 1.4: goal_reached·llm_routing(하위호환)
+SCHEMA_VERSION = "1.5"   # 1.1: blockers·flag_provenance·learn·next_options / 1.2: gate_stats / 1.3: knowledge / 1.4: goal_reached·llm_routing / 1.5: timed_out·elapsed_sec·cost_capped(하위호환)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -77,6 +77,9 @@ def to_dict(report) -> dict:
         "phase_status": dict(getattr(report, "phase_status", {}) or {}),
         "goal_reached": bool(getattr(report, "goal_reached", False)),
         "llm_routing": dict(getattr(report, "llm_routing", {}) or {}),
+        "timed_out": bool(getattr(report, "timed_out", False)),
+        "elapsed_sec": float(getattr(report, "elapsed_sec", 0.0) or 0.0),
+        "cost_capped": bool(getattr(report, "cost_capped", False)),
         "gate_stats": dict(getattr(report, "gate_stats", {}) or {}),
         "open_ports": host.open_ports if host else [],
         "ports": [_port_dict(p) for p in host.ports] if host else [],

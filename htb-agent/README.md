@@ -195,8 +195,9 @@ assassin 10.129.1.5 --config config/config.example.json
 | 지능 | 지식베이스(사용자 학습·자가학습으로 성장, 관련도 기반 노트 주입=경량 RAG) · 단계 순서 오케스트레이터 · **월드 모델(구조화 상태 단일 상태원, LLM 컨텍스트 주입)** · **반복·재진입 스윕(유한)** · **단계 게이팅(권한레벨 전제조건)** · 옵션 조합 변형 + **실행결과 기반 변형 학습** · **병렬 열거(I/O)** · LLM(Claude/Ollama/**하이브리드**(서킷 브레이커·라우팅 집계)·플랫폼/카테고리 인식·**다관점 분석가(병렬 가설·계획)**·**JSON 출력 계약**·**적응형 tier 승격**) · **목표 달성 조기 종료** · **권위출처 자가학습(`--learn`/일괄 `--learn all`)·자료 수집(`--ingest`)** |
 | 목표 | CVE/CWE 탐지·매핑 + **자동 수집(NVD)** · user.txt/root.txt·CTF 단일 플래그 · **리버스쉘 생성(`--revshell`) + 자동 준비(공격자 IP 확보 시)** · **AWS/S3 열거 자동 준비(`--cloud`, 호스트명 확보 시 버킷후보+점검 생성)** |
 | 공격 | **리버스쉘·AWS/S3·권한상승·해시크래킹 자동 준비(생성 전용)** — 공격자 IP/호스트명/OS/해시 확보 시 페이로드·열거·LPE 체크리스트·john/hashcat 명령 자동 생성(`--revshell`/`--cloud`/`--privesc`/`--crack`) |
-| 운영 | 중단/재개(실행된 명령 복원·Ctrl+C 저장) · 크리덴셜 볼트(해시 PtH) · 감사 로그 · 설정 파일 · 도구 설치 스크립트 · **환경 자가진단(`--doctor`)** |
-| 산출 | 라이트업 자동 생성(htb-ctf-writeup-v5 / Tistory 13섹션) · **결과 내보내기(JSON·HTML 대시보드)** |
+| 운영 | 중단/재개(실행된 명령 복원·Ctrl+C 저장) · **시간 예산(`--time-budget`)·비용 상한(`--max-cost`)** · 크리덴셜 볼트(해시 PtH) · 감사 로그 · 설정 파일 · 도구 설치 스크립트 · **환경 자가진단(`--doctor`)** |
+| 산출 | 라이트업 자동 생성(htb-ctf-writeup-v5 / Tistory 13섹션) · **결과 내보내기(JSON·HTML 대시보드)** · **실행 재생 뷰어(`--replay`)** |
+| 평가 | **성능 측정(`--bench`)** — 오프라인 모의 문제로 성공률·pass@N·명령 수·시간·비용. 개선 효과를 숫자로 확인(해커톤 발표) |
 
 원칙: 승인제 · **외부 라이트업 미참조(사용자 자료·권위 출처만)** · 무한루프 금지 · 증거기반(〔확인〕/〔추정〕).
 
@@ -218,7 +219,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 57 스위트 1561 테스트
+cd htb-agent && python3 tests/run_all.py     # 59 스위트 1622 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
@@ -249,6 +250,9 @@ cd htb-agent && python3 tests/run_all.py     # 57 스위트 1561 테스트
 | `--cloud` `NAME` | AWS/S3 열거 자동 준비(생성 안 실행). 호스트명/도메인에서 버킷명 후보+비인증 점검 생성. 예: --cloud acme.htb. 권한 확인 자산 전용 |
 | `--privesc` `OS` | 권한상승 플레이북 자동 준비(생성 안 실행). OS 별 열거·점검·LPE 체크리스트 생성. 예: --privesc linux. 획득한 대상 셸에서 직접 실행 |
 | `--crack` `HASH` | 해시 크래킹 자동 준비(생성 안 실행). 해시 종류 식별 + john/hashcat 명령 생성. 예: --crack '$krb5tgs$23$...'. 권한 확인 자산 해시 전용 |
+| `--bench` `SUITE` | 로컬 모의 문제로 풀이 성공률·명령 수·시간·비용 측정(오프라인, 실제 통신 없음). SUITE 생략 시 번들 문제 세트. --attempts N 으로 반복(pass@N), --llm 으로 LLM 비교 |
+| `--attempts` `N` | --bench 에서 문제당 시도 횟수(기본 1) |
+| `--replay` `JSONL` | 감사 로그(JSONL)를 단계별 재생 HTML 로 변환(이전/다음/자동 재생). 예: --replay state/audit_10.129.1.5.jsonl → 같은 이름의 .html |
 | `--platform` | 플랫폼 프로파일 (기본 htb). dreamhack/ctf=단일 타겟+flag{} 모드 |
 | `--category` | Jeopardy 카테고리 힌트(web/pwn/rev/crypto/forensic/misc). CTF/Dreamhack 에서 LLM 제안을 카테고리에 맞게 유도 |
 | `--flag-prefix` | 우선 인식할 플래그 접두 (반복 가능, 예: --flag-prefix DH). 플랫폼 기본값에 추가 |
@@ -274,6 +278,7 @@ cd htb-agent && python3 tests/run_all.py     # 57 스위트 1561 테스트
 | `--max-parallel` | 열거 명령 동시 실행 수 (기본 1=순차). 독립 명령의 I/O 만 병렬 — 게이트·결과처리는 순차로 안전 |
 | `--variants` | 명령당 옵션 조합 변형 수 (기본 2, 1=변형끔). 경우의 수 시도 |
 | `--time-budget` `분` | 해커톤 시간 예산(분). 마감이 되면 진행 중 단계를 마치고 남은 단계를 생략한 뒤 상태를 저장한다(--resume 으로 이어감). 기본: 무제한 |
+| `--max-cost` `USD` | LLM 누적 추정 비용 상한(달러). 넘으면 LLM 호출을 멈추고 규칙 기반으로 계속 진행한다. 기본: 무제한 |
 | `--knowledge` | 지식베이스 디렉토리 (기본 ./knowledge). 사용자 규칙/노트로 성장 |
 | `--llm` | LLM 두뇌 백엔드 (기본 none=규칙기반). claude=API, ollama=로컬, hybrid=둘을 단계 난이도로 라우팅+폴백·연속 오류 백엔드 차단·라우팅 집계 |
 | `--llm-tier` | LLM 기본 티어(기본 standard). 명령 생성은 단계별 티어 우선(열거=cheap·침투=standard·권한상승/측면=strong), 저확신 시 자동 승격 |

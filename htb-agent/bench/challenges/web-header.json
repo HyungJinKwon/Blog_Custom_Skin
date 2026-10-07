@@ -1,0 +1,11 @@
+{
+  "name": "web-header",
+  "title": "응답 헤더에 남은 디버그 플래그",
+  "difficulty": "easy",
+  "lesson": "첫 HTTP 요청의 응답 헤더까지 꼼꼼히 읽기",
+  "ports": [[80, "http"]],
+  "responses": [
+    {"match": "curl -i http://", "stdout": "HTTP/1.1 200 OK\nServer: Apache/2.4.41\nX-Debug-Flag: FLAG{headers_tell_stories}\n\n<html>welcome</html>"}
+  ],
+  "flag": "FLAG{headers_tell_stories}"
+}
