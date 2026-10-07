@@ -51,5 +51,14 @@ check("to_dict 핵심 키", {"target","os_class","access_level","services","cred
 check("to_dict 서비스 직렬화", d["services"][0]["port"] == 80)
 check("to_dict flags", d["flags"].get("root") == "def")
 
+print("\n=== 확신도 표기(0~1 값 → 백분율) ===")
+w3 = WorldModel(target="t")
+w3.os_class, w3.os_confidence = "windows_ad", 0.92
+check("LLM 컨텍스트: 0.92 → 92%", "확신 92%" in w3.context_lines()[0])
+from htb_agent import ui  # noqa: E402
+ui.set_color_enabled(False)
+check("상태 요약: 0.92 → 92%", "(92%)" in w3.summary())
+check("'1%' 오표기 없음", "1%)" not in w3.context_lines()[0])
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

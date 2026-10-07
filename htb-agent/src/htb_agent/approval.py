@@ -21,7 +21,7 @@ _VALUE_OPTS = {
     "-u", "-w", "-p", "-P", "-l", "-L", "-H", "-d", "-X", "-o", "-oX", "-oA",
     "-oN", "-oG", "-mc", "-fs", "-ms", "-fc", "-t", "-b", "-s", "-D", "-i",
     "-U", "-c", "-e", "-x", "--script", "--user", "--password", "--dc-ip",
-    "--url", "-w", "-request", "-usersfile", "-k",
+    "--url", "-request", "-usersfile", "-k",
 }
 
 
@@ -80,8 +80,9 @@ def render_proposal(command: str, vrep: ValidationReport,
               else ui.mark_warn("추가확인 필요"), 8),
         *([ui.bullet(", ".join(sres.needs_confirmation), "▲", "warn")]
           if sres.needs_confirmation else []),
+        *([ui.kv("실행위험", ui.mark_warn("사람 검토 필요"), 8)] if vrep.review else []),
     ]
-    style = "accent" if (vrep.ok and sres.auto_allowed) else "warn"
+    style = "accent" if (vrep.ok and sres.auto_allowed and not vrep.review) else "warn"
     return ui.panel("실행 제안 (승인 대기)", body, style=style)
 
 
@@ -97,8 +98,10 @@ def interactive_approver(command: str, vrep: ValidationReport,
         print(ui.mark_err("검증 실패 — 실행 거부합니다."))
         return False
     prompt = ui.accent2("실행할까요?") + ui.dim(" [y/N] ")
-    if not sres.auto_allowed:
-        prompt = ui.warn("▲ 범위 밖 대상 포함 — 그래도 실행?") + ui.dim(" [y/N] ")
+    risks = (["범위 밖 대상"] if not sres.auto_allowed else []) \
+        + (["동적·원격 코드 실행"] if vrep.review else [])
+    if risks:
+        prompt = ui.warn(f"▲ {' + '.join(risks)} 포함 — 내용 확인 후 실행?") + ui.dim(" [y/N] ")
     try:
         ans = input(prompt).strip().lower()
     except EOFError:
@@ -113,6 +116,7 @@ def smart_approver(command: str, vrep: ValidationReport,
       - 검증 실패(파괴명령 포함) → 자동 거부(무프롬프트)
       - 범위내 + 검증통과         → 자동 실행(무프롬프트)
       - 범위 밖(권한 경계)        → 사람에게 1회 확인(interactive)
+      - 동적·원격 코드 실행(검토) → 사람에게 1회 확인(interactive)
     """
     from . import ui
     if not vrep.ok:
@@ -120,7 +124,7 @@ def smart_approver(command: str, vrep: ValidationReport,
         for i in vrep.issues:
             print(ui.dim(f"   {i}"))
         return False
-    if sres.auto_allowed:
+    if sres.auto_allowed and not vrep.review:
         return True
-    # 범위 밖 = 엄격한 권한 경계 → 명시 확인
+    # 범위 밖 = 엄격한 권한 경계 / 실행내용 불명 = 검토 필요 → 명시 확인
     return interactive_approver(command, vrep, sres)

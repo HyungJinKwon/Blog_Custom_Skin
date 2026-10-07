@@ -94,8 +94,19 @@ def parse_ffuf_json(text: str) -> WebEnumResult:
     except (json.JSONDecodeError, TypeError) as e:
         res.parse_error = f"JSON 파싱 실패: {e}"
         return res
-    for r in data.get("results", []):
-        inp = r.get("input", {})
+    if not isinstance(data, dict):
+        res.parse_error = f"예상 밖 JSON 구조({type(data).__name__}) — ffuf 결과 객체 아님"
+        return res
+    results = data.get("results") or []
+    if not isinstance(results, list):
+        res.parse_error = "results 가 목록이 아님"
+        return res
+    for r in results:
+        if not isinstance(r, dict):
+            continue
+        inp = r.get("input") or {}
+        if not isinstance(inp, dict):
+            inp = {}
         name = inp.get("FUZZ") or (next(iter(inp.values()), "") if inp else "") or r.get("url", "")
         res.entries.append(WebEntry(
             name=str(name),

@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from . import recommend as _recommend
 from .enrich import CWE_NAMES, Enricher
 
-SCHEMA_VERSION = "1.1"   # 1.1: blockers·flag_provenance·learn·next_options 추가(하위호환)
+SCHEMA_VERSION = "1.2"   # 1.1: blockers·flag_provenance·learn·next_options / 1.2: gate_stats(하위호환)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -75,6 +75,7 @@ def to_dict(report) -> dict:
         "world": report.world.to_dict() if getattr(report, "world", None) else None,
         "analysis": getattr(report, "analysis", ""),
         "phase_status": dict(getattr(report, "phase_status", {}) or {}),
+        "gate_stats": dict(getattr(report, "gate_stats", {}) or {}),
         "open_ports": host.open_ports if host else [],
         "ports": [_port_dict(p) for p in host.ports] if host else [],
         "enum_findings": [_finding_dict(f) for f in report.enum_findings],
@@ -162,12 +163,20 @@ table{width:100%;border-collapse:collapse;margin:6px 0}
 th,td{text-align:left;padding:7px 10px;border-bottom:1px solid #223a63}
 th{color:#9ec5ff;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
 code{background:#0b1626;color:#bfe0ff;padding:1px 6px;border-radius:5px;
- font:13px/1.5 "JetBrains Mono",Consolas,monospace}
+ font:13px/1.5 "JetBrains Mono",Consolas,monospace;overflow-wrap:anywhere;word-break:break-all}
 .flag{color:#5fe0a8;font-weight:700}
 .muted{color:#8aa0bf}
 a{color:#7fb4ff}
 ul{margin:6px 0;padding-left:20px}
 .kcol{color:#9ec5ff;width:120px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;
+ margin:8px 0 4px}
+.tile{background:#16233c;border:1px solid #26406b;border-radius:10px;padding:10px 12px}
+.tile .num{font-size:24px;font-weight:700;color:#7fb4ff;line-height:1.2}
+.tile .lbl{font-size:12px;color:#8aa0bf}
+.tile.warn .num{color:#ffc27f}.tile.ok .num{color:#5fe0a8}
+.checks{list-style:none;padding-left:0}.checks li{margin:4px 0}
+.checks li::before{content:"✔ ";color:#5fe0a8;font-weight:700}
 .foot{margin-top:28px;color:#6880a0;font-size:12px;border-top:1px solid #26406b;
  padding-top:12px}
 """
@@ -317,9 +326,54 @@ def _html_crack(report) -> str:
     return "".join(blocks)
 
 
+def _html_overview(report) -> str:
+    """심사위원·리뷰어용 한눈에 보기: 3관문 지표·플래그 출처·안전 경계·단계 진행."""
+    gs = dict(getattr(report, "gate_stats", {}) or {})
+    g = lambda k: int(gs.get(k, 0))  # noqa: E731
+    tiles = [("제안", g("proposed"), ""), ("실행", g("executed"), "ok"),
+             ("검토→수동 강등", g("denied_review"), "warn"),
+             ("범위 밖 미실행", g("denied_scope"), "warn"),
+             ("검증·범위 오류", g("rejected_validate") + g("rejected_scope"), "warn")]
+    if g("tool_missing"):
+        tiles.append(("도구 미설치", g("tool_missing"), ""))
+    tile_html = "".join(
+        f"<div class='tile {cls}'><div class='num'>{n}</div><div class='lbl'>{_esc(lbl)}</div></div>"
+        for lbl, n, cls in tiles)
+
+    provs = getattr(report, "flag_provenance", []) or []
+    if provs:
+        flag_html = "".join(
+            f"<span class='badge {'b-done' if p.verdict == 'exploit-derived' else 'b-high'}'>"
+            f"{_esc(p.kind)} · {_esc(p.label)}</span>" for p in provs)
+    else:
+        flag_html = "<span class='muted'>플래그 미획득</span>"
+
+    target = getattr(report, "target", "")
+    checks = [
+        f"타겟 바인딩 <code>{_esc(target)}</code> — 자동 실행은 이 타겟·공격자·loopback 대상만",
+        "검토 대상(원격 코드 실행)·범위 밖 명령은 사람 승인 없이는 실행되지 않음(설계상 보장) — "
+        f"이번 세션 수동 강등 {g('denied_review')}건 · 범위 밖 미실행 {g('denied_scope')}건",
+        "LLM 제안도 신뢰하지 않는 입력으로 취급 — 모든 명령이 검증→범위→승인 3관문 통과",
+        "외부 라이트업 미참조 — 관측·사용자 자료·권위 출처만 사용",
+    ]
+    from .orchestrator import PENTEST_PHASES  # 지연 import(순환 방지)
+    labels = dict(PENTEST_PHASES)
+    phases = dict(getattr(report, "phase_status", {}) or {})
+    phase_html = ("<table>" + "".join(
+        f"<tr><td class='kcol'>{_esc(labels.get(k, k))}</td><td>{_esc(v)}</td></tr>"
+        for k, v in phases.items())
+        + "</table>") if phases else "<p class='muted'>없음</p>"
+    return (f"<div class='tiles'>{tile_html}</div>"
+            "<p class='muted'>3관문 지표는 열거·LLM 명령 기준(정찰 포트스캔 제외).</p>"
+            f"<div class='panel'><b>플래그 출처</b><br>{flag_html}</div>"
+            f"<div class='panel'><b>안전 경계</b><ul class='checks'>"
+            + "".join(f"<li>{c}</li>" for c in checks) + "</ul></div>"
+            f"<div class='panel'><b>단계 진행</b>{phase_html}</div>")
+
+
 def to_html(report, machine_name: str = "") -> str:
     prof = report.profile
-    os_line = f"{prof.os_class.value} ({prof.tag}) · 확신도 {prof.confidence}%" if prof else "-"
+    os_line = f"{prof.os_class.value} ({prof.tag}) · 확신도 {prof.confidence:.0%}" if prof else "-"
     name = machine_name or report.target
     status_badge = ("b-done" if report.status == "done" else "b-info")
     gen = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -335,6 +389,9 @@ def to_html(report, machine_name: str = "") -> str:
   <span class="badge b-info">{_esc(report.target)}</span>
   <span class="muted">OS: {_esc(os_line)} · 생성 {gen}</span>
 </div>
+
+<h2>한눈에 보기</h2>
+{_html_overview(report)}
 
 <h2>포트 &amp; 서비스</h2>
 {_html_ports(report.host)}

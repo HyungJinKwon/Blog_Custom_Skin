@@ -327,10 +327,11 @@ def parse_http(raw: str) -> HttpResult:
     cookies_raw: list[str] = []
     for idx, seg in enumerate(segments):
         stripped = seg.strip()
-        first = stripped.splitlines()[0] if stripped else ""
-        if _STATUS_RE.match(first):
-            lines = seg.splitlines()
-            sm = _STATUS_RE.match(lines[0].strip())
+        if not stripped:
+            continue   # 빈 구간(연속 빈 줄)은 헤더도 본문 시작도 아님 — 본문 오판 방지
+        lines = stripped.splitlines()
+        sm = _STATUS_RE.match(lines[0].strip())
+        if sm:
             res.status = int(sm.group(1))
             res.reason = sm.group(2).strip()
             res.headers = {}  # 새 응답 시작 → 헤더 리셋

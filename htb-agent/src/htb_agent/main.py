@@ -270,6 +270,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     except ConfigError as e:
         print(ui.mark_err(f"설정 오류: {e}"), file=sys.stderr)
         return 2
+    for w in cfg.warnings:
+        print(ui.mark_warn(f"설정 경고: {w}"), file=sys.stderr)
     # 플랫폼 프로파일(HTB/Dreamhack/CTF)
     try:
         profile = get_profile(pick(args.platform, cfg.platform, "htb"))
@@ -339,6 +341,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     print(ui.kv("지식베이스", f"규칙 {ui.bold(str(len(kb.rules)))}개 · 노트 "
                 f"{ui.bold(str(len(kb.notes)))}개 · 취약점규칙 "
                 f"{ui.bold(str(len(vuln_kb.rules)))}개", 10))
+    if kb.warnings:
+        print(ui.mark_warn(f"지식베이스 경고 {len(kb.warnings)}건 (예: {kb.warnings[0]})"))
 
     # 5) LLM 두뇌 구성(선택)
     llm_router, llm_status = _build_llm_router(llm_kind, llm_tier)

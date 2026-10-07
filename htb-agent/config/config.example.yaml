@@ -22,7 +22,7 @@ max_parallel: 1          # 열거 동시 실행(1=순차, >1=I/O 병렬)
 
 # LLM 두뇌
 llm:
-  backend: none          # none | claude | ollama
+  backend: none          # none | claude | ollama | hybrid
   tier: standard         # cheap | standard | strong
 
 # 환경변수로 설정하는 값:

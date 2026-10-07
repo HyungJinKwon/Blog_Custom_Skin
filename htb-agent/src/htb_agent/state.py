@@ -53,6 +53,11 @@ def host_from_dict(d: dict) -> NmapHost:
 
 
 # ── 세션 상태 ────────────────────────────────────────────────────────
+def _pct(v) -> str:
+    """확신도(0~1)를 다른 화면과 같은 백분율 표기로. 숫자가 아니면 원값 그대로."""
+    return f"{v:.0%}" if isinstance(v, (int, float)) and not isinstance(v, bool) else str(v)
+
+
 @dataclass
 class SessionState:
     target: str
@@ -91,7 +96,7 @@ class SessionState:
             lines.append(f"  열린 포트: {open_ports}")
         if self.profile:
             lines.append(f"  OS: {self.profile.get('os_class')} "
-                         f"(확신도 {self.profile.get('confidence')})")
+                         f"(확신도 {_pct(self.profile.get('confidence'))})")
         lines.append(f"  enum {len(self.enum_findings)}건, LLM {len(self.llm_findings)}건, "
                      f"수동 {len(self.manual_suggestions)}건, 이력 {len(self.history)}건")
         return "\n".join(lines)

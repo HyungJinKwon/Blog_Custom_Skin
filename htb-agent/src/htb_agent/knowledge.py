@@ -109,15 +109,19 @@ class KnowledgeBase:
     def __init__(self, rules: list[Rule] | None = None, notes: list[str] | None = None):
         self.rules = rules if rules is not None else []
         self.notes = notes if notes is not None else []
+        self.warnings: list[str] = []   # 로드 중 건너뛴 파일·항목, 쓰이지 않는 규칙 등
 
     @classmethod
     def load(cls, base_dir: str | None = None, include_seeds: bool = True) -> "KnowledgeBase":
         rules: list[Rule] = list(SEED_RULES) if include_seeds else []
         notes: list[str] = []
+        warnings: list[str] = []
         if base_dir and os.path.isdir(base_dir):
-            rules += _load_rule_dir(os.path.join(base_dir, "rules"))
+            rules += _load_rule_dir(os.path.join(base_dir, "rules"), warnings)
             notes += _load_notes_dir(os.path.join(base_dir, "notes"))
-        return cls(rules, notes)
+        kb = cls(rules, notes)
+        kb.warnings = warnings
+        return kb
 
     def query(self, os_class: str, open_ports: list[int],
               services: list[str] | None = None,
@@ -190,7 +194,14 @@ class KnowledgeBase:
         return top if top else self.notes[:limit]
 
 
-def _load_rule_dir(path: str) -> list[Rule]:
+_VALID_PHASES = {"enum", "access", "privesc", "lateral"}
+_VALID_OS = {"linux", "windows", "windows_ad", "unknown"}
+
+
+def _load_rule_dir(path: str, warnings: list[str] | None = None) -> list[Rule]:
+    """규칙 디렉터리 로드. 문제 있는 파일·항목은 건너뛰되 사유를 warnings 에 남긴다
+    (이전엔 조용히 사라지거나, 포트 값 하나가 잘못되면 전체 로드가 예외로 중단됐다)."""
+    warn = warnings.append if warnings is not None else (lambda _m: None)
     out: list[Rule] = []
     if not os.path.isdir(path):
         return out
@@ -201,23 +212,46 @@ def _load_rule_dir(path: str) -> list[Rule]:
         try:
             with open(fp, encoding="utf-8") as f:
                 data = json.load(f)
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as e:
+            warn(f"{fn}: 읽기/JSON 파싱 실패로 파일 전체 건너뜀 ({e})")
             continue
         items = data if isinstance(data, list) else [data]
-        for it in items:
+        for i, it in enumerate(items):
             if not isinstance(it, dict) or "name" not in it or "suggest" not in it:
+                warn(f"{fn}#{i}: name/suggest 없는 항목 건너뜀")
+                continue
+            name = str(it["name"])
+            sug = it["suggest"]
+            if not isinstance(sug, list):
+                warn(f"{fn}: '{name}' suggest 가 목록이 아님 — 건너뜀")
                 continue
             when = it.get("when", {}) or {}
+            if not isinstance(when, dict):
+                warn(f"{fn}: '{name}' when 이 매핑이 아님 — 건너뜀")
+                continue
+            try:
+                ports = [int(p) for p in when.get("ports", [])]
+            except (TypeError, ValueError):
+                warn(f"{fn}: '{name}' 포트 값이 정수가 아님 — 건너뜀")
+                continue
+            phase = str(it.get("phase", "enum"))
+            if phase not in _VALID_PHASES:
+                warn(f"{fn}: '{name}' 알 수 없는 phase {phase!r} — 어떤 단계에도 매칭 안 됨")
+            bad_os = [o for o in when.get("os", []) if o not in _VALID_OS]
+            if bad_os:
+                warn(f"{fn}: '{name}' 알 수 없는 os {bad_os} — 해당 값은 매칭 안 됨")
+            if not (when.get("os") or ports or when.get("services")):
+                warn(f"{fn}: '{name}' when 조건 없음 — query 에서 반환되지 않음(보존)")
             out.append(Rule(
-                name=str(it["name"]),
-                suggest=list(it["suggest"]),
+                name=name,
+                suggest=[str(x) for x in sug],
                 os=list(when.get("os", [])),
-                ports=[int(p) for p in when.get("ports", [])],
+                ports=ports,
                 services=list(when.get("services", [])),
                 note=str(it.get("note", "")),
                 source=f"user:{fn}",
                 tags=list(it.get("tags", [])),
-                phase=str(it.get("phase", "enum")),
+                phase=phase,
             ))
     return out
 
@@ -233,7 +267,8 @@ def _load_notes_dir(path: str) -> list[str]:
     out: list[str] = []
     if not os.path.isdir(path):
         return out
-    for root, _dirs, files in os.walk(path):
+    for root, dirs, files in os.walk(path):
+        dirs.sort()   # 파일시스템과 무관하게 노트 순서를 결정적으로(RAG 동점 순위 안정)
         for fn in sorted(files):
             if fn.endswith((".md", ".txt")):
                 try:

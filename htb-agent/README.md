@@ -17,7 +17,8 @@
 > (비-TTY·파이프·`NO_COLOR` 환경에서는 색 자동 비활성 → 로그/CI 안전).
 
 > ⚠️ **대상 범위**: 대회/플랫폼이 명시한 권한 확인 대상만. 그 외 자산 사용 금지
-> (Scope Guard 가 코드로 강제). 실제 공격 실행은 사용자 Kali 환경에서.
+> (Scope Guard 가 코드로 강제 — 가드가 해석하지 못하는 주소 표기는 기본 확인 대상).
+> 실제 공격 실행은 사용자 Kali 환경에서.
 
 **승인 모드**(기본=스마트): 범위내·검증통과 명령은 자동 실행, 검증실패(파괴명령 포함)는
 자동 거부, **범위 밖만 사람 확인**. `--auto`(완전자동)·`--manual`(완전수동)로 조절.
@@ -40,6 +41,8 @@
 ```
 
 모든 실행 명령은 **① 검증 → ② 범위 → ③ 승인** 3관문을 통과해야 실행됩니다.
+범위 안이라도 **동적·원격 코드 실행**(파이프→셸, `eval`, `IEX`, 명령 치환 등)은 자동실행하지
+않고 사람 검토로 넘깁니다(`--auto`/`--autonomous` 에선 수동 제안으로 강등).
 단계·라운드·명령 수에 상한이 있어 무한루프가 없습니다. 각 명령은 도구별로
 **유효·안전한 옵션 조합 변형(경우의 수)** 을 몇 가지 더 시도해(`--variants`),
 한 가지 방식만 보고 포기하지 않습니다 — 변형도 유한하며 3관문을 그대로 통과합니다.
@@ -74,6 +77,7 @@ assassin 10.129.1.5   # (htb-agent 도 동일 — 하위호환 별칭)
 assassin 10.129.1.5 --auto --cred administrator:Passw0rd --writeup
 
 # 결과 내보내기: 기계판독 JSON + 블루/네이비 HTML 대시보드
+# (HTML 상단 '한눈에 보기': 3관문 지표·플래그 출처·안전 경계·단계 진행 요약 — 발표/심사용)
 assassin 10.129.1.5 --json --html   # <state-dir>/report_<타겟>.{json,html}
 
 # 명령당 옵션 조합 변형(경우의 수) 수 조절 (기본 2, 1=변형끔)
@@ -143,6 +147,8 @@ assassin 10.129.1.5 --config config/config.example.json
 > 단독 실행: `assassin --crack '$krb5tgs$23$...'`.
 
 > **데모(네트워크·실도구 없이 전체 흐름 보기)**: `python3 scripts/demo.py`
+> · **발표용 라이브 시연**: `python3 scripts/demo.py --live [--pace 2]` — 범위 밖 바인딩 거부 →
+> 정찰·식별 → 열거 → **3관문 작동(검토 강등·범위 밖 미실행·통계)** → 산출의 5단계를 순서대로 보여줌
 > (라이트업 저장: `python3 scripts/demo.py --write out/`). 실전 운영·트러블슈팅은
 > **[docs/OPERATIONS.md](docs/OPERATIONS.md)** 참고.
 
@@ -181,7 +187,7 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 49 스위트 1122 테스트
+cd htb-agent && python3 tests/run_all.py     # 52 스위트 1281 테스트
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다

@@ -1,0 +1,110 @@
+# 실행: htb-agent 디렉토리에서  python3 tests/test_scope_hardening.py
+# H-1: 가드가 해석하지 못하는 주소 표기는 '확인 필요'로 올린다(fail-closed).
+#      정상 명령의 숫자 인자(포트·스레드·타임아웃 등)는 오탐하지 않는다.
+import sys
+sys.path.insert(0, "src")
+from htb_agent.scope_guard import ScopeGuard, IPClass, decode_ipv4_literal
+from htb_agent.command_validator import validate
+from htb_agent.tools.recon import auto_approve_in_scope
+from htb_agent.knowledge import KnowledgeBase
+
+passed = failed = 0
+def check(name, cond):
+    global passed, failed
+    if cond: passed += 1; print(f"  ✅ {name}")
+    else:    failed += 1; print(f"  ❌ {name}")
+
+T, ATK = "10.129.1.5", "10.10.14.5"
+HOSTS = {"machine.htb": T}
+g = ScopeGuard.from_cidr_strings(); g.bind_target(T); g.add_attacker_ip(ATK)
+def res(cmd): return g.inspect_command(cmd, hosts_map=HOSTS)
+def auto(cmd): return res(cmd).auto_allowed
+
+print("=== decode_ipv4_literal (inet_aton 규칙) ===")
+check("정규 점4자리는 그대로", decode_ipv4_literal(T) == T)
+check("단일 10진 정수", decode_ipv4_literal("167772161") == "10.0.0.1")
+check("단일 16진", decode_ipv4_literal("0x0a000001") == "10.0.0.1")
+check("8진 파트", decode_ipv4_literal("012.0.0.1") == "10.0.0.1")
+check("2파트 축약(a.b)", decode_ipv4_literal("10.1") == "10.0.0.1")
+check("3파트 축약(a.b.c)", decode_ipv4_literal("10.0.1") == "10.0.0.1")
+check("범위 초과 → None", decode_ipv4_literal("4294967296") is None)
+check("파트 초과(>255) → None", decode_ipv4_literal("256.1.1.1") is None)
+check("잘못된 8진(09) → None", decode_ipv4_literal("09.1.1.1") is None)
+check("호스트명 → None", decode_ipv4_literal("machine.htb") is None)
+check("빈 0x → None", decode_ipv4_literal("0x") is None)
+
+print("\n=== 비정규 숫자형 표기 → 확인 필요 ===")
+r = res("curl 167772161")
+check("네트워크 도구 bare 정수 호스트 → 확인 필요", not r.auto_allowed)
+check("해석 결과를 사유에 표기", any("10.0.0.1" in x for x in r.needs_confirmation))
+check("16진 bare 호스트 → 확인 필요", not auto("nc 0x0a000001 80"))
+check("축약형 위치인자 → 확인 필요", not auto("ping -c 1 10.1"))
+check("user@ 뒤 비정규 표기 → 확인 필요", not auto("ssh root@167772161"))
+check("host:port 의 비정규 표기 → 확인 필요", not auto("openssl s_client -connect 0x0a000001:443"))
+check("--opt=값 의 비정규 표기 → 확인 필요", not auto("nmap --exclude=167772161 " + T))
+check("URL 숫자형 호스트 → 확인 필요", not auto("curl http://167772161/"))
+check("sudo/proxychains 래퍼 뒤도 검사", not auto("sudo proxychains curl 167772161"))
+check("파이프 뒤 구간도 검사", not auto("echo hi | nc 167772161 80"))
+check("앞자리 0 점4자리(8진 해석) → 확인 필요", not auto("curl http://012.129.1.5/"))
+# 타겟을 비정규 표기로 써도 통과시키지 않는다(정상 도구 사용엔 불필요한 표기)
+tgt_int = str(int.from_bytes(bytes(int(x) for x in T.split(".")), "big"))
+r = res("curl " + tgt_int)
+check("타겟의 비정규 표기도 확인 필요(fail-closed)", not r.auto_allowed)
+check("분류 정보는 TARGET 으로 남김", any(c == IPClass.TARGET for _, c, _ in r.classified))
+
+print("\n=== IPv6 리터럴 ===")
+check("IPv6 브래킷 URL → 확인 필요", not auto("curl http://[2001:db8::1]/"))
+check("IPv6 bare(네트워크 도구) → 확인 필요", not auto("nc 2001:db8::1 80"))
+check("IPv6 loopback ::1 → 허용", auto("curl http://[::1]:8000/"))
+check("MAC 주소 형태는 IPv6 아님(오탐 없음)", auto("ping -c 1 " + T + " # aa:bb:cc:dd:ee:ff"))
+
+print("\n=== 비-HTTP 스킴 호스트 분류 ===")
+check("ldap:// 외부 호스트 → 확인 필요", not auto("ldapsearch -x -H ldap://evil.example.com -b dc=x"))
+check("ldap:// 해석된 vhost → 자동허용", auto("ldapsearch -x -H ldap://machine.htb -b dc=x"))
+check("mongodb:// 타겟 IP → 자동허용", auto(f"mongosh mongodb://{T}:27017"))
+check("file:/// 는 호스트 아님", auto("curl file:///etc/hosts"))
+
+print("\n=== 오탐 없음(정상 숫자 인자) ===")
+SAFE = [
+    "nc -lvnp 4444",
+    f"nmap -p 1-65535 --min-rate 5000 -T4 {T}",
+    f"curl -m 2.5 --connect-timeout 1.5 http://{T}/",
+    f"hydra -t 4 -l admin -P /usr/share/wordlists/rockyou.txt ssh://{T}",
+    f"ssh -p 2222 user@{T}",
+    f"openssl s_client -connect {T}:443",
+    "head -c 20000000 big.txt",
+    "python3 -c 'print(hex(0x0a000001))'",
+    f"timeout 30 curl http://{T}/",
+    f"nc {ATK} 9001",
+    f"ffuf -u http://{T}/FUZZ -w list.txt -t 50 -fs 1234",
+]
+for c in SAFE:
+    check(f"자동허용 유지: {c[:52]}", auto(c))
+
+# OID 의 점4자리 부분(1.3.6.1)은 기존 보수 규칙(test_scope 6번)대로 확인 대상 — 이번
+# 숫자형 검사가 추가 사유를 만들지 않는지만 본다.
+nc = res(f"snmpwalk -v2c -c public {T} 1.3.6.1.2.1.1").needs_confirmation
+check("OID 에 비정규 표기 사유 추가 없음", not any("→" in x for x in nc))
+
+print("\n=== 승인 연동: 무프롬프트 모드에서 실행 안 됨 ===")
+c = "curl 167772161"
+check("auto/autonomous 승인자 거부", auto_approve_in_scope(c, validate(c), res(c)) is False)
+
+print("\n=== 불변식: 동봉 KB 제안은 비정규 표기/IPv6 사유로 걸리지 않음 ===")
+kb = KnowledgeBase.load("knowledge")
+bad = []
+total = 0
+for rule in kb.rules:
+    for tmpl in rule.suggest:
+        cmd = (tmpl.replace("{t}", T).replace("{atk}", ATK).replace("{domain}", "machine.htb")
+               .replace("{user}", "svc").replace("{pass}", "Passw0rd"))
+        total += 1
+        nc = res(cmd).needs_confirmation
+        if any("→" in x or "(IPv6)" in x for x in nc):
+            bad.append((cmd, nc))
+check(f"KB 제안 {total}건 중 신규 사유 0건", not bad)
+for cmd, nc in bad[:5]:
+    print("     ↳", cmd[:90], nc)
+
+print(f"\n결과: {passed} passed, {failed} failed")
+sys.exit(1 if failed else 0)
