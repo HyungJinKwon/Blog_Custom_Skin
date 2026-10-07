@@ -20,6 +20,7 @@ import html as _html
 import os
 import re
 from dataclasses import dataclass, field
+from html.parser import HTMLParser
 from typing import Callable
 
 # 허용 도메인(권위 출처만). 이 목록 밖은 가져오지 않는다.
@@ -209,14 +210,127 @@ _TAG = re.compile(r"<[^>]+>")
 _WS = re.compile(r"\s+")
 
 
-def extract_text(html_text: str, limit: int = 600) -> str:
-    """HTML 에서 본문 텍스트만 거칠게 추출(script/style 제거 → 태그 제거 → 공백정리)."""
-    if not html_text:
-        return ""
+# ── 본문 추출 ─────────────────────────────────────────────────────────
+# 문서 페이지에는 메뉴·헤더·푸터·쿠키 배너·"JavaScript 를 켜세요" 안내 같은 군더더기가
+# 본문보다 앞에 온다. 정규식으로 태그만 벗기면 이것들이 요약 자리를 차지해, 노트가
+# LLM 컨텍스트에 잡음으로 들어간다. 구조를 따라가며 군더더기 영역을 버리고, 본문
+# 영역(<main>/<article>)이 있으면 그것을 우선한다.
+_DROP_TAGS = {"script", "style", "noscript", "template", "svg", "head", "nav", "header",
+              "footer", "aside", "form", "button", "select", "iframe", "dialog", "canvas"}
+_DROP_ROLES = {"navigation", "banner", "contentinfo", "complementary", "search", "menu",
+               "menubar", "dialog", "alertdialog"}
+# class/id 토큰(-·_ 로 쪼갠 단어) 중 하나라도 이것이면 군더더기 영역
+_DROP_CLASS_TOKENS = {"nav", "navbar", "navigation", "menu", "breadcrumb", "breadcrumbs",
+                      "cookie", "cookies", "consent", "banner", "sidebar", "footer", "skip",
+                      "toolbar", "share", "social", "newsletter", "subscribe", "masthead"}
+_MAIN_TAGS = {"main", "article"}
+_NEVER_ATTR_DROP = {"html", "body", "main", "article"}
+_BLOCK_TAGS = {"p", "li", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "td", "th", "dd", "dt",
+               "blockquote", "div", "section", "article", "main", "tr", "table", "ul", "ol",
+               "figcaption", "caption", "summary", "details"}
+_VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
+              "param", "source", "track", "wbr"}
+# 짧은 블록에 한해 버리는 사이트 공통 고지문(본문 문장은 길어서 걸리지 않는다)
+_BOILERPLATE = re.compile(
+    r"(?i)(enable javascript|javascript (is )?(disabled|required)|turn on javascript|"
+    r"we use cookies|this (web)?site uses cookies|accept (all )?cookies|cookie (policy|settings)|"
+    r"skip to (main )?content|^(sign in|log ?in|my account|menu|search)$)")
+
+
+def _drop_by_attrs(attrs: list[tuple[str, str | None]]) -> bool:
+    d = {k.lower(): (v or "") for k, v in attrs}
+    if d.get("aria-hidden", "").lower() == "true" or "hidden" in d:
+        return True
+    if d.get("role", "").lower() in _DROP_ROLES:
+        return True
+    toks = set(re.split(r"[\s\-_]+", (d.get("class", "") + " " + d.get("id", "")).lower()))
+    return bool(toks & _DROP_CLASS_TOKENS)
+
+
+class _TextExtractor(HTMLParser):
+    """블록 단위 텍스트 수집기. 군더더기 영역은 버리고 본문 영역 여부를 함께 기록."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[tuple[str, bool, bool]] = []   # (태그, 버림, 본문영역)
+        self.blocks: list[tuple[str, bool]] = []        # (텍스트, 본문영역 안)
+        self._buf: list[str] = []
+        self.saw_main = False
+
+    def _state(self) -> tuple[bool, bool]:
+        # 본문 영역 안이면, 그 바깥 조상(래퍼 div 등)의 버림 판정은 적용하지 않는다 —
+        # <div class="site sidebar-left"> 같은 페이지 래퍼 때문에 본문이 통째로 사라지지 않게.
+        mains = [i for i, (_, _, m) in enumerate(self.stack) if m]
+        scope = self.stack[mains[0]:] if mains else self.stack
+        return (any(dropped for _, dropped, _ in scope), bool(mains))
+
+    def _flush(self) -> None:
+        text = _WS.sub(" ", "".join(self._buf)).strip()
+        self._buf = []
+        if text:
+            self.blocks.append((text, self._state()[1]))
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in _BLOCK_TAGS or tag == "br":
+            self._flush()
+        if tag in _VOID_TAGS:
+            return
+        # 문서 골격·본문 태그는 클래스명만으로 버리지 않는다(<body class="has-navbar"> 등)
+        dropped = tag in _DROP_TAGS or (tag not in _NEVER_ATTR_DROP and _drop_by_attrs(attrs))
+        is_main = tag in _MAIN_TAGS or dict(attrs).get("role", "") == "main"
+        if is_main and not dropped:
+            self.saw_main = True
+        self.stack.append((tag, dropped, is_main))
+
+    def handle_startendtag(self, tag, attrs):   # <br/>·<svg/> 등 — 열린 영역 없음
+        if tag.lower() in _BLOCK_TAGS or tag.lower() == "br":
+            self._flush()
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        for i in range(len(self.stack) - 1, -1, -1):   # 짝 안 맞는 HTML 도 관대하게
+            if self.stack[i][0] == tag:
+                if tag in _BLOCK_TAGS:
+                    self._flush()
+                del self.stack[i:]
+                return
+
+    def handle_data(self, data):
+        if not self._state()[0]:
+            self._buf.append(data)
+
+    def text(self) -> str:
+        self._flush()
+        blocks = [(t, m) for t, m in self.blocks
+                  if not (len(t) < 200 and _BOILERPLATE.search(t))]
+        main = [t for t, m in blocks if m]
+        chosen = main if (self.saw_main and main) else [t for t, _ in blocks]
+        return _WS.sub(" ", " ".join(chosen)).strip()
+
+
+def _extract_text_legacy(html_text: str) -> str:
     t = re.sub(r"(?is)<(script|style|head|nav|footer)[^>]*>.*?</\1>", " ", html_text)
     t = _TAG.sub(" ", t)
     t = _html.unescape(t)
-    t = _WS.sub(" ", t).strip()
+    return _WS.sub(" ", t).strip()
+
+
+def extract_text(html_text: str, limit: int = 600) -> str:
+    """HTML 에서 본문 텍스트를 추출한다. 메뉴·헤더·푸터·배너·noscript 등 군더더기
+    영역을 버리고, <main>/<article> 본문이 있으면 우선한다. 구조가 망가져 결과가
+    비면 기존 방식(태그 제거)으로 되돌아간다."""
+    if not html_text:
+        return ""
+    try:
+        ex = _TextExtractor()
+        ex.feed(html_text)
+        ex.close()
+        t = ex.text()
+    except Exception:   # noqa: BLE001 — 파서 예외는 기존 방식으로 대체
+        t = ""
+    if not t:
+        t = _extract_text_legacy(html_text)
     return t[:limit]
 
 

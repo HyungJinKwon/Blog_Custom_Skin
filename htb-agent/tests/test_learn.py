@@ -35,6 +35,36 @@ txt = learn.extract_text("<html><head><title>t</title></head>"
 check("script/style 제거", "bad()" not in txt)
 check("태그 제거 + 엔티티 복원", "Hello & World" in txt)
 
+print("\n=== extract_text: 군더더기 영역 제거·본문 우선 ===")
+ex = learn.extract_text
+page = ("<html><body><noscript>Please enable JavaScript to view this site</noscript>"
+        "<header><a>Logo</a></header><nav>Home Products Pricing</nav>"
+        "<div id='cookie-consent'>We use cookies</div>"
+        "<main><h1>Topic Title</h1><p>Real body sentence one.</p>"
+        "<div class='breadcrumb'>A &gt; B</div><p>Second body sentence.</p></main>"
+        "<aside>Related links</aside><footer>Copyright 2026</footer></body></html>")
+t = ex(page)
+check("noscript 안내문 제거", "JavaScript" not in t)
+check("header·nav·aside·footer 제거", not any(w in t for w in ("Logo", "Pricing", "Related", "Copyright")))
+check("쿠키 배너(id) 제거", "cookies" not in t)
+check("main 안 breadcrumb(class) 제거", "A > B" not in t)
+check("본문은 순서대로 보존", t == "Topic Title Real body sentence one. Second body sentence.")
+check("main 없으면 body 전체 사용", ex("<nav>M</nav><p>Alpha</p><p>Beta</p>") == "Alpha Beta")
+check("role=navigation 제거", ex("<div role='navigation'>Menu</div><p>Body</p>") == "Body")
+check("aria-hidden 제거", ex("<span aria-hidden='true'>icon</span><p>Body</p>") == "Body")
+check("body·래퍼 클래스명으로 본문 전체가 사라지지 않음",
+      ex("<body class='has-navbar'><div class='site sidebar-left'><p>Kept</p></div></body>") == "Kept")
+check("main 바깥 래퍼의 클래스는 main 안에 적용 안 됨",
+      ex("<div class='page sidebar'><main><p>Main kept</p></main></div>") == "Main kept")
+check("짧은 고지문 블록 제거(태그 무관)",
+      ex("<p>This website uses cookies.</p><p>Skip to main content</p><p>Body</p>") == "Body")
+check("긴 본문 문장은 고지문 단어가 있어도 보존",
+      "cookies" in ex("<p>" + "Session cookies carry the identifier between requests. " * 5 + "</p>"))
+check("짝 안 맞는 HTML 도 처리", ex("<div><p>One<p>Two</div></span><p>Three") == "One Two Three")
+check("평문 입력 + 엔티티", ex("plain &amp; text") == "plain & text")
+check("결과가 비면 기존 방식으로 대체(전부 nav)", ex("<nav>Only nav text</nav>") == "")
+check("limit 적용", len(ex("<p>" + "x" * 2000 + "</p>", limit=100)) == 100)
+
 print("\n=== match_sources ===")
 check("정확 일치", learn.ReferenceLearner().match_sources("burp"))
 check("부분 일치(kerberos→kerberos/kerberoasting)", len(learn.ReferenceLearner().match_sources("kerberos")) >= 1)
