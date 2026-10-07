@@ -19,3 +19,7 @@ knowledge/cve_cache/
 knowledge/notes/learned/learned-*.md
 **/notes/learned/learned-*.md
 knowledge/notes/ingested/
+
+# 공유 저장소 최신 시드 로컬 캐시(--kb-sync / 실행 시 자동 동기화)
+knowledge/shared_seeds/
+**/shared_seeds/

@@ -118,7 +118,9 @@ class KnowledgeBase:
         warnings: list[str] = []
         if base_dir and os.path.isdir(base_dir):
             rules += _load_rule_dir(os.path.join(base_dir, "rules"), warnings)
-            notes += _load_notes_dir(os.path.join(base_dir, "notes"))
+            from .kb_sync import active_overlays  # 공유 저장소 최신 시드(검증된 로컬 캐시)
+            notes += _load_notes_dir(os.path.join(base_dir, "notes"),
+                                     overlays=active_overlays(base_dir))
         kb = cls(rules, notes)
         kb.warnings = warnings
         return kb
@@ -262,17 +264,22 @@ def _load_rule_dir(path: str, warnings: list[str] | None = None) -> list[Rule]:
 NOTE_CHARS = 6000
 
 
-def _load_notes_dir(path: str) -> list[str]:
+def _load_notes_dir(path: str, overlays: dict[str, str] | None = None) -> list[str]:
     # 하위 디렉토리(예: notes/learned/ — 자가학습 노트)까지 포함해 '성장'을 반영.
+    # overlays: notes/learned/ 의 번들 시드 대신 읽을 파일 {파일명: 경로}(kb_sync 캐시).
     out: list[str] = []
     if not os.path.isdir(path):
         return out
+    learned = os.path.normpath(os.path.join(path, "learned"))
     for root, dirs, files in os.walk(path):
         dirs.sort()   # 파일시스템과 무관하게 노트 순서를 결정적으로(RAG 동점 순위 안정)
         for fn in sorted(files):
             if fn.endswith((".md", ".txt")):
+                src = os.path.join(root, fn)
+                if overlays and fn in overlays and os.path.normpath(root) == learned:
+                    src = overlays[fn]
                 try:
-                    with open(os.path.join(root, fn), encoding="utf-8") as f:
+                    with open(src, encoding="utf-8") as f:
                         out.append(f"[{fn}] " + f.read().strip()[:NOTE_CHARS])
                 except OSError:
                     continue
