@@ -32,9 +32,9 @@ Intruder: 파라미터 퍼징(Sniper/Cluster bomb)
 ### Burp Suite 문서
 - 출처: https://portswigger.net/burp/documentation
 - 승격일: 2026-10-07
-- 요약: DASTProfessionalCommunity Edition Burp Suite documentation Read time: 1 Minute This documentation describes the functionality of all editions of Burp Suite and related components. Use the links below to get started: Burp Suite Professional and Community editions Burp Suite DAST Burp Scanner Burp Collaborator Full documentation contents Note Like any security testing software, Burp Suite contains functionality that can damage target systems. Testing for security flaws inherently involves interact
+- 요약: Burp Suite documentation This documentation describes the functionality of all editions of Burp Suite and related components. Use the links below to get started: Burp Suite Professional and Community editions Burp Suite DAST Burp Scanner Burp Collaborator Full documentation contents Note Like any security testing software, Burp Suite contains functionality that can damage target systems. Testing for security flaws inherently involves interacting with targets in non-standard ways that can cause p
 
-### Web Security Academy
-- 출처: https://portswigger.net/web-security
+### Burp Suite 시작하기
+- 출처: https://portswigger.net/burp/documentation/desktop/getting-started
 - 승격일: 2026-10-07
-- 요약: Boost your career The Web Security Academy is a strong step toward a career in cybersecurity. Flexible learning Learn anywhere, anytime, with free interactive labs and progress-tracking. Learn from experts Produced by a world-class team - led by the author of The Web Application Hacker's Handbook. New labs: AI-powered scanner vulnerabilities Learn how indirect prompt injection can be used to manipulate AI-powered web application scanners into performing unintended actions, exfiltrating sensitive
+- 요약: Getting started with Burp Suite Burp Suite is a comprehensive suite of tools for web application security testing. This interactive tutorial is designed to get you started with the core features of Burp Suite as quickly as possible. It uses deliberately vulnerable labs from the Web Security Academy to give you practical experience of how Burp Suite works. First step - Downloading and installing Burp Suite CONTINUE In this tutorial Downloading and installing Burp Suite. Intercepting HTTP traffic

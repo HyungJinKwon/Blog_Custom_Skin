@@ -38,8 +38,8 @@ ALLOWED_DOMAINS = (
 SOURCES: dict[str, list[tuple[str, str]]] = {
     # 도구
     "burp": [("Burp Suite 문서", "https://portswigger.net/burp/documentation"),
-             ("Web Security Academy", "https://portswigger.net/web-security")],
-    "wireshark": [("Wireshark User's Guide", "https://www.wireshark.org/docs/wsug_html_chunked/"),
+             ("Burp Suite 시작하기", "https://portswigger.net/burp/documentation/desktop/getting-started")],
+    "wireshark": [("Wireshark User's Guide", "https://www.wireshark.org/docs/wsug_html_chunked/ChapterIntroduction.html"),
                   ("Display Filter Reference", "https://www.wireshark.org/docs/dfref/")],
     "nmap": [("Nmap Reference Guide", "https://nmap.org/book/man.html"),
              ("NSE 문서", "https://nmap.org/book/nse.html")],
@@ -220,10 +220,11 @@ _DROP_TAGS = {"script", "style", "noscript", "template", "svg", "head", "nav", "
 _DROP_ROLES = {"navigation", "banner", "contentinfo", "complementary", "search", "menu",
                "menubar", "dialog", "alertdialog"}
 # class/id 토큰(-·_ 로 쪼갠 단어) 중 하나라도 이것이면 군더더기 영역
-_DROP_CLASS_TOKENS = {"nav", "navbar", "navigation", "menu", "breadcrumb", "breadcrumbs",
+_DROP_CLASS_TOKENS = {"nav", "navbar", "navigation", "navheader", "navfooter", "menu", "breadcrumb", "breadcrumbs",
                       "cookie", "cookies", "consent", "banner", "sidebar", "footer", "skip",
                       "toolbar", "share", "social", "newsletter", "subscribe", "masthead",
-                      "alert", "collapsed", "toc"}   # 공지 배너 · 접힘 토글 머리 · 목차
+                      "alert", "collapsed", "toc",   # 공지 배너 · 접힘 토글 머리 · 목차
+                      "edition"}                     # 에디션 배지(label-edition)
 _MAIN_TAGS = {"main", "article"}
 _NEVER_ATTR_DROP = {"html", "body", "main", "article"}
 _BLOCK_TAGS = {"p", "li", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "td", "th", "dd", "dt",
@@ -237,7 +238,7 @@ _BOILERPLATE = re.compile(
     r"we use cookies|this (web)?site uses cookies|accept (all )?cookies|cookie (policy|settings)|"
     r"skip to (main )?content|^(sign in|log ?in|my account|menu|search)$)")
 # 작성자·기여자·갱신일 메타 줄(기여자 목록은 길 수 있어 별도 길이 상한)
-_META_LINE = re.compile(r"(?i)^(author|contributor\(s\)|last updated)\s*:")
+_META_LINE = re.compile(r"(?i)^(author|contributor\(s\)|last updated|read time)\s*:")
 # RFC 는 본문 앞에 저자·번호·분류 머리글이 수백 자 온다 — 초록(없으면 'Status of this Memo')부터
 _RFC_HEAD = re.compile(r"^(Network Working Group|Internet Engineering Task Force|"
                        r"Request for Comments|RFC \d+)\b")

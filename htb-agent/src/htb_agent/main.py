@@ -45,6 +45,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="로컬 학습 노트(learned-<주제>.md) 중 품질 관문을 통과한 항목을 번들 시드의 "
                         "'최신 보강(승격)' 섹션으로 승격. 결과를 커밋·PR 하면 모든 사용자에게 공유. "
                         "예: --promote sqli / 전체: --promote all")
+    p.add_argument("--kb-sync", action="store_true", dest="kb_sync",
+                   help="공유 저장소의 최신 번들 시드를 지금 동기화(검증 통과분만 로컬 캐시에 적용). "
+                        "타겟 실행 시에는 하루 1회 자동")
+    p.add_argument("--no-kb-sync", action="store_true", dest="no_kb_sync",
+                   help="실행 시 공유 시드 자동 동기화 끄기(환경변수 ASSASSIN_NO_KB_SYNC=1 도 동일)")
     p.add_argument("--ingest", metavar="PATH", default=None,
                    help="사용자 제공 자료(.md/.txt 파일 또는 디렉터리)를 지식베이스 노트로 "
                         "미리 학습. 예: --ingest ./my-writeups/")
@@ -176,6 +181,16 @@ def _build_llm_router(kind: str, tier_name: str):
     return router, f"{kind}({tier_name})"
 
 
+def _print_kb_sync(r, verbose: bool = False) -> None:
+    """공유 시드 동기화 결과 한 줄 요약(변화 없으면 자동 실행 시엔 조용히)."""
+    from . import ui
+    if r.applied or r.cleared or verbose:
+        print(ui.kv("공유 시드", f"최신 반영 {len(r.applied)}개 · 로컬 최신 {len(r.cleared)}개 · "
+                                 f"거부 {len(r.rejected)}개"))
+    for name, reason in r.rejected:
+        print(ui.dim(f"     ✗ {name} — {reason}"))
+
+
 def main(argv: list[str] | None = None, runner=None) -> int:
     # runner 주입 가능(테스트). 기본은 실제 Kali 용 SubprocessRunner.
     parser = build_parser()
@@ -239,6 +254,16 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         return 0 if paths else 2
 
     # 학습 노트 → 번들 시드 승격(스캔·네트워크 없음). 커밋·PR 로 모든 사용자에게 공유.
+    if args.kb_sync:
+        from . import kb_sync as _kbs
+        kdir = args.knowledge or "knowledge"
+        r = _kbs.sync(kdir)
+        if r.error:
+            print(ui.mark_err(f"공유 시드 동기화 실패: {r.error}"))
+            return 2
+        _print_kb_sync(r, verbose=True)
+        return 0
+
     if args.promote:
         import os as _ospr
 
@@ -260,6 +285,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
             print((ui.mark_ok(head) if r.changed else ui.dim("  " + head + " (변경 없음)")))
             for title, reason in r.rejected:
                 print(ui.dim(f"     ✗ {title} — {reason}"))
+            for title in r.pruned:
+                print(ui.dim(f"     − {title} — 카탈로그에서 빠진 출처라 시드에서 정리"))
             changed += r.changed
         if changed:
             print(ui.ok(f"\n시드 {changed}개 갱신 — 'git diff {ndir}/seed-*.md' 로 검토 후 커밋·PR 하면 "
@@ -293,7 +320,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         return 0 if res.refs else 2
 
     if not args.target:
-        parser.error("target 이 필요합니다 (또는 --doctor / --revshell / --cloud / --privesc / --crack / --learn / --promote / --ingest). 예: assassin 10.129.1.5")
+        parser.error("target 이 필요합니다 (또는 --doctor / --revshell / --cloud / --privesc / --crack / --learn / --promote / --kb-sync / --ingest). 예: assassin 10.129.1.5")
 
     # 0) 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값)
     from .config import load_config, pick, Config, ConfigError
@@ -367,6 +394,10 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     ], style="navy") + "\n")
 
     # 4) 지식베이스 + 취약점 KB 로드 (사용자 학습데이터로 성장)
+    #    실제 실행이면 하루 1회 공유 저장소의 최신 시드를 검증 후 로컬 캐시에 반영
+    if runner is None and not args.offline and not args.no_kb_sync:
+        from . import kb_sync as _kbs
+        _print_kb_sync(_kbs.auto_sync(knowledge_dir))
     kb = KnowledgeBase.load(base_dir=knowledge_dir)
     from .vuln import VulnKB
     vuln_kb = VulnKB.load(base_dir=knowledge_dir)

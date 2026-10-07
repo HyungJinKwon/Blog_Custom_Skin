@@ -1,0 +1,96 @@
+name: KB 자동 승격
+
+# 매주 권위 출처를 다시 학습하고(--learn all), 품질 관문을 통과한 항목만 번들 시드에
+# 승격(--promote all)한 뒤, 전체 테스트(검증)를 통과하면 PR 을 열고 자동 병합한다.
+# 병합되면 각자의 로컬 에이전트가 실행 시 하루 1회 자동 동기화(kb_sync)로 받아 간다.
+#
+# 저장소 설정 필요(1회):
+#   Settings → Actions → General → Workflow permissions
+#     · "Read and write permissions"
+#     · "Allow GitHub Actions to create and approve pull requests" 체크
+#   (선택) Settings → General → "Allow auto-merge" — 필수 체크가 있는 보호 브랜치면 그 통과 후 병합
+#
+# 참고: GITHUB_TOKEN 으로 만든 PR 에는 다른 워크플로(htb-agent CI)가 돌지 않는다.
+#       그래서 이 워크플로가 PR 을 열기 전에 같은 전체 테스트를 직접 실행해 검증한다.
+
+on:
+  schedule:
+    - cron: "17 18 * * 0"   # 매주 월요일 03:17 KST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: kb-auto-promote
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: htb-agent
+    env:
+      PYTHONPATH: src
+      BRANCH: kb/auto-promote
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 권위 출처 사전학습
+        run: python3 -m htb_agent.main --learn all
+
+      - name: 품질 관문 승격
+        run: python3 -m htb_agent.main --promote all | tee "$RUNNER_TEMP/promote.log"
+
+      - name: 시드 변경 확인
+        id: diff
+        run: |
+          if git diff --quiet -- knowledge/notes/learned/; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "변경 없음 — 반영할 승격분이 없습니다."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --stat -- knowledge/notes/learned/
+          fi
+
+      - name: 검증 — 전체 테스트(시드 불변식·승격 관문·동기화 검증 포함)
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          python3 tests/run_all.py < /dev/null
+          python3 -m py_compile src/htb_agent/*.py src/htb_agent/*/*.py
+
+      - name: PR 생성 + 자동 병합
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add knowledge/notes/learned/seed-*.md
+          git commit -m "chore(kb): 주간 자동 승격 — 품질 관문·전체 테스트 통과분 반영"
+          git push --force origin "$BRANCH"
+          {
+            echo "주간 자동 승격(\`--learn all\` → \`--promote all\`). 전체 테스트를 통과한 결과입니다."
+            echo
+            echo '```'
+            grep -v "변경 없음" "$RUNNER_TEMP/promote.log" | tail -n 120
+            echo '```'
+          } > "$RUNNER_TEMP/body.md"
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --base "$BASE" --head "$BRANCH" \
+              --title "chore(kb): 주간 자동 승격" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr edit "$BRANCH" --body-file "$RUNNER_TEMP/body.md"
+          fi
+          # 보호 브랜치(필수 체크)면 자동 병합 예약, 아니면 검증을 마쳤으므로 바로 병합
+          gh pr merge "$BRANCH" --merge --auto --delete-branch \
+            || gh pr merge "$BRANCH" --merge --delete-branch
