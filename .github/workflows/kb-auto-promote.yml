@@ -46,7 +46,9 @@ jobs:
         run: python3 -m htb_agent.main --learn all
 
       - name: 품질 관문 승격
-        run: python3 -m htb_agent.main --promote all | tee "$RUNNER_TEMP/promote.log"
+        run: |
+          set -o pipefail   # 기본 셸(bash -e)은 파이프 앞 명령 실패를 tee 가 가린다
+          python3 -m htb_agent.main --promote all | tee "$RUNNER_TEMP/promote.log"
 
       - name: 시드 변경 확인
         id: diff
