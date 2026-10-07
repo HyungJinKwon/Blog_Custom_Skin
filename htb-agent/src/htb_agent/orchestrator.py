@@ -765,7 +765,10 @@ class Orchestrator:
             # B3 분석가의 판단 — 명령 생성을 유도(가설·경로·집중)
             "analysis": report.analysis,
             "open_ports": [str(p) for p in host.ports if p.state == "open"],
-            "kb": [f"{r.rule_name}: {', '.join(r.suggestions)}" for r in recs[:5]],
+            # 명령 없는 가이드 규칙은 이름만 가면 쓸모가 없으므로 가이드(note) 앞부분을 전달
+            "kb": [f"{r.rule_name}: " + (", ".join(r.suggestions)
+                                          or (r.note[:160] + ("…" if len(r.note) > 160 else "")))
+                   for r in recs[:5]],
             # B5(경량 RAG): 현재 서비스·OS·단계·취약점에 관련도 높은 노트만 주입
             "notes": self.kb.relevant_notes(
                 self._note_terms(host, prof, phase, report), 3),

@@ -235,6 +235,10 @@ def _first_group(m: re.Match) -> str:
     return ""
 
 
+# 탭(\t)·개행(\n)·CR 은 정상 셸 입력이므로 제외한 C0 제어문자 + DEL
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
 @functools.lru_cache(maxsize=4096)
 def _check_shell_syntax(command: str) -> str | None:
     """bash -n 으로 구문만 파싱(미실행). '' 정상, None 생략(bash 없음), 그 외 에러.
@@ -268,6 +272,12 @@ def validate(command: str, require_known_binary: bool = False) -> ValidationRepo
     cmd = command.strip()
     if not cmd:
         report.issues.append(ValidationIssue("error", "EMPTY", "빈 명령"))
+        return report
+    # 제어문자(NUL 등) — 셸 인자로 전달 불가하고 bash -n 호출 자체가 예외로 실패한다.
+    # LLM/관측 출력에서 섞여 들어올 수 있으므로 예외 대신 명시적 거부(세션 중단 방지).
+    if _CONTROL_RE.search(cmd):
+        report.issues.append(ValidationIssue("error", "CONTROL_CHAR",
+                                             "제어문자(NUL 등) 포함 — 실행 불가"))
         return report
 
     # 1) 파괴적 명령

@@ -21,7 +21,7 @@ _VALUE_OPTS = {
     "-u", "-w", "-p", "-P", "-l", "-L", "-H", "-d", "-X", "-o", "-oX", "-oA",
     "-oN", "-oG", "-mc", "-fs", "-ms", "-fc", "-t", "-b", "-s", "-D", "-i",
     "-U", "-c", "-e", "-x", "--script", "--user", "--password", "--dc-ip",
-    "--url", "-w", "-request", "-usersfile", "-k",
+    "--url", "-request", "-usersfile", "-k",
 }
 
 
