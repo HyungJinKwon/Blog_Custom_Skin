@@ -599,6 +599,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
             except OSError as e:
                 print(f"⚠️ HTML 내보내기 실패: {e}", file=sys.stderr)
 
+    if report.status == "interrupted":
+        return 130   # Ctrl+C 관례(128+SIGINT) — 상태는 저장됨
     return 0 if report.status == "done" else 1
 
 
