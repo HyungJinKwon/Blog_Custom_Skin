@@ -67,7 +67,7 @@ from htb_agent.orchestrator import GATE_KEYS  # noqa: E402
 check("JSON gate_stats 키 전부", set(d3["gate_stats"]) == set(GATE_KEYS))
 check("JSON gate_stats 값(데모: 강등1·범위밖1)",
       d3["gate_stats"]["denied_review"] == 1 and d3["gate_stats"]["denied_scope"] == 1)
-check("schema 1.3", rx.SCHEMA_VERSION == "1.3")
+check("schema 1.4", rx.SCHEMA_VERSION == "1.4")
 h3 = rx.to_html(rep3, "DemoBox")
 check("한눈에 보기 섹션", "<h2>한눈에 보기</h2>" in h3)
 check("요약이 포트 섹션보다 앞", h3.index("한눈에 보기") < h3.index("포트 &amp; 서비스"))
@@ -96,6 +96,66 @@ rep3.target = "<script>alert(1)</script>"
 h4 = rx.to_html(rep3, "x")
 check("요약 섹션 타겟 이스케이프(XSS)", "<script>alert(1)</script>" not in h4
       and "&lt;script&gt;" in h4)
+
+print("\n=== 1.4: 진행 결과·LLM 라우팅·분석 패널 ===")
+r5 = copy.copy(rep)
+r5.status = "interrupted"
+r5.message = "사용자 중단 — 진행 상태 저장"
+r5.goal_reached = False
+r5.llm_routing = {}
+r5.analysis = ""
+h5 = rx.to_html(r5, "x")
+check("interrupted 배지 = 주황 + 한국어 설명", "b-high'>interrupted" in h5.replace('"', "'")
+      and "--resume" in h5)
+check("진행 결과 메시지 표시", "사용자 중단 — 진행 상태 저장" in h5)
+check("라우팅 없으면 패널 없음", "LLM 라우팅" not in h5)
+check("분석 없으면 규칙 기반 안내", "LLM 미사용" in h5)
+r6 = copy.copy(rep)
+r6.status = "done"
+r6.goal_reached = True
+r6.message = "목표 달성 — 남은 단계 조기 종료. "
+r6.analysis = "가설:\n  H1 [우선:상] <script>x</script>\n확신도: 중"
+r6.llm_routing = {"local": 3, "strong": 2, "fallback": 1, "refusal": 1, "empty": 0,
+                  "error": 2, "unserved": 0, "disabled": ["local"]}
+h6 = rx.to_html(r6, "x")
+d6 = json.loads(rx.to_json(r6))
+check("JSON goal_reached·llm_routing", d6["goal_reached"] is True
+      and d6["llm_routing"]["fallback"] == 1 and d6["llm_routing"]["disabled"] == ["local"])
+check("목표 달성 배지", "목표 달성 — 남은 단계 조기 종료</span>" in h6)
+check("라우팅 패널 + 차단 백엔드", "LLM 라우팅 (하이브리드)" in h6 and "건너뛴 백엔드: local" in h6)
+check("분석 섹션 + 이스케이프", "분석 (병렬 가설" in h6 and "H1 [우선:상]" in h6
+      and "<script>x</script>" not in h6)
+check("진행 결과가 3관문 지표보다 앞", h6.index("<b>진행 결과</b>") < h6.index("class='tiles'"))
+
+print("\n=== main: 하이브리드 라우팅 집계가 JSON 에 실림(예외 원문 제외) ===")
+import contextlib, io, os, tempfile  # noqa: E401,E402
+from htb_agent import main as M  # noqa: E402
+from htb_agent.llm.router import LLMRouter, HybridRouter  # noqa: E402
+from htb_agent.llm.fake_provider import FakeProvider  # noqa: E402
+from htb_agent.tools.runner import FakeRunner, RunOutput  # noqa: E402
+def _dead(s, u, t):
+    raise TimeoutError("secret-host:11434 timed out")
+_orig_build = M._build_llm_router
+M._build_llm_router = lambda kind, tier: (HybridRouter(
+    local=LLMRouter(FakeProvider(_dead)),
+    strong=LLMRouter(FakeProvider("curl -s http://{t}/x"))), "hybrid(test)")
+_XML = ('<?xml version="1.0"?><nmaprun><host><status state="up"/><address addr="10.129.1.5"/>'
+        '<ports><port protocol="tcp" portid="80"><state state="open"/><service name="http"/>'
+        '</port></ports></host></nmaprun>')
+with tempfile.TemporaryDirectory() as dd:
+    jp = os.path.join(dd, "r.json")
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        M.main(["10.129.1.5", "--auto", "--llm", "hybrid", "--state-dir", dd, "--no-audit",
+                "--offline", "--json", jp],
+               runner=FakeRunner(lambda c: RunOutput(c, stdout=_XML if c.startswith("nmap")
+                                                      else "ok")))
+    M._build_llm_router = _orig_build
+    with open(jp, encoding="utf-8") as f:
+        dj = json.load(f)
+lr = dj.get("llm_routing", {})
+check("라우팅 집계 기록(강력 응답·오류)", lr.get("strong", 0) >= 1 and lr.get("error", 0) >= 1)
+check("차단 백엔드는 이름만(예외 원문 미포함)", lr.get("disabled") == ["local"]
+      and "secret-host" not in json.dumps(dj, ensure_ascii=False))
 
 print("\n=== main 파서: --json / --html 플래그 ===")
 pp = build_parser()

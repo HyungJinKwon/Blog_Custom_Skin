@@ -109,6 +109,9 @@ assassin 10.129.1.5 --writeup --html      # ③ 라이트업 + HTML 대시보드
           → 권한 상승(root) → 측면 이동 → 취약점(CVE/CWE) → 리포트 / 라이트업
 ```
 
+취약점(CVE/CWE)은 마지막 한 번이 아니라 **단계마다 반영**되어 다음 단계·분석가가 바로 쓴다.
+종료코드: 0 완료 · 1 미완(열린 포트 미확보 등) · 2 인자/설정/범위 오류 · 130 Ctrl+C 중단.
+
 모든 명령이 실행 전에 거치는 관문:
 
 | 관문 | 하는 일 | 걸리면 |
@@ -493,7 +496,7 @@ assassin 10.129.1.5 --auto --json out/result.json
 
 | 증상 | 원인 | 조치 |
 |---|---|---|
-| 공격자 IP 자동탐지 실패 | VPN 미연결 | `ip a show tun0` 확인 후 `--attacker-ip <VPN IP>` |
+| `VPN IP 미탐지` · 공격자IP `(없음)` | VPN 미연결 | `ip a` 확인 후 `--attacker-ip <VPN IP>`(리버스쉘 자동 준비 생략) |
 | ScopeViolation(범위 위반) | 타겟/대역 밖 주소 포함(설계상 차단) | HTB 는 `--range` 확인, CTF/Dreamhack 은 `--platform` 지정 |
 | `'<도구>' 미설치` | 도구 없음 | `sudo ./scripts/install_tools.sh <카테고리>` |
 | `hybrid 사용 불가` | LLM 백엔드 미준비 | `assassin --doctor` → §8 준비. LLM 없이도 동작 |
@@ -525,7 +528,7 @@ python3 scripts/gen_cli_docs.py --check           # README CLI 표가 최신인�
 
 | 워크플로 | 트리거 | 내용 |
 |---|---|---|
-| `htb-agent CI` | `htb-agent/**` push/PR | Python 3.10~3.13 테스트 + 컴파일(게이트), ruff·mypy(비차단) |
+| `htb-agent CI` | `htb-agent/**` push/PR | Python 3.10~3.13 테스트 + 컴파일 + README CLI 표 최신 여부(게이트), ruff·mypy(비차단) |
 | `KB 자동 승격` | 매주 월 03:17 KST · 수동 | §9.5 |
 
 CI 가 강제하는 지식 불변식:

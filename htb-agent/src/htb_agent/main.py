@@ -128,13 +128,15 @@ def build_parser() -> argparse.ArgumentParser:
                    help="지식베이스 디렉토리 (기본 ./knowledge). 사용자 규칙/노트로 성장")
     p.add_argument("--llm", choices=["none", "claude", "ollama", "hybrid"], default=None,
                    help="LLM 두뇌 백엔드 (기본 none=규칙기반). claude=API, ollama=로컬, "
-                        "hybrid=둘을 단계 난이도로 라우팅+폴백(장점극대·단점보완)")
+                        "hybrid=둘을 단계 난이도로 라우팅+폴백·연속 오류 백엔드 차단·라우팅 집계")
     p.add_argument("--llm-tier", choices=["cheap", "standard", "strong"], default=None,
-                   help="LLM 티어 (비용/성능)")
+                   help="LLM 기본 티어(기본 standard). 명령 생성은 단계별 티어 우선"
+                        "(열거=cheap·침투=standard·권한상승/측면=strong), 저확신 시 자동 승격")
     p.add_argument("--state-dir", default=None,
                    help="세션 상태 저장 디렉토리 (기본 ./state)")
     p.add_argument("--resume", action="store_true",
-                   help="저장된 상태에서 재개 (RECON 재사용, 재스캔 생략)")
+                   help="저장된 상태에서 재개 (RECON 재사용 · 실행된 명령·결과·플래그 복원, "
+                        "다시 실행 안 함). Ctrl+C 로 중단한 세션도 이어감")
     p.add_argument("--no-save", action="store_true", help="상태 저장 안 함")
     p.add_argument("--log-file", default=None,
                    help="감사 로그(JSONL) 경로. 생략 시 <state-dir>/audit_<타겟>.jsonl")
@@ -576,6 +578,11 @@ def main(argv: list[str] | None = None, runner=None) -> int:
             report.knowledge = _kbs.knowledge_summary(knowledge_dir)
         except Exception:   # noqa: BLE001 — 현황 집계 실패가 산출물을 막지 않게
             report.knowledge = {}
+        stats = getattr(llm_router, "stats", None)
+        if isinstance(stats, dict):
+            # 카운트와 차단된 백엔드 이름만(예외 원문은 산출물에 넣지 않음)
+            report.llm_routing = {**stats,
+                                  "disabled": sorted(getattr(llm_router, "disabled", {}) or {})}
         from . import report_export
         from .state import StateStore
         safe = StateStore._safe(args.target)

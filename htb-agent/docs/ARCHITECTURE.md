@@ -18,14 +18,18 @@
 
 ```mermaid
 flowchart TD
-  BIND[타겟 바인딩<br/>ScopeGuard: HTB 대역 검증] --> RECON[RECON<br/>유한 폴백 nmap: -sV→-Pn→-sT→-p-]
+  BIND[타겟 바인딩<br/>ScopeGuard: 허용 대역 검증] --> RECON[RECON<br/>유한 폴백 nmap: -sV→-Pn→-sT→-p-<br/>재개 시 저장 결과 재사용]
+  RECON -->|열린 포트 없음| ESC[escalate<br/>사람 개입]
   RECON --> PROFILE[PROFILE<br/>OS 식별: Linux / Windows-AD]
-  PROFILE --> ENUM[열거 Enumeration<br/>웹·SMB·LDAP·DNS·SNMP]
-  ENUM --> ACCESS[초기 침투 Access<br/>크리덴셜 승격 → user.txt]
-  ACCESS --> PRIV[권한 상승 PrivEsc<br/>→ root.txt]
-  PRIV --> LAT[측면 이동 Lateral]
-  LAT --> VULN[VULN<br/>CVE/CWE 추출·버전 매핑]
-  VULN --> REPORT[REPORT + WRITEUP<br/>htb / tistory]
+  PROFILE --> SWEEP[스윕 시작<br/>VULN 반영 → 자율 지식 획득]
+  SWEEP --> PH[단계 순서: 열거 → 초기 침투 → 권한 상승 → 측면 이동<br/>게이팅 → 분석가 갱신 → KB+LLM 라운드 → VULN 재계산]
+  PH -->|목표 달성| SKIP[남은 단계<br/>생략·목표 달성]
+  PH -->|상태 성장 · 스윕 상한 미만| SWEEP
+  PH --> FIN[최종 VULN<br/>CVE/CWE 추출·버전 매핑 → CVE 수집]
+  SKIP --> FIN
+  PH -.Ctrl+C.-> FIN
+  FIN --> PREP[자동 준비 · 생성 전용<br/>리버스쉘 · AWS/S3 · 권한상승 · 크래킹]
+  PREP --> REPORT[REPORT + WRITEUP<br/>status: done / interrupted]
 ```
 
 각 단계는 **해당 phase 의 KB 규칙 + LLM(단계 힌트) 적응 라운드**를 돌리고,
@@ -48,6 +52,10 @@ flowchart TD
 목표가 채워지면(Jeopardy=플래그 1개·접두 일치, boot2root=user+root) 남은 명령·단계를
 돌리지 않고 `생략(목표 달성)` 으로 표시한다(`_goal_reached`). 로컬 명령(cat 등) 출력의
 문자열이나 다른 접두의 미끼로는 멈추지 않는다.
+
+**사용자 중단**: 스윕 도중 Ctrl+C 면 루프를 빠져나와 최종 VULN·자동 준비까지 마치고 상태를
+저장한다(네트워크 CVE 수집은 생략). 리포트 status=`interrupted`, 종료코드 130, `--resume` 으로
+이어 간다.
 
 **예산 의미**: `max_enum`·`max_llm` 은 '이번 실행에서 실제로 시도한 명령' 수다. 도구 미설치로
 건너뛴 명령(`skipped`)과 재개로 복원한 이전 결과는 예산을 쓰지 않는다.
@@ -109,7 +117,7 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 |---|---|---|
 | **안전** | `scope_guard.py` | Target-Binding, 범위밖 기본거부. 가드가 점4자리로 해석 못 하는 숫자형 호스트 표기·IPv6 리터럴·비-HTTP 스킴 호스트도 분류해 확인 필요로 올림(fail-closed, 네트워크 도구 호스트 위치 한정으로 숫자 인자 오탐 방지). 파일 확장자 제외 목록은 IANA TLD 와 겹치지 않는 것만 추가하며, 이미 겹치는 md·py·sh·so·zip 은 네트워크 도구의 호스트 위치에 오면 호스트로 분류(scp/rsync 는 ':' 있는 인자만, ssh 는 첫 위치 인자만, 리다이렉트 대상은 파일) |
 | | `command_validator.py` | 문법·base64·16/10진수·포트·해시·파괴명령 |
-| | `approval.py` | 승인 게이트(스마트=범위밖만 확인 / auto / manual) + 바이너리/옵션/파라미터 3분할 해설 |
+| | `approval.py` | 승인 게이트(스마트=범위 밖·동적/원격 실행(review)만 사람 확인 / auto / manual) + 바이너리/옵션/파라미터 3분할 해설 |
 | **관측** | `observation/parsers.py` | nmap(XML/텍스트)·HTTP 파싱 |
 | | `observation/web.py` | gobuster·ffuf·feroxbuster·nikto·whatweb |
 | | `observation/smb.py` | smbclient·smbmap·netexec |
@@ -121,7 +129,7 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 | | `orchestrator.py` | 단계 순서 상태머신(유한) + 월드 모델 갱신 |
 | | `variants.py` | 도구별 옵션 조합 변형(경우의 수) 생성 |
 | | `variant_stats.py` | 실행 결과 기반 변형 학습(성공률로 변형 순서 재정렬, 세션 넘어 영속) |
-| | `llm/` | Claude/Ollama 프로바이더 + 티어링 + 캐싱·비용 · **HybridRouter**(단계 난이도→로컬/강력 라우팅+상호 폴백·연속 오류 서킷 브레이커·거절 구분·라우팅 집계, Ollama 미설치 티어 모델 자동 대체) · **분석가 역할**(analyze: 레드팀·개발자·인프라 운영자·방어 관점으로 가설 2~4개를 병렬 비교→검증 계획·공격경로·집중·확신도, 명령 생성 유도. 명령은 가설별로 분산되고 finding 비고에 `가설 H1` 로 추적) · **구조화 출력**(JSON 배열 command/rationale/expected_signal 우선 파싱, 라인 폴백) · **적응형 tier**(저확신/빈결과 시 강력 모델 승격) |
+| | `llm/` | Claude/Ollama/Fake(테스트·데모) 프로바이더 + 티어링 + 캐싱·비용 · **HybridRouter**(단계 난이도→로컬/강력 라우팅+상호 폴백·연속 오류 서킷 브레이커·거절 구분·라우팅 집계, Ollama 미설치 티어 모델 자동 대체) · **분석가 역할**(analyze: 레드팀·개발자·인프라 운영자·방어 관점으로 가설 2~4개를 병렬 비교→검증 계획·공격경로·집중·확신도, 명령 생성 유도. 명령은 가설별로 분산되고 finding 비고에 `가설 H1` 로 추적) · **구조화 출력**(JSON 배열 command/rationale/expected_signal 우선 파싱, 라인 폴백) · **적응형 tier**(저확신/빈결과 시 강력 모델 승격) |
 | | `learn.py` | 권위 출처 자가학습(--learn, 허용도메인·캐시·P1 유지) → 지식베이스 노트. 59주제 종합 레퍼런스 시드로 '동일 완비 지식' 시작 보장 |
 | | `promote.py` | **검토 후 승격**(--promote): 로컬 학습 노트 중 품질 관문 통과 항목만 번들 시드의 '최신 보강(승격)' 섹션으로 옮김 → 커밋·PR 로 모든 사용자의 시작 지식을 함께 성장. 사람이 쓴 섹션 불변·URL 교체·주제당 3건 상한, CI 가 커밋된 승격분을 같은 관문으로 재검사 |
 | | `kb_sync.py` | **로컬 자동 반영**: 타겟 실행 시 하루 1회 공유 저장소(GitHub contents API)의 시드 해시를 비교해 다른 것만 내려받고, 번들 시드 불변식+승격 관문 검증 통과분만 `shared_seeds/` 캐시에 적용 → KB 로더가 추적 시드 대신 사용. 데이터만·추적 파일 불변·미커밋 편집 보존·git pull 후 캐시 자동 무시·오프라인 무해 |
@@ -152,7 +160,7 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 | | `profiles.py` | 플랫폼 프로파일(HTB/Dreamhack/CTF: 스코프·플래그·카테고리) |
 | | `enrich.py` | CVE/CWE 자동 수집(NVD·GitHub PoC, 주입식 fetcher·캐시·오프라인 안전) |
 | | `writeup.py` | 라이트업 생성(htb-ctf-writeup-v5 / Tistory 13섹션) |
-| | `report_export.py` | 결과 내보내기 — 기계판독 JSON · 블루/네이비 HTML 대시보드 |
+| | `report_export.py` | 결과 내보내기 — 기계판독 JSON(schema 1.4) · 블루/네이비 HTML 대시보드(상단 '한눈에 보기': 진행 결과·3관문 지표·플래그 출처·지식 기반·LLM 라우팅·안전 경계·단계 진행 + 분석(병렬 가설)) |
 
 ---
 
@@ -162,7 +170,9 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
   `vulns/*.json`(버전→CVE). 파일을 추가할수록 제안이 풍부해진다. 외부 라이트업 검색 없음(권위 출처 학습·검증된 웹 학습·CVE 수집·공유 시드 동기화만, `--offline` 으로 모두 끔).
 - **세션 상태**: `state/<타겟>.json` — 포트·OS·발견(단계 포함)·크리덴셜·플래그·이력 (중단/재개). 재개 시 실행된 명령은 다시 돌리지 않고 결과·플래그를 복원하며, 거부·미설치로 못 한 명령은 다시 판단한다. Ctrl+C 로 중단해도 그때까지의 결과를 저장한다(종료코드 130).
 - **감사 로그**: `state/audit_<타겟>.jsonl` — 모든 제안·검증·승인·실행·플래그.
-- (모두 `.gitignore` 처리 — 로컬·민감정보)
+- **리포트·학습 통계**: `state/report_<타겟>.json/.html`(`--json`/`--html`) · `state/variant_stats.json`(변형 성공률, 세션 넘어 누적).
+- **지식 하위 폴더**: `notes/learned/seed-*.md`(번들 시드, 저장소 추적) · `learned-*.md`·`learned-web-*.md`(런타임 학습, 미추적) · `notes/ingested/`(`--ingest`) · `shared_seeds/`(공유 시드 검증 캐시) · `cve_cache/`(CVE 수집 캐시).
+- (번들 시드를 뺀 위 항목은 모두 `.gitignore` 처리 — 로컬·민감정보)
 
 ---
 
@@ -184,7 +194,7 @@ assassin 10.129.1.5 --resume                   # 중단 지점 재개
 ## 7. 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py        # 55 스위트 1471 테스트
+cd htb-agent && python3 tests/run_all.py        # 전체 스위트(끝에 '총 N 스위트 | N passed' 요약)
 ```
 
 네트워크·도구 없이도 **러너 주입**으로 전 로직 검증하며, 통합 테스트는 `main()` 을
