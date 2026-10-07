@@ -47,6 +47,7 @@ class WorldModel:
     loot: list[str] = field(default_factory=list)          # 해시·민감파일·노출정보
     flags: dict[str, str] = field(default_factory=dict)    # kind(user/root/..) -> value
     proven_vulns: list[str] = field(default_factory=list)  # CVE/CWE(+근거)
+    evidence: dict = field(default_factory=dict)           # 사실(크리덴셜/수집물/취약점) → 출처(어느 명령에서 나왔나)
     access_level: str = "none"
 
     # ── 쓰기(갱신) ──
@@ -75,16 +76,20 @@ class WorldModel:
                 return
         self.services.append(ServiceEntry(port, proto, name, product, version))
 
-    def add_cred(self, cred: str) -> None:
+    def add_cred(self, cred: str, source: str = "") -> None:
         cred = (cred or "").strip()
         if cred and cred not in self.creds:
             self.creds.append(cred)
             self.raise_access("credentialed")
+        if cred and source:
+            self.evidence.setdefault(cred, source)   # 교육: 이 사실을 '어떻게 알았는지'
 
-    def add_loot(self, item: str) -> None:
+    def add_loot(self, item: str, source: str = "") -> None:
         item = (item or "").strip()
         if item and item not in self.loot:
             self.loot.append(item)
+        if item and source:
+            self.evidence.setdefault(item, source)
 
     def add_flag(self, kind: str, value: str) -> None:
         if value and self.flags.get(kind) != value:
@@ -94,10 +99,12 @@ class WorldModel:
         elif kind == "root":
             self.raise_access("root")
 
-    def add_vuln(self, entry: str) -> None:
+    def add_vuln(self, entry: str, source: str = "") -> None:
         entry = (entry or "").strip()
         if entry and entry not in self.proven_vulns:
             self.proven_vulns.append(entry)
+        if entry and source:
+            self.evidence.setdefault(entry, source)
 
     def raise_access(self, level: str) -> None:
         """현재보다 높은 권한 레벨일 때만 올린다(되돌아가지 않음)."""
@@ -116,7 +123,7 @@ class WorldModel:
             out.append("서비스: " + ", ".join(s.label() for s in self.services))
         if self.creds:
             out.append(f"보유 크리덴셜 {len(self.creds)}건: "
-                       + ", ".join(self.creds[:5]))
+                       + ", ".join(self._with_src(c) for c in self.creds[:5]))
         if self.loot:
             out.append("수집물: " + "; ".join(self.loot[:5]))
         if self.proven_vulns:
@@ -125,6 +132,11 @@ class WorldModel:
             out.append("플래그: " + ", ".join(f"{k}={'O' if v else 'X'}"
                                              for k, v in self.flags.items()))
         return out
+
+    def _with_src(self, fact: str) -> str:
+        """사실에 출처가 있으면 '사실 (출처: ...)' 로 — '왜 아는지'를 보여준다(교육)."""
+        src = self.evidence.get(fact)
+        return f"{fact} (출처: {src})" if src else fact
 
     def summary(self) -> str:
         from . import ui
@@ -155,4 +167,5 @@ class WorldModel:
             "loot": list(self.loot),
             "flags": dict(self.flags),
             "proven_vulns": list(self.proven_vulns),
+            "evidence": dict(self.evidence),
         }

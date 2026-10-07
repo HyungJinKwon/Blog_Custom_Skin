@@ -826,7 +826,7 @@ class Orchestrator:
         from .creds import Credential
         for user, pw in pairs:
             if self.world is not None:
-                self.world.add_cred(f"{user}:{pw}")
+                self.world.add_cred(f"{user}:{pw}", source=binary_of(cmd, strip_path=True))
             self.audit.event("cred_harvested", cmd=cmd, user=user)
             note = f"🔑 크리덴셜 발견: {user}"
             finding.note = (finding.note + " " if finding.note else "") + note
@@ -1040,10 +1040,11 @@ class Orchestrator:
         # 월드 모델에 확인 취약점 반영(단일 상태원)
         if self.world is not None:
             for cve in report.detected_cve + report.detected_cwe:
-                self.world.add_vuln(cve)
+                self.world.add_vuln(cve, source="관측 출력(배너·스크립트·명령 결과)")
             for m in report.vuln_matches:
                 ids = " ".join(m.cve + m.cwe)
-                self.world.add_vuln(f"{m.name}" + (f" ({ids})" if ids else ""))
+                self.world.add_vuln(f"{m.name}" + (f" ({ids})" if ids else ""),
+                                    source="버전 매칭(VulnKB)")
 
     def _prepare_revshells(self, report: OrchestrationReport) -> None:
         """공격자 IP(VPN tun0 등)가 확보되면 리버스쉘 페이로드를 자동 생성해
@@ -1154,6 +1155,23 @@ class Orchestrator:
         except Exception as e:   # noqa: BLE001 — 준비 실패가 전체를 깨지 않도록
             self.audit.event("crack_error", error=str(e))
 
+    def _repetition_warning(self, report: OrchestrationReport, cmd: str) -> str:
+        """이 명령이 '이전에 실패한 같은 종류의 시도'와 겹치면 경고 문자열(없으면 "").
+        종류 판정은 repetition.signature(바이너리+플래그, 대상·워드리스트 등 가변값 무시).
+        반복을 막지는 않는다 — 사람이 판단하도록 알리기만 한다(AutoPentester Repetition Identifier)."""
+        from . import repetition
+        sig = repetition.signature(cmd)
+        failed = {c for c, _ in (getattr(report, "blockers", []) or [])}
+        for i, f in enumerate(report.enum_findings + report.llm_findings, 1):
+            if f.command in failed and repetition.signature(f.command) == sig:
+                why = ""
+                for c, d in report.blockers:
+                    if c == f.command:
+                        why = f"({d.kind}: {d.label})"
+                        break
+                return f"⟳ 앞서 실패한 같은 종류의 시도와 겹침 {why} — 다른 도구·옵션·경로 권장"
+        return ""
+
     def _gate(self, report: OrchestrationReport, findings: list[EnumFinding],
               cmd: str, phase: str) -> EnumFinding | None:
         """3관문(도구·검증·범위·승인)을 순차 수행(공유상태 변경은 단일 스레드).
@@ -1185,6 +1203,12 @@ class Orchestrator:
             gs["rejected_scope"] += 1
             self.audit.event("rejected", cmd=cmd, stage="scope", reason=str(e))
             return None
+        warn = self._repetition_warning(report, cmd)
+        if warn:
+            from . import ui
+            finding.note = (finding.note + " · " if finding.note else "") + warn
+            print("  " + ui.mark_warn(warn))   # 승인 전 경고(초보자: 같은 실패 반복 주의)
+            self.audit.event("repetition_warn", cmd=cmd, detail=warn)
         if not self.approver(cmd, vrep, sres):
             review = [i.message for i in vrep.review]
             if review:
@@ -1241,7 +1265,8 @@ class Orchestrator:
                 self._found_hashes.append(hv)
                 self.audit.event("hash_found", cmd=cmd, hash=hv[:24])
                 if self.world is not None:
-                    self.world.add_loot(f"해시: {hv[:40]}{'…' if len(hv) > 40 else ''}")
+                    self.world.add_loot(f"해시: {hv[:40]}{'…' if len(hv) > 40 else ''}",
+                                        source=binary_of(cmd, strip_path=True))
         # 크리덴셜 자동 수확 — 원시출력에서 고신뢰 평문 자격 추출. 월드엔 모두 반영,
         # 실행 볼트엔 셸-안전한 값만(신뢰불가 출처 인젝션 차단). A1 재진입을 활성화.
         self._harvest_creds(out.stdout, cmd, finding)

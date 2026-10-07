@@ -57,6 +57,10 @@ flowchart TD
 저장한다(네트워크 CVE 수집은 생략). 리포트 status=`interrupted`, 종료코드 130, `--resume` 으로
 이어 간다.
 
+**반복 경고**: 승인 직전, 제안 명령이 앞서 실패한 '같은 종류'의 시도(`repetition.signature` — 바이너리+플래그,
+대상·워드리스트 등 가변값 무시)와 겹치면 비고·화면에 알린다. 실행을 막지는 않고 사람이 다른 도구·경로를
+고르도록 돕는다(초보자 보호).
+
 **실패 되먹임**: 각 단계 종료 시 분류한 실패 진단(`diagnostics.py`)을 다음 분석가·명령 생성 맥락에 넣는다.
 '대상 응답'(404/403 등)은 경로 판단 근거로, '환경/도구' 문제는 경로를 버릴 근거가 아닌 것으로 구분해,
 같은 실패를 반복하지 않고 다른 경로·도구로 전환하도록 유도한다(이전엔 리포트에만 남던 정보).
@@ -129,7 +133,7 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 | | `observation/summarize.py` · `compressor.py` | 도구별 요약 라우팅 · 토큰 절감 |
 | **식별** | `target_profiler.py` | Linux vs Windows-AD, 증거기반 확신도 |
 | **지능** | `knowledge.py` + `knowledge/` | 단계별 규칙·노트·취약점(사용자 학습으로 성장) · **관련도 기반 노트 랭킹**(relevant_notes, 경량 RAG — 서비스/OS/단계/CVE 키워드 겹침) |
-| | `world.py` | 월드 모델 — 구조화 상태(hosts/services/creds/loot/flags/vulns/access_level) 단일 상태원. 파이프라인·LLM 컨텍스트·리포트의 출처 |
+| | `world.py` | 월드 모델 — 구조화 상태(hosts/services/creds/loot/flags/vulns/access_level) 단일 상태원. 파이프라인·LLM 컨텍스트·리포트의 출처. 각 사실에 '어느 명령에서 나왔나'(evidence)를 달아 '왜 아는지'를 보여줌(교육) |
 | | `orchestrator.py` | 단계 순서 상태머신(유한) + 월드 모델 갱신 |
 | | `variants.py` | 도구별 옵션 조합 변형(경우의 수) 생성 |
 | | `variant_stats.py` | 실행 결과 기반 변형 학습(성공률로 변형 순서 재정렬, 세션 넘어 영속) |
@@ -160,7 +164,7 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 | | `environment.py` · `main.py` · `__main__.py` | Kali 프리플라이트 · CLI 진입점(ASSASSIN) · `python -m` 진입 |
 | | `util.py` | 공용 헬퍼(바이너리 추출 등) |
 | | `doctor.py` | 환경 자가진단(--doctor: 도구·LLM·VPN, 초보자용) |
-| | `bench.py` | 평가 하네스(--bench): 오프라인 모의 문제로 성공률·pass@N·명령 수·플래그까지 단계·시간·비용 측정, 시도별 감사 로그 저장 |
+| | `bench.py` | 평가 하네스(--bench): 오프라인 모의 문제로 성공률·pass@N·**검증된 풀이율**(대상 상호작용 유래 플래그만)·승인 부담·명령 수·플래그까지 단계·시간·비용 측정, 시도별 감사 로그 저장 |
 | | `replay.py` | 실행 기록 재생(--replay): 감사 로그(JSONL) → 단계별 타임라인 HTML(이전/다음/자동 재생). 로그는 신뢰불가 데이터로 이스케이프 |
 | | `ui.py` | 터미널 렌더링(블루/네이비 색상·박스·정렬, NO_COLOR/비-TTY 자동 무색) |
 | | `profiles.py` | 플랫폼 프로파일(HTB/Dreamhack/CTF: 스코프·플래그·카테고리) |
