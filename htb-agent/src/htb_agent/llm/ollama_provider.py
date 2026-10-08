@@ -56,7 +56,10 @@ class OllamaProvider(LLMProvider):
         return name in self.installed or base in self.installed
 
     def complete(self, system: str, user: str,
-                 tier: Tier = Tier.STANDARD, max_tokens: int = 1024) -> LLMResponse:
+                 tier: Tier = Tier.STANDARD, max_tokens: int = 1024,
+                 tools: "list | None" = None) -> LLMResponse:
+        # Ollama /api/generate 는 Anthropic 식 tool use 가 없다 → tools 무시, 텍스트로 답하고
+        # 라우터가 텍스트(JSON/라인) 파싱으로 폴백한다.
         model = self.model_for(tier)
         payload = json.dumps({
             "model": model, "system": system, "prompt": user,

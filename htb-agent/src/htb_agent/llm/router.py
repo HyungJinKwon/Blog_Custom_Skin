@@ -145,6 +145,47 @@ def build_system_prompt(context: dict, max_items: int) -> str:
             .replace("{mode_block}", mode))
 
 
+def build_suggest_tool(max_items: int, with_file: bool) -> dict:
+    """네이티브 tool use 스키마 — 명령 후보를 구조화(JSON)로 받는다. 텍스트 파싱이 깨질 일이 없다.
+    with_file: 작업공간 쓰기 가능(egress 강제 실행기)일 때만 file 액션 필드를 노출한다."""
+    item_props: dict = {
+        "command": {"type": "string",
+                    "description": "실행할 한 줄 셸 명령(타겟은 실제 주소로, 자리표시자 금지)"},
+        "hypothesis": {"type": "string", "description": "검증할 가설 ID(H1 등)"},
+        "rationale": {"type": "string", "description": "왜 이 명령인가(관측 근거)"},
+        "expected_signal": {"type": "string",
+                            "description": "확인되면 출력에 보일 신호(경로·상태코드·문자열)"},
+    }
+    if with_file:
+        item_props["file"] = {
+            "type": "object",
+            "description": "명령 실행 직전에 작업공간에 쓸 스크립트(선택)",
+            "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
+            "required": ["path", "content"],
+        }
+    return {
+        "name": "propose_commands",
+        "description": f"관측에 근거한 다음 명령 후보를 최대 {max_items}개 제출한다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"commands": {
+                "type": "array", "maxItems": max_items,
+                "items": {"type": "object", "properties": item_props, "required": ["command"]},
+            }},
+            "required": ["commands"],
+        },
+    }
+
+
+def _accepts_tools(provider) -> bool:
+    """프로바이더 complete() 가 tools 인자를 받는지(구버전·테스트 대역 호환)."""
+    import inspect
+    try:
+        return "tools" in inspect.signature(provider.complete).parameters
+    except (TypeError, ValueError):
+        return False
+
+
 class LLMRouter:
     def __init__(self, provider: LLMProvider,
                  default_tier: Tier = Tier.STANDARD, max_items: int = 5):
@@ -154,6 +195,8 @@ class LLMRouter:
         # 최근 suggest 의 명령별 메타(B4 구조화 출력: 근거·기대신호). cmd -> {rationale,expected}
         self.last_meta: dict[str, dict] = {}
         self.last_stop = ""   # 직전 응답의 stop_reason("refusal" 이면 거절)
+        self.use_tools = True          # 지원 백엔드면 네이티브 tool use 로 구조화 출력
+        self.last_structured = False   # 직전 제안이 tool use(구조화)로 왔는가
         # 누적 사용량/비용 집계
         self.calls = 0
         self.total_prompt = 0
@@ -174,8 +217,11 @@ class LLMRouter:
         user = self._user_prompt(context, target)
         # 스크립트(file 액션)를 쓸 수 있으면 본문이 길어지므로 출력 상한을 넉넉히
         max_tokens = 8192 if (context.get("exec") or {}).get("workspace") else 2048
-        resp = self.provider.complete(system, user, tier or self.default_tier,
-                                      max_tokens=max_tokens)
+        kw: dict = {"max_tokens": max_tokens}
+        if self.use_tools and _accepts_tools(self.provider):
+            kw["tools"] = [build_suggest_tool(
+                limit, bool((context.get("exec") or {}).get("workspace")))]
+        resp = self.provider.complete(system, user, tier or self.default_tier, **kw)
         self.last_stop = resp.stop_reason
         self.calls += 1
         self.total_prompt += resp.prompt_tokens
@@ -185,7 +231,15 @@ class LLMRouter:
                                          resp.completion_tokens,
                                          resp.cache_read_tokens,
                                          resp.cache_creation_tokens)
-        return self._parse(resp.text, target, limit)
+        # 네이티브 tool use 응답이 있으면 그것을 우선(구조화) — 없으면 텍스트 파싱 폴백
+        items = None
+        for call in (getattr(resp, "tool_calls", None) or []):
+            cmds = (call.get("input") or {}).get("commands") if isinstance(call, dict) else None
+            if isinstance(cmds, list):
+                items = cmds
+                break
+        self.last_structured = items is not None
+        return self._parse(resp.text, target, limit, items=items)
 
     def analyze(self, context: dict, target: str, tier: Tier | None = None) -> str:
         """관측·상태를 읽고 상황 분석(가설·경로·집중·확신도)을 반환(B3 분석가).
@@ -287,11 +341,12 @@ class LLMRouter:
             return ""
         return line
 
-    def _parse(self, text: str, target: str, limit: int) -> list[str]:
-        """B4: JSON 배열(객체/문자열) 우선 파싱(근거·기대신호는 last_meta 로), 실패 시
-        기존 라인 기반 폴백. 명령 문자열 리스트를 반환(다운스트림은 그대로)."""
+    def _parse(self, text: str, target: str, limit: int, items: "list | None" = None) -> list[str]:
+        """B4: 구조화 항목(네이티브 tool use 또는 텍스트 속 JSON 배열) 우선 파싱(근거·기대신호는
+        last_meta 로), 실패 시 기존 라인 기반 폴백. 명령 문자열 리스트를 반환(다운스트림은 그대로)."""
         self.last_meta = {}
-        items = self._extract_json(text)
+        if items is None:
+            items = self._extract_json(text)
         if items is not None:
             out: list[str] = []
             for it in items:

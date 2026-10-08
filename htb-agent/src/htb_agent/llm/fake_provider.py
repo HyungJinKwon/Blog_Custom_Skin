@@ -12,12 +12,15 @@ class FakeProvider(LLMProvider):
 
     def __init__(self, text_or_fn: "str | Callable[[str, str, Tier], str]"):
         self._r = text_or_fn
+        self.last_tools: "list | None" = None   # 마지막 호출에 전달된 tools(테스트 확인용)
 
     def available(self) -> tuple[bool, str]:
         return True, "fake"
 
     def complete(self, system: str, user: str,
-                 tier: Tier = Tier.STANDARD, max_tokens: int = 1024) -> LLMResponse:
+                 tier: Tier = Tier.STANDARD, max_tokens: int = 1024,
+                 tools: "list | None" = None) -> LLMResponse:
+        self.last_tools = tools
         out = self._r(system, user, tier) if callable(self._r) else self._r
         if isinstance(out, LLMResponse):   # responder 가 usage 포함 응답을 줄 수 있음
             return out
