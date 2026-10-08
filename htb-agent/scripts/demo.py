@@ -192,6 +192,16 @@ def run_live(pace: float = 0.0) -> int:
     print(ui.kv("범위 밖 미실행", str(st["denied_scope"]), 15))
     print(ui.kv("검증/범위 오류", str(st["rejected_validate"] + st["rejected_scope"]), 15))
     print(ui.dim("  (무프롬프트 auto 모드 기준. 기본 모드에선 검토·범위 밖 명령을 사람에게 1회 확인)"))
+    review_blocked = [f for f in blocked if "실행위험" in f.note]
+    if review_blocked:
+        from htb_agent.approval import explain_purpose, safer_alternative
+        cmd = review_blocked[0].command
+        print()
+        print(ui.dim("  기본(스마트) 모드라면 사람에게 이렇게 보여 줍니다 — 초보자용 목적·대안:"))
+        print(ui.kv("  목적", explain_purpose(cmd), 8))
+        alt = safer_alternative(cmd)
+        if alt:
+            print(ui.kv("  대안", alt, 8))
     executed_risky = [c for c in runner.calls if "| bash" in c or OUT_OF_SCOPE in c]
     print((ui.mark_ok("검토 대상·범위 밖 명령 실제 실행 0건") if not executed_risky
            else ui.mark_err(f"예상과 다름: {executed_risky}")))
@@ -213,6 +223,18 @@ def run_live(pace: float = 0.0) -> int:
     print(ui.kv("라이트업", "htb-ctf-writeup-v5 / Tistory 13섹션 자동 생성", 10))
     print(ui.dim("  전체 산출물: python3 scripts/demo.py --write OUT  (MD·JSON·HTML)"))
     print(ui.dim("  HTML 상단 '한눈에 보기'에 3관문 지표·플래그 출처·지식 기반·안전 경계가 요약됨"))
+
+    stage(7, "성능 측정 — 오프라인 모의 문제로 성공률을 숫자로")
+    from htb_agent import bench
+    kdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "knowledge")
+    suite = bench.load_suite(bench.default_suite_dir())
+    stats = bench.summarize(suite, bench.run_bench(suite, 1, kb=KnowledgeBase.load(kdir)))
+    t = bench.totals(stats)
+    diff = " · ".join(f"{k} {v['solved']}/{v['total']}" for k, v in t["by_difficulty"].items())
+    print(ui.kv("규칙만", f"{t['solved_any']}/{t['challenges']} 해결 ({diff}) · "
+                          f"검증된 풀이율 {t['verified_solve_rate']:.0%}", 10))
+    print(ui.dim("  LLM 연결 비교: assassin --bench --llm hybrid --attempts 5  (단서 추적 문제까지 해결)"))
+    print(ui.dim("  실행 재생: assassin --replay <감사로그.jsonl>  → 단계별 타임라인 HTML"))
 
     print(ui.ok("\n라이브 데모 완료 — 실제 대상은 권한 확인된 환경의 Kali 에서 `assassin <target>`"))
     return 1 if executed_risky else 0

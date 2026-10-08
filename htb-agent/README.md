@@ -50,7 +50,8 @@
 **유효·안전한 옵션 조합 변형(경우의 수)** 을 몇 가지 더 시도해(`--variants`),
 한 가지 방식만 보고 포기하지 않습니다 — 변형도 유한하며 3관문을 그대로 통과합니다.
 
-**처음부터 끝까지의 사용법은 [docs/USAGE.md](docs/USAGE.md)** (설치·모드·플랫폼·지식 자동 반영·산출물·트러블슈팅).
+**처음이라면 [docs/QUICKSTART.md](docs/QUICKSTART.md)(1쪽 빠른 시작)부터.** 처음부터 끝까지의 사용법은 [docs/USAGE.md](docs/USAGE.md) (설치·모드·플랫폼·지식 자동 반영·산출물·트러블슈팅).
+발표·연습은 `./scripts/showcase.sh` 한 번으로 데모·성능 측정·재생 HTML·대시보드를 만듭니다.
 구조·다이어그램·모듈 지도는 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** 참고.
 
 ---
