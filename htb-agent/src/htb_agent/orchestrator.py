@@ -481,6 +481,7 @@ class Orchestrator:
                  max_gap_learn: int = 6,
                  web_learner=None,
                  is_tool_available: Callable[[str], bool] | None = None,
+                 recon_extra_ports: "list[int] | None" = None,
                  workspace=None):
         self.guard = guard
         self.runner = runner
@@ -528,6 +529,8 @@ class Orchestrator:
                                   or (lambda b: shutil.which(b) is not None))
         # 작업공간(첨부파일 + LLM 이 쓴 스크립트). 파일 쓰기 액션은 contained 실행기에서만 실행.
         self.workspace = workspace
+        # nmap 미설치 시 소켓 폴백에 추가로 확인할 포트(라이브 벤치가 아는 서비스 포트)
+        self.recon_extra_ports = [int(p) for p in (recon_extra_ports or [])]
 
     def run(self) -> OrchestrationReport:
         # 경과 시간은 정찰부터 포함, 마감 확인은 스윕 루프에서(정찰은 유한 폴백으로 별도 관리)
@@ -569,7 +572,9 @@ class Orchestrator:
         if host is None:
             recon = ReconExecutor(self.guard, self.runner, self.approver,
                                   max_attempts=self.recon_max_attempts,
-                                  hosts_map=self.hosts_map).run_portscan()
+                                  hosts_map=self.hosts_map,
+                                  is_tool_available=self.is_tool_available,
+                                  extra_ports=self.recon_extra_ports).run_portscan()
             report.recon = recon
             host = recon.host
         report.host = host

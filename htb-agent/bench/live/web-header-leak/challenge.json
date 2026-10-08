@@ -1,0 +1,12 @@
+{
+  "name": "web-header-leak",
+  "title": "응답 헤더로 새는 백엔드 토큰(플래그)",
+  "kind": "loopback",
+  "difficulty": "easy",
+  "category": "web",
+  "platform": "ctf",
+  "target": "target.py",
+  "ports": [[80, "http"]],
+  "flag": "flag{leaky_response_header}",
+  "lesson": "curl -i 로 응답 헤더(Server/X-*)까지 확인 — 토큰·버전 유출"
+}

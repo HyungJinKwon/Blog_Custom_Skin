@@ -1,0 +1,12 @@
+{
+  "name": "redis-key",
+  "title": "비인증 Redis 에 저장된 플래그 키",
+  "kind": "docker",
+  "difficulty": "medium",
+  "category": "",
+  "platform": "htb",
+  "ports": [[6379, "redis"]],
+  "flag": "flag{unauth_redis_key}",
+  "ready_timeout": 30,
+  "lesson": "protected-mode off Redis → KEYS *·GET(redis-cli) 로 데이터 열람"
+}

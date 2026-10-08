@@ -10,6 +10,16 @@
 
 ### 추가
 
+- **라이브 벤치마크 `--live-bench [DIR]`**: 가짜 응답(오프라인 `--bench`)이 아니라 **실제 취약
+  서비스를 띄우고 진짜 도구로 풀어** 성공률·pass@k·검증된 풀이율·시간을 측정한다(발표/심사용
+  신뢰 수치). 타겟 종류 두 가지 — `loopback`(파이썬 서비스를 전용 127.0.0.x·표준 포트에 기동,
+  nmap 없이 소켓 폴백으로 발견·curl 등 실도구로 풀이) / `docker`(challenge 의 Dockerfile 로
+  컨테이너를 전용 IP·표준 포트에 기동, FTP/Redis 등 실서비스; 데몬 없으면 명확히 알리고 건너뜀).
+  번들 문제 `bench/live/`(web-robots-hidden·web-header-leak·web-source-comment·ftp-anon·redis-key).
+  집계·표·JSON·시도별 감사 로그(`--replay`)는 `--bench` 와 같은 구조 재사용.
+- **포트스캔 폴백(nmap 미설치 대응)**: nmap 이 없을 때 순수 파이썬 TCP-connect 스캔으로 열린
+  포트를 찾아 정찰이 진행되게 한다(바인딩된 타겟만 스캔 — 범위 밖 불가). 흔한 포트 서비스 추정 +
+  짧은 배너. nmap 이 있으면 항상 nmap 사용. (`tools/portscan_fallback.py`, `ReconExecutor` 통합)
 - **샌드박스 실행기 `--sandbox {none,shell,docker}`**: `docker` 는 Kali 컨테이너 안에서 `bash -c` 로
   실행(파이프·리다이렉트 가능)하고, 컨테이너 egress 를 **타겟 대역(/32)만 허용**하도록 iptables 로
   강제합니다(기본 DROP). 명령은 비root `agent` + no-new-privileges 로 돌아 정책을 바꿀 수 없습니다

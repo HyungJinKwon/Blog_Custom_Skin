@@ -162,7 +162,9 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 | **실행** | `tools/runner.py` | Subprocess(실제, 셸 비경유·stdin 차단) / Fake(테스트). `shell`·`contained` 능력 플래그 |
 | | `tools/sandbox.py` | **샌드박스 실행기**(완전자율): DockerSandbox(Kali 컨테이너 + iptables egress 강제=타겟 대역만·비root·no-new-privileges, `contained=True`) / ShellRunner(로컬 bash, 미강제). `allowlist_for` 로 바인딩 타겟만 egress 허용·호스트명 해석 고정 |
 | | `workspace.py` | **작업공간**: 첨부파일(`--files`) 가져오기(zip-slip·압축폭탄 방어)·LLM 스크립트 쓰기(경로/크기 검사)·소스 발췌(LLM 컨텍스트)·매직바이트 형식판별 |
-| | `tools/recon.py` | 유한 폴백 포트스캔 |
+| | `tools/recon.py` | 유한 폴백 포트스캔 + nmap 미설치 시 소켓 폴백(바인딩 타겟만) |
+| | `tools/portscan_fallback.py` | 순수 파이썬 TCP-connect 스캔(nmap 없을 때)·포트→서비스 추정·짧은 배너 → NmapResult |
+| | `livebench.py` | **라이브 벤치마크**(--live-bench): 실제 서비스(loopback 파이썬 / docker 컨테이너)를 전용 IP·표준 포트에 기동 → 진짜 도구로 풀이 → 플래그 획득·검증 측정. docker 데몬 liveness 확인·없으면 건너뜀. 집계는 bench 재사용 |
 | | `tools/registry.py` + `scripts/install_tools.sh` | 도구 목록·가용성 + 일괄 설치 |
 | **목표** | `vuln.py` + `knowledge/vulns/` | CVE/CWE 탐지·매핑 |
 | | `flag.py` | user.txt/root.txt 탐지·분류 |

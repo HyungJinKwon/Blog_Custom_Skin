@@ -103,7 +103,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="로컬 모의 문제로 풀이 성공률·명령 수·시간·비용 측정(오프라인, 실제 통신 없음). "
                         "SUITE 생략 시 번들 문제 세트. --attempts N 으로 반복(pass@N), --llm 으로 LLM 비교")
     g_tool.add_argument("--attempts", type=int, default=1, metavar="N",
-                   help="--bench 에서 문제당 시도 횟수(기본 1)")
+                   help="--bench/--live-bench 에서 문제당 시도 횟수(기본 1)")
+    g_tool.add_argument("--live-bench", metavar="DIR", nargs="?", const="__default__", default=None,
+                   help="실제 서비스(loopback 파이썬 / docker 컨테이너)를 띄우고 진짜 도구로 풀이 — "
+                        "성공률·검증된 풀이율·시간 측정. DIR 생략 시 bench/live. docker 타겟은 데몬 필요. "
+                        "--attempts·--llm 적용")
     g_tool.add_argument("--replay", metavar="JSONL", default=None,
                    help="감사 로그(JSONL)를 단계별 재생 HTML 로 변환(이전/다음/자동 재생). "
                         "예: --replay state/audit_10.129.1.5.jsonl → 같은 이름의 .html")
@@ -342,6 +346,62 @@ def _run_bench(args, cfg, knowledge_dir: str) -> int:
     return 0
 
 
+def _run_live_bench(args, cfg, knowledge_dir: str) -> int:
+    """--live-bench: 실제 서비스를 띄우고 '진짜' 에이전트를 돌려 풀이율을 측정한다.
+    집계·표·JSON·시도별 감사 로그는 오프라인 --bench 와 같은 구조를 재사용한다."""
+    import json as _json
+    import os as _os
+    from datetime import datetime
+
+    from . import bench, livebench, ui
+    from .config import pick
+    from .knowledge import KnowledgeBase
+    suite = "bench/live" if args.live_bench == "__default__" else args.live_bench
+    if not _os.path.isdir(suite):
+        alt = _os.path.join(_os.path.dirname(__file__), "..", "..", "bench", "live")
+        suite = suite if _os.path.isdir(suite) else _os.path.normpath(alt)
+    try:
+        challenges = livebench.load_live_suite(suite)
+    except livebench.LiveBenchError as e:
+        print(ui.mark_err(f"라이브 벤치 문제 오류: {e}"), file=sys.stderr)
+        return 2
+    # docker 타겟은 데몬이 '실제로 응답'해야 — 없으면 명확히 알리고 loopback 만 진행
+    has_docker = livebench.docker_available()
+    runnable: list = []
+    skipped: list = []
+    for c in challenges:
+        (runnable if (c.kind == "loopback" or (c.kind == "docker" and has_docker))
+         else skipped).append(c)
+    llm_kind = pick(args.llm, cfg.llm_backend, "none")
+    router, llm_status = _build_llm_router(llm_kind, pick(args.llm_tier, cfg.llm_tier, "standard"),
+                                           **_ollama_opts(cfg))
+    if llm_kind != "none" and router is None:
+        print(ui.mark_err(llm_status), file=sys.stderr)
+        return 2
+    state_dir = pick(args.state_dir, cfg.state_dir, "state")
+    run_dir = _os.path.join(state_dir, "livebench", datetime.now().strftime("%Y%m%d-%H%M%S"))
+    print(ui.kv("라이브 문제", f"{suite} · 실행 {len(runnable)}개"
+                + (f" · 건너뜀 {len(skipped)}개(docker 데몬 없음)" if skipped else "")
+                + f" · 문제당 {max(1, args.attempts)}회", 10))
+    print(ui.kv("LLM", llm_status, 10))
+    print(ui.kv("실행", ui.warn("실제 서비스 기동 + 진짜 도구 실행 — 권한 확인 자산에서만"), 10) + "\n")
+    if skipped:
+        print(ui.dim("  건너뛴 docker 문제: " + ", ".join(c.name for c in skipped)
+                     + "  (./scripts/build_sandbox.sh 와 동일 환경의 Docker 데몬 필요)"))
+    results = livebench.run_live_bench(
+        runnable, args.attempts, KnowledgeBase.load(base_dir=knowledge_dir),
+        router=router, trace_dir=run_dir, progress=lambda m: print(ui.dim("  · " + m)))
+    stats = bench.summarize(runnable, results)
+    print("\n" + bench.render(stats, max(1, args.attempts), llm_kind))
+    out = _os.path.join(run_dir, "results.json")
+    _os.makedirs(run_dir, exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        _json.dump(bench.to_dict(suite, max(1, args.attempts), llm_kind, stats, results),
+                   f, ensure_ascii=False, indent=2)
+    print(ui.kv("결과", out, 10))
+    return 0 if any(r.solved for r in results) else 1
+
+
 def _print_kb_sync(r, verbose: bool = False) -> None:
     """공유 시드 동기화 결과 한 줄 요약(변화 없으면 자동 실행 시엔 조용히)."""
     from . import ui
@@ -366,7 +426,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         ("--revshell", args.revshell), ("--cloud", args.cloud),
         ("--privesc", args.privesc), ("--crack", args.crack), ("--ingest", args.ingest),
         ("--kb-sync", args.kb_sync), ("--promote", args.promote), ("--learn", args.learn),
-        ("--bench", args.bench), ("--replay", args.replay))
+        ("--bench", args.bench), ("--live-bench", args.live_bench), ("--replay", args.replay))
         if v not in (None, False)]
     if len(standalone) > 1:
         parser.error(f"함께 쓸 수 없는 단독 명령: {' '.join(standalone)}")
@@ -417,6 +477,10 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     # 평가 하네스(오프라인 모의 문제) — 성공률·pass@N·명령 수·시간·비용
     if args.bench:
         return _run_bench(args, cfg, knowledge_dir)
+
+    # 라이브 평가 하네스(실제 서비스·진짜 도구) — 신뢰할 수 있는 발표용 수치
+    if args.live_bench:
+        return _run_live_bench(args, cfg, knowledge_dir)
 
     # 환경 자가진단(스캔 안 함) — 완전 초보자 권장 첫 실행
     if args.doctor or args.llm_test:

@@ -92,6 +92,7 @@ class ShellRunner:
 
     shell = True
     contained = False
+    real_exec = True
 
     def __init__(self, workdir: str | None = None, exec_fn: Exec | None = None):
         self.workdir = workdir
@@ -124,6 +125,7 @@ class DockerSandbox:
 
     shell = True
     contained = True
+    real_exec = True
 
     def __init__(self, workspace: str, allow_cidrs: Iterable[str],
                  image: str = DEFAULT_IMAGE, lports: Iterable[int] = (),

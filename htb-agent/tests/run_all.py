@@ -14,7 +14,10 @@ def main() -> int:
     total_pass = total_fail = failed_suites = 0
     for path in suites:
         name = os.path.basename(path)
-        r = subprocess.run([sys.executable, path], capture_output=True, text=True, cwd=ROOT)
+        # stdin 을 /dev/null 로 — 대화형 승인(input())을 쓰는 테스트가 상속받은 stdin 에서
+        # 블록하지 않고 즉시 EOF 를 받게 한다(비대화 실행·CI 안정성).
+        r = subprocess.run([sys.executable, path], capture_output=True, text=True, cwd=ROOT,
+                           stdin=subprocess.DEVNULL)
         last = ""
         for line in reversed(r.stdout.strip().splitlines()):
             if "passed" in line:

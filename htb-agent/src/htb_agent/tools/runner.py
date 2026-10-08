@@ -50,6 +50,7 @@ class SubprocessRunner:
 
     shell = False        # 셸 문법(파이프·리다이렉트) 해석 여부
     contained = False    # 네트워크 egress 가 실행 계층에서 강제되는지(샌드박스만 True)
+    real_exec = True     # 실제 프로세스를 실행하는가(소켓 폴백 등 실동작 허용 판단)
 
     def run(self, command: str, timeout: int = 120) -> RunOutput:
         try:
@@ -83,6 +84,7 @@ class FakeRunner:
         self.calls: list[str] = []
         self.shell = shell
         self.contained = contained
+        self.real_exec = False   # 가짜 러너 — 실제 소켓/프로세스 동작(폴백 포함) 금지
 
     def run(self, command: str, timeout: int = 120) -> RunOutput:
         self.calls.append(command)
