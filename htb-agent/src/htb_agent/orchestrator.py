@@ -918,10 +918,12 @@ class Orchestrator:
             return 0
         services = [p.service for p in host.ports if p.state == "open" and p.service]
         recs = self.kb.query(prof.os_class.value, host.open_ports, services, phase=phase)
-        # 실행 후보(base, vcmd) 수집 — seen·budget·수동제안 처리는 여기서(결정적)
-        to_run: list[tuple[str, str]] = []
-        slots = 0   # 예산을 쓰는 후보 수(미설치 도구는 기록만 하고 예산 미사용)
+        # 1) 실행 후보를 '서비스(태그)별 버킷'으로 모은다 — 예산은 아직 쓰지 않는다.
+        #    (한 서비스가 예산을 독식하지 않도록, 2)에서 서비스 round-robin 으로 분배해 탐색 폭을 넓힌다)
+        buckets: dict[str, list[tuple[str, str]]] = {}
+        order: list[str] = []   # 버킷 최초 등장 순서(결정적 — recs 는 점수순 정렬됨)
         for rec in recs:
+            key = rec.tags[0] if rec.tags else "기타"   # 서비스/카테고리 키(web·smb·ftp·ad…)
             for tmpl in rec.suggestions:
                 for cmd, runnable in self._expand(tmpl, target):
                     if not runnable:
@@ -937,12 +939,35 @@ class Orchestrator:
                         if vcmd in seen:
                             continue
                         seen.add(vcmd)
-                        if slots >= budget:
-                            report.manual_suggestions.append(vcmd + "   # (상한 초과 — 수동)")
-                            continue
-                        to_run.append((cmd, vcmd))
-                        if self._tool_ok(vcmd):
-                            slots += 1
+                        if key not in buckets:
+                            buckets[key] = []
+                            order.append(key)
+                        buckets[key].append((cmd, vcmd))
+        # 2) 서비스 round-robin 으로 예산 분배 — 각 서비스가 먼저 한 개씩 돌 기회를 갖는다.
+        #    (미설치 도구는 예산을 쓰지 않음 — 기존 의미 유지). 버킷이 하나면 기존과 동일 순서.
+        to_run: list[tuple[str, str]] = []
+        slots = 0
+        idxs = {k: 0 for k in order}
+        while slots < budget:
+            advanced = False
+            for key in order:
+                if slots >= budget:
+                    break
+                i = idxs[key]
+                if i >= len(buckets[key]):
+                    continue
+                idxs[key] = i + 1
+                advanced = True
+                base, vcmd = buckets[key][i]
+                to_run.append((base, vcmd))
+                if self._tool_ok(vcmd):
+                    slots += 1
+            if not advanced:
+                break
+        # 예산 초과로 못 돌린 후보는 수동 제안으로 남긴다
+        for key in order:
+            for _base, vcmd in buckets[key][idxs[key]:]:
+                report.manual_suggestions.append(vcmd + "   # (상한 초과 — 수동)")
         if not to_run:
             return 0
         base_by_cmd = {vcmd: base for base, vcmd in to_run}
