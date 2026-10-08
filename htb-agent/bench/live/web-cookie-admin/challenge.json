@@ -1,0 +1,12 @@
+{
+  "name": "web-cookie-admin",
+  "title": "권한 쿠키(role=admin) 우회로 얻는 플래그",
+  "kind": "loopback",
+  "difficulty": "medium",
+  "category": "web",
+  "platform": "ctf",
+  "target": "target.py",
+  "ports": [[80, "http"]],
+  "flag": "flag{cookie_role_bypass}",
+  "lesson": "응답이 쿠키(role/isAdmin)로 권한을 판별 → curl -b 로 조작해 접근(IDOR/권한우회)"
+}

@@ -216,14 +216,24 @@ assassin 10.129.1.5 --config config/config.example.json
 > **성능 측정 — 오프라인 vs 라이브**:
 > - `assassin --bench` : 가짜 응답(오프라인 모의 문제)으로 빠르게 회귀 측정(실제 통신 없음).
 > - `assassin --live-bench` : **실제 서비스를 띄우고 진짜 도구로 풀이** — 발표/심사용 신뢰 수치
->   (성공률·pass@k·검증된 풀이율·시간). `bench/live/` 의 `loopback`(파이썬 서비스, 어디서나 실행)
->   과 `docker`(실서비스, 데몬 필요·없으면 건너뜀) 문제를 돈다. `--attempts N`·`--llm hybrid` 적용.
->   체인 풀이(예: robots→숨은 경로)는 `--llm` 을 켜야 풀립니다(KB만으로는 직접 노출형만).
+>   (성공률·pass@k·검증된 풀이율·시간). `--attempts N`·`--llm hybrid` 적용. 체인 풀이(예:
+>   robots→숨은 경로, 쿠키 우회, LFI)는 `--llm` 을 켜야 풀립니다(KB만으로는 직접 노출형만).
+>
+> `bench/live/` 문제 종류(`challenge.json` 의 `kind`):
+> - **loopback** — 파이썬 취약 서비스를 전용 127.0.0.x·표준 포트에 기동. 어디서나 실행(nmap 없이
+>   소켓 폴백·`curl`/`nc` 로 풀이). web(robots·헤더·소스주석·쿠키우회·LFI)·misc(nc 배너).
+> - **docker** — challenge 의 Dockerfile 로 실서비스 컨테이너를 전용 IP·표준 포트에 기동. 데몬
+>   없으면 건너뜀. ftp(익명)·redis(비인증)·smb(게스트)·mysql(빈 root)·snmp(public).
+> - **vm** — 컨테이너가 아닌 실제 머신(HTB·Dreamhack 머신, VirtualBox/VMware/libvirt VM). 주소는
+>   `address` 또는 `ASSASSIN_VM_<이름>=<IP>` 로 지정, 선택적 `start_cmd`/`stop_cmd` 로 부팅/정리.
+>   자세히는 `bench/live/vm-htb-example/README.md`.
 >
 > ```bash
-> assassin --live-bench --attempts 3 --llm hybrid   # 라이브 문제 pass@3 + LLM 두뇌
-> assassin --live-bench bench/live --attempts 1      # KB만(규칙기반) 기준선
+> assassin --live-bench --attempts 3 --llm hybrid        # 전체(loopback + 가능한 docker) pass@3
+> assassin --live-bench --attempts 1                      # KB만(규칙기반) 기준선
+> ASSASSIN_VM_VM_FOREST=10.129.10.5 assassin --live-bench --llm hybrid   # 실제 VM(권한 확인 자산만)
 > ```
+> 문제 추가는 `bench/live/<이름>/` 에 `challenge.json` + 타겟(파이썬 `target.py` 또는 `Dockerfile`)만.
 
 ---
 
@@ -300,7 +310,7 @@ cd htb-agent && python3 tests/run_all.py     # 전체 스위트(끝에 '총 N �
 | `--crack` `HASH` | 해시 크래킹 자동 준비(생성 안 실행). 해시 종류 식별 + john/hashcat 명령 생성. 예: --crack '$krb5tgs$23$...'. 권한 확인 자산 해시 전용 |
 | `--bench` `SUITE` | 로컬 모의 문제로 풀이 성공률·명령 수·시간·비용 측정(오프라인, 실제 통신 없음). SUITE 생략 시 번들 문제 세트. --attempts N 으로 반복(pass@N), --llm 으로 LLM 비교 |
 | `--attempts` `N` | --bench/--live-bench 에서 문제당 시도 횟수(기본 1) |
-| `--live-bench` `DIR` | 실제 서비스(loopback 파이썬 / docker 컨테이너)를 띄우고 진짜 도구로 풀이 — 성공률·검증된 풀이율·시간 측정. DIR 생략 시 bench/live. docker 타겟은 데몬 필요. --attempts·--llm 적용 |
+| `--live-bench` `DIR` | 실제 서비스(loopback 파이썬 / docker 컨테이너 / vm 외부·가상머신)를 띄우거나 붙어 진짜 도구로 풀이 — 성공률·검증된 풀이율·시간 측정. DIR 생략 시 bench/live. docker 타겟은 데몬 필요. --attempts·--llm 적용 |
 | `--replay` `JSONL` | 감사 로그(JSONL)를 단계별 재생 HTML 로 변환(이전/다음/자동 재생). 예: --replay state/audit_10.129.1.5.jsonl → 같은 이름의 .html |
 | `--platform` | 플랫폼 프로파일 (기본 htb). dreamhack/ctf=단일 타겟+flag{} 모드 |
 | `--category` | Jeopardy 카테고리 힌트(web/pwn/rev/crypto/forensic/misc). CTF/Dreamhack 에서 LLM 제안을 카테고리에 맞게 유도 |

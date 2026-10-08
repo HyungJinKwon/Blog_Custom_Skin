@@ -28,7 +28,7 @@ PORT_SERVICE: dict[int, str] = {
     2049: "nfs", 3000: "http", 3306: "mysql", 3389: "ms-wbt-server", 5000: "http",
     5432: "postgresql", 5601: "http", 5985: "wsman", 5986: "wsman", 6379: "redis",
     8000: "http", 8008: "http", 8080: "http-proxy", 8443: "https-alt", 8888: "http",
-    9000: "http", 9200: "http", 11211: "memcached", 27017: "mongod", 1337: "waste",
+    9000: "http", 9200: "http", 11211: "memcached", 27017: "mongod",
 }
 
 # 폴백 기본 스캔 포트(흔한 상위 집합). 호출부가 '아는 포트'를 더 줄 수 있다.

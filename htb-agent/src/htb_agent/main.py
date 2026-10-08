@@ -105,7 +105,7 @@ def build_parser() -> argparse.ArgumentParser:
     g_tool.add_argument("--attempts", type=int, default=1, metavar="N",
                    help="--bench/--live-bench 에서 문제당 시도 횟수(기본 1)")
     g_tool.add_argument("--live-bench", metavar="DIR", nargs="?", const="__default__", default=None,
-                   help="실제 서비스(loopback 파이썬 / docker 컨테이너)를 띄우고 진짜 도구로 풀이 — "
+                   help="실제 서비스(loopback 파이썬 / docker 컨테이너 / vm 외부·가상머신)를 띄우거나 붙어 진짜 도구로 풀이 — "
                         "성공률·검증된 풀이율·시간 측정. DIR 생략 시 bench/live. docker 타겟은 데몬 필요. "
                         "--attempts·--llm 적용")
     g_tool.add_argument("--replay", metavar="JSONL", default=None,
@@ -365,13 +365,21 @@ def _run_live_bench(args, cfg, knowledge_dir: str) -> int:
     except livebench.LiveBenchError as e:
         print(ui.mark_err(f"라이브 벤치 문제 오류: {e}"), file=sys.stderr)
         return 2
-    # docker 타겟은 데몬이 '실제로 응답'해야 — 없으면 명확히 알리고 loopback 만 진행
+    # docker 타겟은 데몬이 '실제로 응답'해야 실행(없으면 명확히 알리고 건너뜀).
+    # vm 타겟은 주소(challenge.address 또는 ASSASSIN_VM_<이름>)가 있어야 실행.
     has_docker = livebench.docker_available()
     runnable: list = []
     skipped: list = []
     for c in challenges:
-        (runnable if (c.kind == "loopback" or (c.kind == "docker" and has_docker))
-         else skipped).append(c)
+        if c.kind == "loopback":
+            runnable.append(c)
+        elif c.kind == "docker":
+            (runnable if has_docker else skipped).append(c)
+        elif c.kind == "vm":
+            addr = _os.environ.get(livebench.vm_env_key(c.name)) or c.address
+            (runnable if addr else skipped).append(c)
+        else:
+            skipped.append(c)
     llm_kind = pick(args.llm, cfg.llm_backend, "none")
     router, llm_status = _build_llm_router(llm_kind, pick(args.llm_tier, cfg.llm_tier, "standard"),
                                            **_ollama_opts(cfg))
@@ -381,13 +389,14 @@ def _run_live_bench(args, cfg, knowledge_dir: str) -> int:
     state_dir = pick(args.state_dir, cfg.state_dir, "state")
     run_dir = _os.path.join(state_dir, "livebench", datetime.now().strftime("%Y%m%d-%H%M%S"))
     print(ui.kv("라이브 문제", f"{suite} · 실행 {len(runnable)}개"
-                + (f" · 건너뜀 {len(skipped)}개(docker 데몬 없음)" if skipped else "")
+                + (f" · 건너뜀 {len(skipped)}개" if skipped else "")
                 + f" · 문제당 {max(1, args.attempts)}회", 10))
     print(ui.kv("LLM", llm_status, 10))
     print(ui.kv("실행", ui.warn("실제 서비스 기동 + 진짜 도구 실행 — 권한 확인 자산에서만"), 10) + "\n")
     if skipped:
-        print(ui.dim("  건너뛴 docker 문제: " + ", ".join(c.name for c in skipped)
-                     + "  (./scripts/build_sandbox.sh 와 동일 환경의 Docker 데몬 필요)"))
+        print(ui.dim("  건너뜀: " + ", ".join(f"{c.name}({c.kind})" for c in skipped)
+                     + "  — docker 는 데몬 필요(./scripts/build_sandbox.sh 와 동일 환경), "
+                     + "vm 은 challenge.address 또는 ASSASSIN_VM_<이름>=<IP> 필요"))
     results = livebench.run_live_bench(
         runnable, args.attempts, KnowledgeBase.load(base_dir=knowledge_dir),
         router=router, trace_dir=run_dir, progress=lambda m: print(ui.dim("  · " + m)))
@@ -400,6 +409,21 @@ def _run_live_bench(args, cfg, knowledge_dir: str) -> int:
                    f, ensure_ascii=False, indent=2)
     print(ui.kv("결과", out, 10))
     return 0 if any(r.solved for r in results) else 1
+
+
+def _default_knowledge_dir() -> str:
+    """지식베이스 폴더 기본값을 '실행한 폴더'가 아니라 '어디서 실행해도' 찾도록 해석한다.
+    우선순위: ./knowledge(현재 폴더) → 패키지에 번들된 knowledge/(설치본·다른 cwd 안전)."""
+    import os as _os
+    cwd = _os.path.join(_os.getcwd(), "knowledge")
+    if _os.path.isdir(cwd):
+        return cwd
+    bundled = _os.path.normpath(_os.path.join(_os.path.dirname(__file__), "..", "..", "knowledge"))
+    if _os.path.isdir(bundled):
+        return bundled
+    # 패키지 안에 동봉된 경우(src/htb_agent/knowledge) — 휠 설치 대비
+    inpkg = _os.path.join(_os.path.dirname(__file__), "knowledge")
+    return inpkg if _os.path.isdir(inpkg) else cwd
 
 
 def _print_kb_sync(r, verbose: bool = False) -> None:
@@ -461,7 +485,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
               file=sys.stderr)
     for w in cfg.warnings:
         print(ui.mark_warn(f"설정 경고: {w}"), file=sys.stderr)
-    knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, "knowledge")
+    knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, None) or _default_knowledge_dir()
 
     # 실행 기록 재생(감사 로그 → 단계별 HTML)
     if args.replay:

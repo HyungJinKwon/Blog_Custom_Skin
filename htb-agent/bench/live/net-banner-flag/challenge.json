@@ -1,0 +1,12 @@
+{
+  "name": "net-banner-flag",
+  "title": "TCP 서비스 배너 상호작용으로 얻는 플래그",
+  "kind": "loopback",
+  "difficulty": "easy",
+  "category": "misc",
+  "platform": "ctf",
+  "target": "target.py",
+  "ports": [[1337, "unknown"]],
+  "flag": "flag{netcat_banner_grab}",
+  "lesson": "미식별 포트는 nc 로 먼저 상호작용해 거동·배너 확인"
+}

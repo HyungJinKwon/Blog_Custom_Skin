@@ -23,6 +23,12 @@ htb-agent = "htb_agent.main:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# 번들 지식베이스·벤치 문제를 패키지 데이터로 포함(편집모드 아닌 일반 설치에서도 동작).
+# 지식베이스는 저장소 루트의 knowledge/ 를 패키지 안(htb_agent/knowledge)로도 동봉하려면
+# 빌드 전 복사가 필요하나, 기본 사용은 소스 트리(pip install -e .) 또는 --knowledge 로 지정.
+[tool.setuptools.package-data]
+htb_agent = ["knowledge/**/*", "bench/**/*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

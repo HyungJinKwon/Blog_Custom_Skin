@@ -2,6 +2,26 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [미출시]
+
+### 추가
+- **라이브 벤치 공개세트 확장 + VM/외부 타겟**: 공개 CTF 세트(picoCTF·Dreamhack·HTB Starting
+  Point)에서 흔한 기법류를 **원본으로 재구성**해 문제를 늘렸다(복사 아님). loopback 추가 —
+  `web-cookie-admin`(권한 쿠키 우회)·`web-lfi-flag`(경로 순회/LFI)·`net-banner-flag`(nc 배너
+  상호작용). docker 추가 — `smb-anon-share`·`mysql-empty-root`·`snmp-public`(실서비스).
+  그리고 **`kind: "vm"`** — 컨테이너가 아닌 실제 머신(HTB·Dreamhack 머신, VirtualBox/VMware/
+  libvirt VM)을 타겟으로. 주소는 `challenge.json` 의 `address` 또는 환경변수 `ASSASSIN_VM_<이름>`
+  으로 지정(머신마다 IP 가 달라 파일 수정 없이 덮어쓰기), 선택적 `start_cmd`/`stop_cmd` 로
+  부팅/정리(우리가 부팅한 경우에만 종료). `bench/live/vm-htb-example/`(템플릿·README).
+- **지식베이스 경로 cwd 독립**: 기본값이 '실행한 폴더의 ./knowledge' 였던 것을, 없으면 패키지에
+  번들된 `knowledge/` 로 자동 해석(어느 디렉터리에서 실행해도·설치본에서도 동작). `pyproject.toml`
+  에 `package-data` 추가(일반 설치 시 번들 데이터 포함).
+
+### 수정
+- 포트스캔 폴백 서비스 추정에서 1337 을 `unknown` 으로(CTF pwn 규칙 매칭) — nc 상호작용 유도.
+- `tests/run_all.py`: 스위트당 제한시간(`ASSASSIN_TEST_SUITE_TIMEOUT`, 기본 300초) + 각 스위트
+  stdin=/dev/null(대화형 input() 블록 방지) — 네트워크 대기·stdin 상속으로 멈추던 문제 해소.
+
 ## [2.4.0] — 2026-10-08
 
 완전자율(--autonomous)에서 **실제 익스플로잇까지 자동 수행**할 수 있도록 실행 계층을 넓혔습니다.

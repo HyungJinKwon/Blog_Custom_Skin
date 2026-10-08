@@ -43,7 +43,7 @@ class LiveChallenge:
     name: str
     title: str
     flag: str
-    kind: str                       # loopback | docker
+    kind: str                       # loopback | docker | vm
     dir: Path
     difficulty: str = "medium"
     category: str = ""              # web/pwn/rev/... (Jeopardy LLM 힌트)
@@ -52,6 +52,11 @@ class LiveChallenge:
     target: str = ""                # loopback: 스크립트 파일명 / docker: 이미지/컨텍스트
     ready_timeout: float = 20.0
     lesson: str = ""
+    # vm(외부/가상머신) 전용: 이미 떠 있거나 start_cmd 로 부팅하는 타겟의 주소·수명주기 훅
+    address: str = ""               # VM/외부 타겟 IP·호스트명(환경변수 ASSASSIN_VM_<NAME> 로 덮어쓰기)
+    start_cmd: str = ""             # (선택) 부팅 명령 — virsh start / VBoxManage startvm / vmrun start
+    stop_cmd: str = ""              # (선택) 종료 명령 — 끝나고 정리
+    ranges: list = field(default_factory=list)     # 허용 대역(HTB 대역 등). 비면 타겟 /32
 
 
 class LiveBenchError(RuntimeError):
@@ -81,7 +86,11 @@ def load_live_suite(path: str) -> list[LiveChallenge]:
             ports=[(int(n), str(s)) for n, s in (d.get("ports") or [])],
             target=str(d.get("target") or ""),
             ready_timeout=float(d.get("ready_timeout") or 20.0),
-            lesson=str(d.get("lesson") or "")))
+            lesson=str(d.get("lesson") or ""),
+            address=str(d.get("address") or ""),
+            start_cmd=str(d.get("start_cmd") or ""),
+            stop_cmd=str(d.get("stop_cmd") or ""),
+            ranges=[str(r) for r in (d.get("ranges") or [])]))
     if not out:
         raise LiveBenchError(f"challenge.json 을 찾지 못함: {path}/*/challenge.json")
     return out
@@ -236,6 +245,64 @@ def docker_available(docker: str = "docker", exec_fn: Callable | None = None) ->
     return getattr(p, "returncode", 1) == 0
 
 
+def vm_env_key(name: str) -> str:
+    """challenge 이름 → VM 주소 덮어쓰기 환경변수 키(ASSASSIN_VM_<정규화>)."""
+    import re
+    return "ASSASSIN_VM_" + re.sub(r"[^0-9A-Za-z]", "_", name).upper()
+
+
+class VMTarget(Target):
+    """컨테이너가 아닌 외부/가상머신 타겟(HTB·Dreamhack 머신, VirtualBox/VMware/libvirt VM 등).
+
+    harness 는 VM 을 containerize 하지 않는다 — 이미 떠 있는 주소에 붙거나(기본), start_cmd 가
+    있으면 그 명령으로 부팅하고(virsh/VBoxManage/vmrun), stop_cmd 로 정리한다. 주소는 challenge.json
+    의 address, 또는 환경변수 ASSASSIN_VM_<이름> 으로 지정한다(실제 머신마다 IP 가 달라 파일 수정 없이
+    덮어쓰기 가능). 실행 명령은 신뢰된 벤치 설정으로 보고 셸로 실행한다(사용자 자산)."""
+
+    def __init__(self, ch: LiveChallenge, exec_fn: Callable | None = None,
+                 env: dict | None = None):
+        self.ch = ch
+        self._exec = exec_fn or subprocess.run
+        import os as _os
+        e = env if env is not None else _os.environ
+        self.address = (e.get(vm_env_key(ch.name)) or ch.address or "").strip()
+        self._started_cmd = False
+
+    def _sh(self, cmd: str, timeout: int = 300):
+        return self._exec(["/bin/sh", "-c", cmd], capture_output=True, text=True,
+                          errors="replace", stdin=subprocess.DEVNULL, timeout=timeout)
+
+    def start(self) -> None:
+        if not self.address:
+            raise LiveBenchError(
+                f"{self.ch.name}: VM 타겟 주소가 없음 — challenge.json 의 address 또는 "
+                f"환경변수 {vm_env_key(self.ch.name)}=<IP> 로 지정하세요")
+        if self.ch.start_cmd:
+            try:
+                p = self._sh(self.ch.start_cmd)
+            except Exception as e:   # noqa: BLE001
+                raise LiveBenchError(f"{self.ch.name}: VM start_cmd 실행 실패 — "
+                                     f"{type(e).__name__}: {e}") from e
+            if getattr(p, "returncode", 1) != 0:
+                raise LiveBenchError(f"{self.ch.name}: VM start_cmd 실패 — "
+                                     + (getattr(p, "stderr", "") or "").strip()[:200])
+            self._started_cmd = True
+        port = self.ch.ports[0][0] if self.ch.ports else 0
+        if port and not _wait_port(self.address, port, self.ch.ready_timeout):
+            self.stop()
+            raise LiveBenchError(f"{self.ch.name}: VM 서비스 준비 실패({self.address}:{port}) — "
+                                 "머신이 켜져 있고 네트워크(VPN)가 연결됐는지 확인")
+
+    def stop(self) -> None:
+        # start_cmd 로 '우리가 부팅한' 경우에만 stop_cmd 로 정리(이미 떠 있던 머신은 끄지 않음)
+        if self._started_cmd and self.ch.stop_cmd:
+            try:
+                self._sh(self.ch.stop_cmd, timeout=120)
+            except Exception:   # noqa: BLE001
+                pass
+            self._started_cmd = False
+
+
 def make_target(ch: LiveChallenge, index: int, **kw) -> Target:
     if ch.kind == "loopback":
         return LoopbackTarget(ch, index, popen=kw.get("popen"))
@@ -243,6 +310,8 @@ def make_target(ch: LiveChallenge, index: int, **kw) -> Target:
         return DockerTarget(ch, network=kw.get("network", "assassin-bench"),
                             image_prefix=kw.get("image_prefix", "assassin-bench"),
                             exec_fn=kw.get("docker_exec"))
+    if ch.kind == "vm":
+        return VMTarget(ch, exec_fn=kw.get("vm_exec"), env=kw.get("vm_env"))
     raise LiveBenchError(f"{ch.name}: 알 수 없는 kind — {ch.kind!r}")
 
 
@@ -268,8 +337,23 @@ def run_live_attempt(ch: LiveChallenge, n: int, index: int, kb, router=None,
     executed = proposed = approvals = steps = 0
     try:
         tgt.start()
-        guard = ScopeGuard.from_cidr_strings(
-            [f"{tgt.address}/32"], enforce_ranges=True, allow_hostname_target=True)
+        # 허용 대역: challenge.ranges(HTB 대역 등)가 있으면 그것, 없으면 타겟 /32.
+        # 호스트명 타겟은 대역 강제를 끄고 그 호스트만 바인딩(해석된 IP 를 /32 허용).
+        import ipaddress as _ip
+        is_ipv4 = True
+        try:
+            _ip.ip_address(tgt.address)
+        except ValueError:
+            is_ipv4 = False
+        if ch.ranges:
+            guard = ScopeGuard.from_cidr_strings(
+                ch.ranges, enforce_ranges=True, allow_hostname_target=True)
+        elif is_ipv4:
+            guard = ScopeGuard.from_cidr_strings(
+                [f"{tgt.address}/32"], enforce_ranges=True, allow_hostname_target=True)
+        else:
+            guard = ScopeGuard.from_cidr_strings(
+                [], enforce_ranges=False, allow_hostname_target=True)
         guard.bind_target(tgt.address)
         extra = [p for p, _ in ch.ports]
         orc = Orchestrator(
