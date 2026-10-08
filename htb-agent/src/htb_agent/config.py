@@ -20,11 +20,13 @@ class ConfigError(Exception):
 _INT_KEYS = ("max_attempts", "max_enum", "max_llm", "max_rounds", "max_sweeps",
              "max_parallel", "max_variants", "time_budget", "max_cost")
 _LIST_KEYS = ("allowed_ranges", "attacker_ips")
-_STR_KEYS = ("platform", "knowledge_dir", "knowledge", "state_dir", "llm_backend", "llm_tier")
+_STR_KEYS = ("platform", "knowledge_dir", "knowledge", "state_dir", "llm_backend", "llm_tier",
+             "sandbox")
 _KNOWN_KEYS = set(_INT_KEYS) | set(_LIST_KEYS) | set(_STR_KEYS) | {"llm"}
 _LLM_KEYS = {"backend", "tier", "ollama_model", "ollama_host"}
 LLM_BACKENDS = ("none", "claude", "ollama", "hybrid")
 LLM_TIERS = ("cheap", "standard", "strong")
+SANDBOX_KINDS = ("none", "shell", "docker")
 
 
 def _validate(d: dict) -> list[str]:
@@ -59,6 +61,8 @@ def _validate(d: dict) -> list[str]:
         raise ConfigError(f"지원하지 않는 llm backend: {backend!r} (지원: {', '.join(LLM_BACKENDS)})")
     if tier is not None and tier not in LLM_TIERS:
         raise ConfigError(f"지원하지 않는 llm tier: {tier!r} (지원: {', '.join(LLM_TIERS)})")
+    if d.get("sandbox") is not None and d["sandbox"] not in SANDBOX_KINDS:
+        raise ConfigError(f"지원하지 않는 sandbox: {d['sandbox']!r} (지원: {', '.join(SANDBOX_KINDS)})")
     for k in ("ollama_model", "ollama_host"):
         v = llm.get(k)
         if v is not None and not isinstance(v, str):
@@ -89,6 +93,7 @@ class Config:
     max_cost: float | None = None
     knowledge_dir: str | None = None
     state_dir: str | None = None
+    sandbox: str | None = None            # none / shell / docker
     warnings: list[str] = field(default_factory=list)   # 무해한 문제(알 수 없는 키 등)
 
     @classmethod
@@ -116,6 +121,7 @@ class Config:
             max_cost=d.get("max_cost"),
             knowledge_dir=d.get("knowledge_dir") or d.get("knowledge"),
             state_dir=d.get("state_dir"),
+            sandbox=d.get("sandbox"),
         )
 
 

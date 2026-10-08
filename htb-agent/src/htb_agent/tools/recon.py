@@ -47,6 +47,15 @@ def auto_approve_in_scope(cmd: str, vrep: ValidationReport,
     return vrep.ok and sres.auto_allowed and not vrep.review
 
 
+def auto_approve_contained(cmd: str, vrep: ValidationReport,
+                           sres: CommandScopeResult) -> bool:
+    """완전자율 + egress 강제 샌드박스 전용 승인. 검증 통과 + 범위내면 동적·원격 코드 실행
+    (review)도 자동 승인한다 — 실행 내용을 정적으로 알 수 없어도 네트워크는 컨테이너
+    방화벽이 타겟 대역으로 묶고, 명령은 비root 로 정책을 바꿀 수 없기 때문이다.
+    파괴명령(검증 실패)·범위 밖 대상은 여전히 거부."""
+    return vrep.ok and sres.auto_allowed
+
+
 @dataclass
 class AttemptRecord:
     label: str

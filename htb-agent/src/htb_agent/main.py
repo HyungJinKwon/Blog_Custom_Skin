@@ -122,6 +122,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="허용 타겟 CIDR (반복 가능). 생략 시 플랫폼 기본(HTB만 대역 강제)")
     g_target.add_argument("--attacker-ip", action="append", dest="attacker_ips", metavar="IP",
                    help="공격자 VPN IP (반복 가능). 생략 시 tun0 자동탐지")
+    g_target.add_argument("--files", action="append", dest="files", metavar="PATH",
+                   help="챌린지 첨부파일/디렉터리(반복 가능, zip·tar 는 안전하게 풀어 둠). "
+                        "작업공간 files/ 에 복사되어 LLM 이 소스를 읽고 분석. 포트가 없어도 파일 분석으로 진행")
     g_target.add_argument("--lport", type=int, default=4444, metavar="PORT",
                    help="리버스쉘 리스너 포트(자동 준비 페이로드용, 기본 4444)")
     g_target.add_argument("--cred", action="append", dest="creds", metavar="USER:PASS",
@@ -133,6 +136,12 @@ def build_parser() -> argparse.ArgumentParser:
     g_mode.add_argument("--autonomous", "--hackathon", action="store_true", dest="autonomous",
                    help="능동적 완전자동 모드: 범위내 자동승인 + 깊은 재진입 스윕 + 병렬 열거 + "
                         "변형학습 + 전 자동준비. 목표(flag/root)까지 스스로 추진(안전 게이트 유지)")
+    g_mode.add_argument("--sandbox", choices=["none", "shell", "docker"], default=None,
+                   help="실행기: none=셸 비경유(기본, 파이프 불가) · shell=로컬 bash(파이프 가능, "
+                        "네트워크 강제 없음) · docker=Kali 컨테이너 + egress 방화벽(타겟만 허용). "
+                        "완전자율에서 스크립트 작성·실행·동적 실행은 docker 에서만 자동")
+    g_mode.add_argument("--sandbox-image", default=None, metavar="IMAGE",
+                   help="docker 샌드박스 이미지(기본 assassin-sandbox:latest — scripts/build_sandbox.sh)")
     g_mode.add_argument("--auto", action="store_true",
                    help="완전 자동: 범위내+검증통과만 실행, 범위 밖은 조용히 건너뜀(무프롬프트)")
     g_mode.add_argument("--manual", action="store_true",
@@ -738,7 +747,53 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         approver = smart_approver
     from .approval import interactive_observer
     observer = interactive_observer if (args.observe and runner is None) else None
+
+    # 7.5) 실행기 + 작업공간 — 샌드박스(docker)는 egress 방화벽을 건 뒤에만 명령을 받는다
+    sandbox_kind = pick(args.sandbox, cfg.sandbox, "none")
+    workspace = None
+    sandbox = None
+    if args.files or sandbox_kind != "none":
+        from .state import StateStore as _SS
+        from .workspace import Workspace, WorkspaceError
+        workspace = Workspace(_os.path.join(state_dir, "work", _SS._safe(args.target)))
+        if args.files:
+            try:
+                added = workspace.import_paths(args.files)
+            except (WorkspaceError, OSError) as e:
+                print(ui.mark_err(f"첨부파일 가져오기 실패: {e}"), file=sys.stderr)
+                return 2
+            print(ui.kv("첨부파일", ui.ok(", ".join(added)) + ui.dim(f"  → {workspace.root}"), 10))
+    if runner is None and sandbox_kind == "docker":
+        from .tools.sandbox import DEFAULT_IMAGE, DockerSandbox, SandboxError, allowlist_for
+        assert workspace is not None   # sandbox_kind != "none" → 위에서 생성됨
+        try:
+            cidrs, hosts = allowlist_for(guard)
+            sandbox = DockerSandbox(workspace.root, cidrs,
+                                    image=args.sandbox_image or DEFAULT_IMAGE,
+                                    lports=[args.lport], hosts=hosts)
+            sandbox.start()
+        except SandboxError as e:
+            print(ui.panel("샌드박스 시작 실패 — 실행하지 않습니다", [
+                str(e),
+                ui.accent2("이미지 빌드: ") + ui.bold("./scripts/build_sandbox.sh"),
+                ui.dim("Docker 데몬·권한(docker 그룹) 확인. 샌드박스 없이: --sandbox none"),
+            ], style="warn"), file=sys.stderr)
+            return 2
+        runner = sandbox
+        print(ui.kv("샌드박스", ui.ok(f"docker {sandbox.name} · egress 허용 {', '.join(cidrs)}"), 10))
+    elif runner is None and sandbox_kind == "shell":
+        from .tools.sandbox import ShellRunner
+        assert workspace is not None   # sandbox_kind != "none" → 위에서 생성됨
+        runner = ShellRunner(workdir=workspace.root)
+        print(ui.kv("실행기", ui.warn("로컬 bash — 네트워크 강제 없음(스크립트 자동 실행 안 함)"), 10))
+    if args.autonomous and not getattr(runner, "contained", False):
+        print(ui.mark_warn("완전자율인데 egress 강제 샌드박스가 없음 — 스크립트 작성·동적 실행은 "
+                           "수동 제안으로 남습니다(권장: --sandbox docker)"))
+    if (args.autonomous or args.auto) and not args.manual and getattr(runner, "contained", False):
+        from .tools.recon import auto_approve_contained
+        approver = auto_approve_contained
     orchestrator = Orchestrator(guard, runner or SubprocessRunner(), kb, approver,
+                                workspace=workspace,
                                 observer=observer,
                                 max_enum=max_enum,
                                 max_llm=pick(None, cfg.max_llm, 5),
@@ -761,7 +816,11 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 learner=learner, learn_gaps=learn_gaps,
                                 web_learner=web_learner,
                                 state_store=store, resume=args.resume, audit=audit)
-    report = orchestrator.run()
+    try:
+        report = orchestrator.run()
+    finally:
+        if sandbox is not None:
+            sandbox.stop()
     if not args.no_save:
         variant_stats.save(vstats_path)   # 학습 결과 영속화(다음 실행에 반영)
     print("\n" + report.summary())

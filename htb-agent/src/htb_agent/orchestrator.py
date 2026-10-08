@@ -27,7 +27,7 @@ from typing import Callable
 from . import diagnostics
 from . import provenance as _prov
 from .audit import NullAudit
-from .command_validator import ValidationReport, validate
+from .command_validator import ValidationReport, shell_operators, validate
 from .crack import scan_hashes as crack_scan
 from .creds import CredentialVault
 from .creds_harvest import harvest as harvest_creds
@@ -480,7 +480,8 @@ class Orchestrator:
                  learn_gaps: bool = False,
                  max_gap_learn: int = 6,
                  web_learner=None,
-                 is_tool_available: Callable[[str], bool] | None = None):
+                 is_tool_available: Callable[[str], bool] | None = None,
+                 workspace=None):
         self.guard = guard
         self.runner = runner
         self.kb = kb
@@ -522,7 +523,11 @@ class Orchestrator:
         self.web_learner = web_learner   # 인터넷 검색 학습(HTB 라이트업 가드) — 미해석 공백용
         self._acquired_topics: set[str] = set()   # 세션 내 중복 학습 방지
         # 도구 설치 여부 판단(주입 가능 — 테스트에서 대체)
-        self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
+        # 샌드박스 실행기는 컨테이너 안의 도구 설치 여부를 직접 답한다(has_tool)
+        self.is_tool_available = (is_tool_available or getattr(runner, "has_tool", None)
+                                  or (lambda b: shutil.which(b) is not None))
+        # 작업공간(첨부파일 + LLM 이 쓴 스크립트). 파일 쓰기 액션은 contained 실행기에서만 실행.
+        self.workspace = workspace
 
     def run(self) -> OrchestrationReport:
         # 경과 시간은 정찰부터 포함, 마감 확인은 스윕 루프에서(정찰은 유한 폴백으로 별도 관리)
@@ -570,7 +575,15 @@ class Orchestrator:
         report.host = host
         self.audit.event("recon", status=(report.recon.status if report.recon else "resumed"),
                          open_ports=host.open_ports if host else [])
-        if host is None or not host.open_ports:
+        if (host is None or not host.open_ports) and self.workspace is not None \
+                and self.workspace.imported:
+            # 첨부파일만 있는 문제(rev/crypto/forensic 등): 열린 포트 없이 파일 분석으로 진행
+            host = host or NmapHost(address=target, state="unknown")
+            report.host = host
+            report.message += "(열린 포트 없음 — 첨부파일 분석으로 진행) "
+            self.audit.event("offline_files", files=self.workspace.imported[:20])
+        if host is None or (not host.open_ports and not (
+                self.workspace is not None and self.workspace.imported)):
             report.status = "escalate"
             report.message += "열린 포트 미확보 — 다음 단계 불가. 사람 개입 필요."
             self._persist(report, prior)
@@ -1072,6 +1085,7 @@ class Orchestrator:
             # 갱신 모드: 이전 가설 기록·막힌 가설을 넘겨 '처음부터 다시'가 아니라 이어서 판단
             "ledger": report.plan.context_lines(),
             "stuck": [h.id for h in report.plan.stuck()],
+            **self._exec_context(),
         }
         try:
             text = self.llm_router.analyze(context, target)
@@ -1130,6 +1144,7 @@ class Orchestrator:
             "category": self.category,
             "flag_prefixes": ("/".join(f"{p}{{...}}" for p in self.flag_prefixes)
                               if self.flag_prefixes else ""),
+            **self._exec_context(),
         }
         try:
             from .llm.base import Tier, tier_for_phase
@@ -1151,14 +1166,29 @@ class Orchestrator:
         meta = getattr(self.llm_router, "last_meta", {}) or {}
         attempted = 0
         for cmd in cmds:
-            if cmd in seen:
+            m = meta.get(cmd) or {}
+            # 같은 실행 명령이라도 스크립트 본문이 바뀌었으면 새 시도(익스플로잇 반복 개선)
+            key = cmd
+            if m.get("file"):
+                import hashlib
+                key += "  #file:" + hashlib.sha256(
+                    str(m["file"].get("content", "")).encode("utf-8")).hexdigest()[:16]
+            if key in seen:
                 continue
             if attempted >= budget or self._goal_reached(report):
                 break
-            seen.add(cmd)
+            seen.add(key)
+            written: str | None = ""
+            if m.get("file"):
+                written = self._write_file_action(report, cmd, m["file"])
+                if written is None:      # 파일을 못 쓰면 그 파일을 실행하는 명령도 돌리지 않음
+                    continue
+            n_before = len(report.llm_findings)
             self._attempt(report, report.llm_findings, cmd, phase)
+            if written and len(report.llm_findings) > n_before:
+                f0 = report.llm_findings[-1]
+                f0.note = (f0.note + " · " if f0.note else "") + f"📝 파일 작성: {written}"
             # B4: 구조화 출력의 가설·근거를 finding 비고에 덧붙임(어느 가설을 검증했는지 추적)
-            m = meta.get(cmd) or {}
             tags = [t for t in (("가설 " + m["hypothesis"]) if m.get("hypothesis") else "",
                                 ("근거: " + m["rationale"]) if m.get("rationale") else "") if t]
             if report.llm_findings:
@@ -1171,6 +1201,47 @@ class Orchestrator:
             if self._tool_ok(cmd):
                 attempted += 1
         return attempted
+
+    def _exec_context(self) -> dict:
+        """LLM 프롬프트용 실행 환경(셸 문법·작업공간 쓰기 가능 여부) + 작업공간 파일 발췌."""
+        shell = bool(getattr(self.runner, "shell", False))
+        contained = bool(getattr(self.runner, "contained", False))
+        ctx: dict = {"exec": {"shell": shell, "contained": contained,
+                              "workspace": self.workspace is not None and contained}}
+        if self.workspace is not None:
+            try:
+                ctx["workspace"] = self.workspace.context_lines()
+            except OSError as e:
+                self.audit.event("workspace_error", error=str(e))
+        return ctx
+
+    def _write_file_action(self, report: OrchestrationReport, cmd: str,
+                           fobj: dict) -> str | None:
+        """LLM 파일 액션(스크립트 작성). 성공 시 상대경로, 거부 시 None(명령도 실행 안 함).
+        정적 범위 검사는 스크립트 본문 속 접속 대상을 볼 수 없으므로, 네트워크가 실행 계층에서
+        강제되는(contained) 실행기에서만 자동으로 쓰고 실행한다."""
+        path = str(fobj.get("path", ""))[:200]
+        content = str(fobj.get("content", ""))
+        if self.workspace is None or not getattr(self.runner, "contained", False):
+            reason = ("작업공간 없음" if self.workspace is None
+                      else "egress 강제 실행기 아님 — --sandbox docker 필요")
+            entry = f"{cmd}   # (스크립트 {path} 필요 · {reason} — 수동)"
+            if entry not in report.manual_suggestions:
+                report.manual_suggestions.append(entry)
+            self.audit.event("file_denied", path=path, cmd=cmd, reason=reason)
+            return None
+        from .workspace import WorkspaceError
+        try:
+            rel = self.workspace.write_file(path, content)
+        except (WorkspaceError, OSError) as e:
+            report.manual_suggestions.append(f"{cmd}   # (스크립트 저장 거부: {e})")
+            self.audit.event("file_denied", path=path, cmd=cmd, reason=str(e))
+            return None
+        import hashlib
+        self.audit.event("file_written", path=rel, cmd=cmd, size=len(content),
+                         sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                         content=content[:4000])
+        return rel
 
     def _record_signal(self, report: OrchestrationReport, f: EnumFinding, meta: dict,
                        focus) -> str:
@@ -1369,6 +1440,18 @@ class Orchestrator:
             self.audit.event("skipped", cmd=cmd, reason="tool-missing", binary=binary)
             return None
         vrep: ValidationReport = validate(cmd)
+        # 셸 비경유 실행기에선 파이프·리다이렉트가 인자로 넘어가 조용히 오작동한다 → 실행 전 거부.
+        # 단, 동적·원격 실행(EXEC_RISK review: curl|bash 등)은 기존 경로가 '수동 제안'으로
+        # 강등해 사람이 대안과 함께 보게 하므로 여기서 가로채지 않는다.
+        if vrep.ok and not vrep.review and not getattr(self.runner, "shell", False):
+            ops = shell_operators(cmd)
+            if ops:
+                finding.note = ("검증 실패: 셸 연산자(" + " ".join(dict.fromkeys(ops))
+                                + ") — 셸 비경유 실행에서 동작 안 함(--sandbox 사용 시 가능)")
+                gs["rejected_validate"] += 1
+                self.audit.event("rejected", cmd=cmd, stage="validate",
+                                 errors=["shell-operators: " + " ".join(ops)])
+                return None
         if not vrep.ok:
             finding.note = "검증 실패: " + "; ".join(str(i) for i in vrep.errors)
             gs["rejected_validate"] += 1
@@ -1449,7 +1532,7 @@ class Orchestrator:
             if hit.value not in {f.value for f in report.flags}:
                 report.flags.append(hit)
                 # 출처 검증(실행 트레이스 기반) — 이 플래그를 만든 명령을 분류해 기록.
-                prov = _prov.classify(hit.kind, hit.value, cmd, finding.phase)
+                prov = self._classify_flag(report, hit, cmd, finding.phase)
                 report.flag_provenance.append(prov)
                 note_mark = f"🚩 {hit.kind} flag"
                 if prov.verdict != "exploit-derived":
@@ -1470,6 +1553,33 @@ class Orchestrator:
         # 크리덴셜 자동 수확 — 원시출력에서 고신뢰 평문 자격 추출. 월드엔 모두 반영,
         # 실행 볼트엔 셸-안전한 값만(신뢰불가 출처 인젝션 차단). A1 재진입을 활성화.
         self._harvest_creds(out.stdout, cmd, finding)
+
+    def _classify_flag(self, report: OrchestrationReport, hit, cmd: str, phase: str):
+        """출처 분류 + 작업공간 보정.
+        - 에이전트가 쓴 스크립트 본문에 플래그 문자열이 그대로 있으면 '로컬 유래'(지어낸 값일 수 있음)
+        - 첨부파일만 있는 문제(열린 포트 없음)에서 files/ 를 읽은 로컬 명령의 출력은 풀이 결과로 인정"""
+        prov = _prov.classify(hit.kind, hit.value, cmd, phase)
+        if hit.value in cmd:
+            prov.verdict = "local-derived"
+            prov.reason = "명령 문자열 자체에 플래그가 들어 있음 — 출력이 아니라 입력에서 나온 값"
+            return prov
+        ws = self.workspace
+        if ws is None:
+            return prov
+        for rel in ws.written:
+            try:
+                with open(ws.resolve(rel), encoding="utf-8", errors="replace") as f:
+                    if hit.value in f.read():
+                        prov.verdict = "local-derived"
+                        prov.reason = f"에이전트가 작성한 {rel} 본문에 플래그 문자열 포함 — 지어낸 값일 수 있음"
+                        return prov
+            except OSError:
+                continue
+        offline = report.host is not None and not report.host.open_ports
+        if offline and prov.verdict == "local-derived" and "files/" in cmd:
+            prov.verdict = "exploit-derived"
+            prov.reason = "첨부파일 분석 출력에서 추출(오프라인 문제)"
+        return prov
 
     def _diagnose(self, report: OrchestrationReport, finding: EnumFinding, out) -> None:
         """실패를 원인별로 분류해 finding 비고에 덧붙이고 report.blockers 에 기록한다.

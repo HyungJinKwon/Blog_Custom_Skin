@@ -45,7 +45,11 @@ def _as_text(v) -> str:
 
 
 class SubprocessRunner:
-    """실제 Kali 용. shell 비경유(shell=False)."""
+    """실제 Kali 용. shell 비경유(shell=False) — 파이프·리다이렉트 같은 셸 연산자는 동작하지 않는다
+    (오케스트레이터가 실행 전에 거부). 셸 문법·스크립트가 필요하면 샌드박스 실행기(tools/sandbox.py)."""
+
+    shell = False        # 셸 문법(파이프·리다이렉트) 해석 여부
+    contained = False    # 네트워크 egress 가 실행 계층에서 강제되는지(샌드박스만 True)
 
     def run(self, command: str, timeout: int = 120) -> RunOutput:
         try:
@@ -55,7 +59,8 @@ class SubprocessRunner:
         if not args:
             return RunOutput(command, error="빈 명령", returncode=-1)
         try:
-            p = subprocess.run(args, capture_output=True, text=True,
+            # stdin 은 닫는다 — nc 등 입력 대기 도구가 터미널 입력을 가로채거나 타임아웃까지 멈추지 않게
+            p = subprocess.run(args, capture_output=True, text=True, stdin=subprocess.DEVNULL,
                                errors="replace", timeout=timeout)
             return RunOutput(command, p.stdout or "", p.stderr or "", p.returncode)
         except FileNotFoundError:
@@ -72,9 +77,12 @@ class SubprocessRunner:
 class FakeRunner:
     """테스트용. responder(command)->RunOutput|str 로 응답을 흉내낸다."""
 
-    def __init__(self, responder: Callable[[str], "RunOutput | str"]):
+    def __init__(self, responder: Callable[[str], "RunOutput | str"],
+                 shell: bool = False, contained: bool = False):
         self._responder = responder
         self.calls: list[str] = []
+        self.shell = shell
+        self.contained = contained
 
     def run(self, command: str, timeout: int = 120) -> RunOutput:
         self.calls.append(command)

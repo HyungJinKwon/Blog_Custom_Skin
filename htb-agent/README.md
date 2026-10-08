@@ -28,8 +28,27 @@
 > 한 명령으로 최대 자율 풀이. 범위내 자동승인 + 깊은 재진입 스윕(3) + 병렬 열거(4) +
 > 변형 학습 + 전 자동준비(리버스쉘·클라우드·권한상승·크래킹)를 묶어 목표(flag/root)까지
 > 스스로 추진합니다. 두뇌까지 쓰려면 `--llm hybrid` 추가. **안전 경계는 유지** —
-> 범위 밖·파괴명령·실제 익스플로잇은 여전히 게이트(‘건드려선 안 될 권한’만 사람).
-> `--manual` 은 autonomous 보다 우선합니다.
+> 범위 밖·파괴명령은 여전히 게이트. `--manual` 은 autonomous 보다 우선합니다.
+>
+> **샌드박스에서 실제 익스플로잇까지(`--sandbox docker`)**: 완전자율로 파이프·스크립트·
+> 대화형 도구까지 쓰려면 egress 강제 샌드박스를 켭니다. Kali 컨테이너 안에서 `bash -c` 로
+> 실행하되 **네트워크는 타겟 대역만** 허용(iptables 기본 DROP), 명령은 비root 로 돌아 정책을
+> 바꿀 수 없습니다. 이 안에서는 LLM 이 쓴 익스플로잇/솔버 스크립트를 자동 실행하고, 동적·원격
+> 코드 실행(파이프→셸 등)도 자동 승인합니다(범위는 컨테이너 방화벽이 강제).
+> 이미지 빌드: `./scripts/build_sandbox.sh`. 샌드박스 없이(기본 `none`)는 셸 연산자·스크립트
+> 실행이 수동 제안으로 남습니다.
+>
+> ```bash
+> ./scripts/build_sandbox.sh                                   # 최초 1회(Kali 이미지 빌드)
+> assassin 10.129.1.5 --autonomous --sandbox docker --llm hybrid
+> # Dreamhack/CTF 첨부파일(소스·바이너리) 분석까지:
+> assassin chall.dreamhack.io:8080 --platform dreamhack --category pwn \
+>          --files ./prob.zip --autonomous --sandbox docker --llm hybrid
+> ```
+>
+> **챌린지 첨부파일(`--files`)**: 제공 소스·바이너리·덤프를 작업공간 `files/`(읽기 전용)로
+> 가져오면 LLM 이 먼저 읽고 취약 지점을 찾습니다. zip·tar 는 안전하게 풀고, 열린 포트가
+> 없는 문제(rev/crypto/forensic)도 파일 분석으로 진행합니다.
 
 ---
 
@@ -275,10 +294,13 @@ cd htb-agent && python3 tests/run_all.py     # 전체 스위트(끝에 '총 N �
 | `--flag-prefix` `PREFIX` | 우선 인식할 플래그 접두 (반복 가능, 예: --flag-prefix DH). 플랫폼 기본값에 추가 |
 | `--range` `CIDR` | 허용 타겟 CIDR (반복 가능). 생략 시 플랫폼 기본(HTB만 대역 강제) |
 | `--attacker-ip` `IP` | 공격자 VPN IP (반복 가능). 생략 시 tun0 자동탐지 |
+| `--files` `PATH` | 챌린지 첨부파일/디렉터리(반복 가능, zip·tar 는 안전하게 풀어 둠). 작업공간 files/ 에 복사되어 LLM 이 소스를 읽고 분석. 포트가 없어도 파일 분석으로 진행 |
 | `--lport` `PORT` | 리버스쉘 리스너 포트(자동 준비 페이로드용, 기본 4444) |
 | `--cred` `USER:PASS` | 자격증명 'user:pass' / 'user:pass:domain' / 'user:pass:domain:nthash' (반복 가능). Pass-the-Hash 는 'user:&lt;32hex&gt;' 또는 'user::domain:&lt;NT\|LM:NT&gt;'. {user}/{pass}/{domain}/{hash} 제안을 실행 후보로 승격 |
 | `--config` | 설정 파일(.json/.yaml). 우선순위: CLI &gt; 설정파일 &gt; 기본값 |
 | `--autonomous`, `--hackathon` | 능동적 완전자동 모드: 범위내 자동승인 + 깊은 재진입 스윕 + 병렬 열거 + 변형학습 + 전 자동준비. 목표(flag/root)까지 스스로 추진(안전 게이트 유지) |
+| `--sandbox` | 실행기: none=셸 비경유(기본, 파이프 불가) · shell=로컬 bash(파이프 가능, 네트워크 강제 없음) · docker=Kali 컨테이너 + egress 방화벽(타겟만 허용). 완전자율에서 스크립트 작성·실행·동적 실행은 docker 에서만 자동 |
+| `--sandbox-image` `IMAGE` | docker 샌드박스 이미지(기본 assassin-sandbox:latest — scripts/build_sandbox.sh) |
 | `--auto` | 완전 자동: 범위내+검증통과만 실행, 범위 밖은 조용히 건너뜀(무프롬프트) |
 | `--manual` | 완전 수동: 모든 명령을 실행 전 확인(승인제 최대) |
 | `--no-enrich` | CVE/CWE 자동 수집(NVD/GitHub) 비활성 |
