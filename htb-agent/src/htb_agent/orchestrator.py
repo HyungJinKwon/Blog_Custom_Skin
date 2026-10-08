@@ -1573,10 +1573,10 @@ class Orchestrator:
         """출처 분류 + 작업공간 보정.
         - 에이전트가 쓴 스크립트 본문에 플래그 문자열이 그대로 있으면 '로컬 유래'(지어낸 값일 수 있음)
         - 첨부파일만 있는 문제(열린 포트 없음)에서 files/ 를 읽은 로컬 명령의 출력은 풀이 결과로 인정"""
-        prov = _prov.classify(hit.kind, hit.value, cmd, phase)
-        if hit.value in cmd:
-            prov.verdict = "local-derived"
-            prov.reason = "명령 문자열 자체에 플래그가 들어 있음 — 출력이 아니라 입력에서 나온 값"
+        # 외부/학습 자료(웹학습·ingest 노트)에 플래그가 그대로 있으면 looked-up(라이트업·검색 의심)
+        in_external = self._flag_in_external_notes(hit.value)
+        prov = _prov.classify(hit.kind, hit.value, cmd, phase, in_external=in_external)
+        if prov.verdict in ("reasoning-only", "looked-up"):
             return prov
         ws = self.workspace
         if ws is None:
@@ -1595,6 +1595,18 @@ class Orchestrator:
             prov.verdict = "exploit-derived"
             prov.reason = "첨부파일 분석 출력에서 추출(오프라인 문제)"
         return prov
+
+    def _flag_in_external_notes(self, value: str) -> bool:
+        """플래그 값이 웹학습·ingest 등 '외부에서 가져온' 노트 본문에 그대로 있는가(looked-up 판정).
+        사용자가 직접 올린 라이트업(ingest)이라도, 플래그가 거기 적혀 있었다면 공략이 아니라
+        '본 것'이므로 사람이 확인하도록 표시한다. 번들 시드(공략 흔적 없는 레퍼런스)는 제외."""
+        if not value or self.kb is None:
+            return False
+        try:
+            notes = self.kb.external_notes()
+        except Exception:   # noqa: BLE001 — 분류 보조 실패가 본 작업을 막지 않음
+            return False
+        return any(value in n for n in notes)
 
     def _diagnose(self, report: OrchestrationReport, finding: EnumFinding, out) -> None:
         """실패를 원인별로 분류해 finding 비고에 덧붙이고 report.blockers 에 기록한다.

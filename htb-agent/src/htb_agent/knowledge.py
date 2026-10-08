@@ -176,6 +176,17 @@ class KnowledgeBase:
             self._lower_cache = cache
         return cache[1]
 
+    def external_notes(self) -> list[str]:
+        """런타임에 '외부에서 가져온' 노트(자가학습·웹학습: 파일명이 learned…)의 본문.
+        provenance 의 looked-up 판정용 — 번들 시드(seed-…, 공략 흔적 없는 레퍼런스)는 제외한다.
+        노트 문자열은 '[파일명] 본문' 형식으로 저장된다."""
+        out: list[str] = []
+        for n in self.notes:
+            if n.startswith("[learned"):   # learned-*, learned-web-* (자가/웹 학습)
+                body = n.split("]", 1)[1] if "]" in n else n
+                out.append(body)
+        return out
+
     def relevant_notes(self, terms: list[str], limit: int = 3) -> list[str]:
         """B5(경량 RAG): 쿼리 용어와의 키워드 겹침으로 노트를 관련도 랭킹해 상위 N개.
         임베딩 없이 소문자 단어 집합 교집합으로 점수화한다(각 용어 1회만 가산).

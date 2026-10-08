@@ -131,7 +131,7 @@ rep = orc.run()
 check("첨부파일 있으면 escalate 아님", rep.status != "escalate")
 
 
-print("\n=== 플래그 출처: 명령 문자열에 든 플래그는 로컬 유래 ===")
+print("\n=== 플래그 출처: 명령 문자열에 든 플래그는 reasoning-only ===")
 # cat files/... 로 소스에서 읽은 플래그가 '명령 자체'에 없으면 공략 유래(오프라인 보정),
 # 반대로 echo flag{...} 처럼 명령에 들어 있으면 로컬 유래로 강등되는지.
 from htb_agent.orchestrator import OrchestrationReport
@@ -143,9 +143,26 @@ rep = OrchestrationReport(target="10.129.1.5")
 rep.host = NmapHost(address="10.129.1.5", state="down")   # 포트 없음(오프라인)
 hit = FlagHit("flag{abc}", "flag", "")
 prov = o._classify_flag(rep, hit, "echo flag{abc}", "enum")
-check("명령에 든 플래그 → 로컬 유래", prov.verdict == "local-derived")
+check("명령에 든 플래그 → reasoning-only(출력 아님)", prov.verdict == "reasoning-only")
 prov2 = o._classify_flag(rep, hit, "cat files/chall/secret.txt", "enum")
 check("오프라인 파일 읽기 → 공략 유래(검증)", prov2.verdict == "exploit-derived")
+
+print("\n=== 플래그 출처: 웹학습 노트에 있던 값 → looked-up(CTF-Abacus) ===")
+from htb_agent.knowledge import KnowledgeBase
+kb_ext = KnowledgeBase(notes=["[learned-web-foo.md] writeup says the flag is flag{abc}"])
+o2 = Orchestrator(guard(), FakeRunner(resp_web), kb_ext, auto_approve_in_scope,
+                  is_tool_available=ALL)
+rep2 = OrchestrationReport(target="10.129.1.5")
+rep2.host = NmapHost(address="10.129.1.5", state="up")
+prov3 = o2._classify_flag(rep2, hit, "curl -s http://10.129.1.5/", "enum")
+check("외부 학습 노트에 있던 플래그 → looked-up", prov3.verdict == "looked-up")
+check("looked-up 은 검증된 풀이 아님", prov3.genuine is False)
+# 번들 시드(seed-*)에 있어도 looked-up 으로 올리지 않음
+kb_seed = KnowledgeBase(notes=["[seed-nmap.md] example flag{abc} in reference"])
+o3 = Orchestrator(guard(), FakeRunner(resp_web), kb_seed, auto_approve_in_scope,
+                  is_tool_available=ALL)
+prov4 = o3._classify_flag(rep2, hit, "curl -s http://10.129.1.5/", "enum")
+check("번들 시드 유래는 looked-up 아님(공략 유래)", prov4.verdict == "exploit-derived")
 
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
