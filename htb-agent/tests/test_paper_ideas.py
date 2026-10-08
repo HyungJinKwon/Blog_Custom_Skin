@@ -133,5 +133,19 @@ check("observer 미지정 → 관찰 없음(기존 동작)", not any("사람 관
 a2 = M.build_parser().parse_args([T, "--observe"])
 check("파서: --observe", a2.observe is True)
 
+print("\n=== HTTP 요약기: 본문 단서 보존(경로·링크·주석) ===")
+from htb_agent.observation.parsers import parse_http  # noqa: E402
+h = parse_http("HTTP/1.1 200 OK\nServer: Apache\n\n<html><!-- old: /backup.zip -->"
+               "<a href=\"/login.php\">in</a><a href=\"https://cdn.example/x.js\">ext</a>"
+               "<script src=\"//cdn.example/y.js\"></script> see /security.txt</html>")
+check("주석 단서", any(c.startswith("주석:") and "/backup.zip" in c for c in h.clues))
+check("내부 링크 단서", "/login.php" in h.clues)
+check("평문 경로 단서", "/security.txt" in h.clues)
+check("외부·프로토콜 상대 링크 제외", not any("cdn.example" in c for c in h.clues))
+check("요약에 '단서=' 포함", "단서=" in h.summary())
+many = parse_http("HTTP/1.1 200 OK\n\n" + " ".join(f"/p{i}" for i in range(20)))
+check("단서는 최대 5개", len(many.clues) == 5)
+check("본문 없으면 단서 없음", parse_http("HTTP/1.1 204 No Content\n\n").clues == [])
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

@@ -13,9 +13,8 @@ from __future__ import annotations
 import platform
 import sys
 
-from . import __version__
-from . import ui
-from .environment import detect_vpn_ips, _is_kali
+from . import __version__, ui
+from .environment import _is_kali, detect_vpn_ips
 from .tools import registry
 
 # 초보자가 가장 먼저 필요한 '핵심' 도구(전체 63개 중). 나머지는 install_tools.sh.

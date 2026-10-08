@@ -1,0 +1,12 @@
+{
+  "name": "mysql-empty-root",
+  "title": "빈 비밀번호 MySQL 의 테이블 값",
+  "difficulty": "medium",
+  "lesson": "접속이 되면 데이터베이스 목록을 보고 필요한 테이블을 조회",
+  "ports": [[3306, "mysql"]],
+  "responses": [
+    {"match": "vault_db", "stdout": "+---------------------+\n| secret              |\n+---------------------+\n| FLAG{empty_root_pw} |\n+---------------------+"},
+    {"match": "mysql -h", "stdout": "Database\ninformation_schema\nvault_db"}
+  ],
+  "flag": "FLAG{empty_root_pw}"
+}

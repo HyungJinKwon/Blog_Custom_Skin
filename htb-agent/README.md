@@ -50,7 +50,8 @@
 **유효·안전한 옵션 조합 변형(경우의 수)** 을 몇 가지 더 시도해(`--variants`),
 한 가지 방식만 보고 포기하지 않습니다 — 변형도 유한하며 3관문을 그대로 통과합니다.
 
-**처음부터 끝까지의 사용법은 [docs/USAGE.md](docs/USAGE.md)** (설치·모드·플랫폼·지식 자동 반영·산출물·트러블슈팅).
+**처음이라면 [docs/QUICKSTART.md](docs/QUICKSTART.md)(1쪽 빠른 시작)부터.** 처음부터 끝까지의 사용법은 [docs/USAGE.md](docs/USAGE.md) (설치·모드·플랫폼·지식 자동 반영·산출물·트러블슈팅).
+발표·연습은 `./scripts/showcase.sh` 한 번으로 데모·성능 측정·재생 HTML·대시보드를 만듭니다.
 구조·다이어그램·모듈 지도는 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** 참고.
 
 ---
@@ -219,12 +220,16 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 59 스위트 1622 테스트
+cd htb-agent && python3 tests/run_all.py     # 전체 스위트(끝에 '총 N 스위트 | N passed' 요약)
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
 **파이썬 3.10~3.13 매트릭스**로 테스트+컴파일+README CLI 옵션 표 최신 여부(게이트) + ruff/mypy(비차단) 수행.
-버전 확인: `assassin --version`.
+버전 확인: `assassin --version`. 변경 이력: [CHANGELOG.md](CHANGELOG.md).
+
+## 라이선스
+
+[MIT](LICENSE) — 권한이 확인된 대상(HTB·CTF·인가된 진단)·교육·연구 목적에 한해 사용하세요.
 
 ---
 

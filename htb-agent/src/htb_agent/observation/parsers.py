@@ -230,6 +230,7 @@ class HttpResult:
     cookies: list[Cookie] = field(default_factory=list)
     forms: list[HttpForm] = field(default_factory=list)
     generator: str = ""                       # <meta name=generator> (CMS 식별)
+    clues: list[str] = field(default_factory=list)   # 본문 단서(경로·링크·주석) — 다음 요청의 실마리
 
     @property
     def server(self) -> str:
@@ -268,6 +269,8 @@ class HttpResult:
             bits.append("cookies=" + "; ".join(str(c) for c in self.cookies))
         if self.forms:
             bits.append("forms=" + ", ".join(str(f) for f in self.forms))
+        if self.clues:
+            bits.append("단서=" + ", ".join(self.clues))
         if self.missing_security_headers:
             bits.append("보안헤더 누락=" + ",".join(self.missing_security_headers))
         return " | ".join(bits)
@@ -310,6 +313,34 @@ def _parse_forms(body: str) -> list[HttpForm]:
                               method=(attrs.get("method", "get") or "get").lower(),
                               has_password=has_pw, inputs=inputs))
     return forms
+
+
+_COMMENT_RE = re.compile(r"<!--(.*?)-->", re.S)
+_LINK_RE = re.compile(r"""(?:href|src|action)\s*=\s*["']([^"'#?\s>]{2,60})""", re.I)
+# 본문 평문 속 사이트 내부 경로(예: "see /security.txt", "Disallow: /staff-notes/")
+_PATH_RE = re.compile(r"(?<![\w/:.])(/[A-Za-z0-9._~-]{2,40}(?:/[A-Za-z0-9._~-]{1,40}){0,3}/?)")
+
+
+def _body_clues(body: str, limit: int = 5) -> list[str]:
+    """본문에서 다음 요청의 실마리가 될 짧은 단서만 추린다(주석·링크·경로).
+    요약이 본문을 통째로 버려 단서를 놓치던 문제(벤치 web-version-cve) 보완. 원문은 감사 로그에 남는다."""
+    out: list[str] = []
+
+    def add(x: str) -> None:
+        x = re.sub(r"\s+", " ", x).strip()[:60]
+        if x and x not in out and len(out) < limit:
+            out.append(x)
+    for m in _COMMENT_RE.finditer(body):
+        add("주석:" + m.group(1))
+    text = _COMMENT_RE.sub(" ", body)
+    for m in _LINK_RE.finditer(text):
+        v = m.group(1)
+        if not re.match(r"(?i)(?:https?:|//|data:|javascript:|mailto:)", v):
+            add(v)
+    plain = re.sub(r"<[^>]+>", " ", text)
+    for m in _PATH_RE.finditer(plain):
+        add(m.group(1))
+    return out
 
 
 def parse_http(raw: str) -> HttpResult:
@@ -358,4 +389,5 @@ def parse_http(raw: str) -> HttpResult:
         res.generator = gm.group(1).strip()
     res.cookies = [_parse_cookie(c) for c in cookies_raw]
     res.forms = _parse_forms(body)
+    res.clues = _body_clues(body)
     return res

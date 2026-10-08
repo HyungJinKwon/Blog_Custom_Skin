@@ -9,8 +9,8 @@ Observation Compressor — 구조화 결과를 LLM 용으로 압축
 
 from __future__ import annotations
 
-from .parsers import NmapHost, NmapResult, HttpResult
-from ..target_profiler import classify, ProfileResult
+from ..target_profiler import ProfileResult, classify
+from .parsers import HttpResult, NmapHost, NmapResult
 
 
 def summarize_nmap_host(host: NmapHost) -> dict:

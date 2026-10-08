@@ -11,9 +11,9 @@ LLM Router — 관측·지식을 받아 다음 명령 후보를 추론
 from __future__ import annotations
 
 import re
+
 from .base import LLMProvider, Tier
 from .pricing import estimate_cost
-
 
 # 플랫폼/모드에 맞춰 동적으로 조립한다(HTB boot2root vs Jeopardy CTF). 리터럴
 # {user}/{pass}/{domain} 이 들어가므로 .format() 금지 — replace 로만 치환한다.

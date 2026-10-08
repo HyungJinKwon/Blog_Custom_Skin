@@ -1,0 +1,11 @@
+{
+  "name": "rsync-module",
+  "title": "인증 없는 rsync 모듈 목록",
+  "difficulty": "easy",
+  "lesson": "rsync 모듈 목록이 외부에 공개되는지 확인",
+  "ports": [[873, "rsync"]],
+  "responses": [
+    {"match": "rsync --list-only", "stdout": "public         \tPublic files\nnotes          \tFLAG{rsync_lists_too_much}"}
+  ],
+  "flag": "FLAG{rsync_lists_too_much}"
+}

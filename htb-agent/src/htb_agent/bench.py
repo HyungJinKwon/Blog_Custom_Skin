@@ -140,7 +140,7 @@ def run_attempt(ch: Challenge, n: int, kb, router=None, trace_path: str = "",
     cost0 = float(getattr(router, "total_cost", 0.0) or 0.0) if router else 0.0
     orc = Orchestrator(guard, FakeRunner(responder(ch)), kb, auto_approve_in_scope,
                        llm_router=router, flag_kind="single", flag_prefixes=("FLAG",),
-                       platform_name="Bench", is_tool_available=lambda b: True,
+                       platform_name="Bench", is_tool_available=lambda b: True, quiet=True,
                        audit=audit, **orch_kw)
     t0 = time.monotonic()
     try:

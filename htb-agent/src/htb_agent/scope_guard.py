@@ -258,9 +258,10 @@ def _needs_numeric_check(tok: str, positional: bool) -> bool:
 
 @dataclass
 class ScopeGuard:
-    allowed_target_cidrs: list[ipaddress.IPv4Network] = field(default_factory=list)
-    bound_target: ipaddress.IPv4Address | None = None
-    attacker_ips: set[ipaddress.IPv4Address] = field(default_factory=set)
+    # 타입 표기만 IPv4|IPv6 로(ip_address/ip_network 의 실제 반환형) — 동작은 그대로(IPv6 타겟은 bind 에서 거부)
+    allowed_target_cidrs: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = field(default_factory=list)
+    bound_target: ipaddress.IPv4Address | ipaddress.IPv6Address | None = None
+    attacker_ips: set[ipaddress.IPv4Address | ipaddress.IPv6Address] = field(default_factory=set)
     enforce_ranges: bool = True            # False=단일 타겟 바인딩(CTF/Dreamhack)
     allow_hostname_target: bool = False    # 호스트명 타겟 허용(CTF)
     bound_host: str | None = None          # 호스트명 타겟(해석 전/불가 시)
@@ -271,7 +272,7 @@ class ScopeGuard:
                           enforce_ranges: bool = True,
                           allow_hostname_target: bool = False) -> "ScopeGuard":
         raw = list(cidrs) if cidrs else (list(DEFAULT_HTB_RANGES) if enforce_ranges else [])
-        nets: list[ipaddress.IPv4Network] = []
+        nets: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
         for c in raw:
             try:
                 nets.append(ipaddress.ip_network(c, strict=False))
@@ -285,7 +286,7 @@ class ScopeGuard:
                    allow_hostname_target=allow_hostname_target)
 
     # ── 타겟 바인딩 ─────────────────────────────────────────────────
-    def bind_target(self, ip: str) -> ipaddress.IPv4Address | None:
+    def bind_target(self, ip: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
         """
         타겟을 세션에 바인딩한다.
           - 대역강제(HTB): 허용 대역 안인지 '한 번' 검증.
@@ -304,8 +305,9 @@ class ScopeGuard:
             self.bound_host = host.lower()
             resolved = self.load_etc_hosts().get(self.bound_host)
             if resolved:
-                self.bound_target = ipaddress.ip_address(resolved)
-                self._allow(self.bound_target)
+                resolved_addr = ipaddress.ip_address(resolved)
+                self.bound_target = resolved_addr
+                self._allow(resolved_addr)
             logger.info("호스트명 타겟 바인딩: %s (해석: %s)", self.bound_host, resolved or "미해석")
             return self.bound_target
         if isinstance(addr, ipaddress.IPv6Address):
@@ -320,7 +322,7 @@ class ScopeGuard:
         logger.info("타겟 바인딩: %s", addr)
         return addr
 
-    def _allow(self, addr: ipaddress.IPv4Address) -> None:
+    def _allow(self, addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
         net = ipaddress.ip_network(f"{addr}/32")
         if net not in self.allowed_target_cidrs:
             self.allowed_target_cidrs.append(net)

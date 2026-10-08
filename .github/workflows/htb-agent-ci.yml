@@ -33,7 +33,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
-    continue-on-error: true   # 정보용 — 테스트 잡이 게이트
+    # 게이트: src 의 ruff·mypy 0건을 유지한다(새 경고가 생기면 PR 실패). 버전 고정으로 결과 재현.
     defaults:
       run:
         working-directory: htb-agent
@@ -42,11 +42,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: ruff lint (비차단)
+      - name: ruff lint (게이트)
         run: |
-          pip install ruff
-          ruff check src/ || true
-      - name: mypy 타입체크 (비차단)
+          pip install "ruff==0.16.8"
+          ruff check src/
+      - name: mypy 타입체크 (게이트)
         run: |
-          pip install mypy
-          mypy src/ --ignore-missing-imports --no-error-summary || true
+          pip install "mypy==2.3.1"
+          mypy src/ --ignore-missing-imports

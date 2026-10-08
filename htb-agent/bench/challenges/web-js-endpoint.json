@@ -1,0 +1,12 @@
+{
+  "name": "web-js-endpoint",
+  "title": "스크립트 파일에 남은 설정값",
+  "difficulty": "medium",
+  "lesson": "페이지가 불러오는 스크립트 경로를 따라가 확인(요약기 본문 단서 활용)",
+  "ports": [[80, "http"]],
+  "responses": [
+    {"match": "/static/app.js", "stdout": "const cfg = { debug: true, note: 'FLAG{read_the_js}' };"},
+    {"match": "curl -i http://", "stdout": "HTTP/1.1 200 OK\nServer: nginx\n\n<html><script src=\"/static/app.js\"></script></html>"}
+  ],
+  "flag": "FLAG{read_the_js}"
+}

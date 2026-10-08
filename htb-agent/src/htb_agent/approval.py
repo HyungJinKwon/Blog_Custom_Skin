@@ -98,7 +98,8 @@ def explain_command(command: str) -> str:
     # 선행 환경변수 할당은 별도 표기
     env, i = [], 0
     while i < len(toks) and "=" in toks[i].split("/", 1)[0] and not toks[i].startswith("-"):
-        env.append(toks[i]); i += 1
+        env.append(toks[i])
+        i += 1
     binary = toks[i] if i < len(toks) else ""
     rest = toks[i + 1:]
     # 값 받는 옵션은 다음 토큰을 값으로 페어링(화이트리스트 한정, 보수적)

@@ -1,0 +1,11 @@
+{
+  "name": "smb-share-comment",
+  "title": "익명 SMB 공유 설명에 남은 정보",
+  "difficulty": "easy",
+  "lesson": "익명 공유 목록과 설명(comment)까지 읽기",
+  "ports": [[445, "microsoft-ds"]],
+  "responses": [
+    {"match": "smbclient -L", "stdout": "\tSharename       Type      Comment\n\t---------       ----      -------\n\tIPC$            IPC       Remote IPC\n\tstaff           Disk      onboarding FLAG{share_comments_leak}"}
+  ],
+  "flag": "FLAG{share_comments_leak}"
+}
