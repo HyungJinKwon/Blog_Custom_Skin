@@ -14,6 +14,7 @@ HTB 에이전트 CLI 진입점 (Kali 런타임)
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 
 from . import __version__
@@ -26,152 +27,211 @@ from .scope_guard import ScopeGuard, ScopeViolation
 from .tools.recon import auto_approve_in_scope
 from .tools.runner import SubprocessRunner
 
+_HELP_EPILOG = """\
+처음 사용하는 순서:
+  1) assassin --doctor            도구·VPN·LLM 준비 상태 점검(빨간 항목만 채우면 됨)
+  2) assassin --setup-llm         (선택) Claude·로컬 LLM 연결 마법사
+  3) assassin 10.129.x.x          HTB 머신 풀이 시작(위험한 명령만 물어봄)
+
+자주 쓰는 예:
+  assassin 10.129.x.x --manual                            모든 명령을 보며 배우기
+  assassin 10.129.x.x --autonomous --time-budget 45 --html 해커톤: 최대 자율 + 시간 제한
+  assassin chall.host:1337 --platform ctf --category web  CTF 문제
+  assassin 10.129.x.x --resume                            중단한 곳부터 이어서
+
+자세한 안내: docs/QUICKSTART.md (1쪽) · docs/USAGE.md
+"""
+
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="assassin",
-        description="ASSASSIN — HTB 머신 승인제 풀이 에이전트 (Kali). 권한 확인된 대상만.",
+        usage="assassin <타겟> [옵션]      (처음이면: assassin --doctor)",
+        description="ASSASSIN — HTB·CTF 승인제 자동 풀이 에이전트 (Kali). 권한이 확인된 대상에서만 사용하세요.",
+        epilog=_HELP_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False,
     )
-    p.add_argument("--version", action="version", version=f"ASSASSIN {__version__}")
-    p.add_argument("--doctor", action="store_true",
+    # 초보자용 그룹(도움말 표시 순서). 처음 보는 사람은 '시작하기'만 보면 된다.
+    g_start = p.add_argument_group("시작하기 (처음이면 여기부터)")
+    g_target = p.add_argument_group("대상 · 플랫폼")
+    g_mode = p.add_argument_group("실행 방식 (승인 · 재개)")
+    g_llm = p.add_argument_group("LLM 두뇌 (선택 — 연결은 --setup-llm)")
+    g_limit = p.add_argument_group("시간 · 한도")
+    g_out = p.add_argument_group("결과물 · 기록")
+    g_kb = p.add_argument_group("지식 · 학습 · 수집")
+    g_tool = p.add_argument_group("단독 도구 (타겟 없이 실행 · 생성만 하는 도구 포함)")
+    g_start.add_argument("-h", "--help", action="help", help="이 도움말을 보여 주고 끝냄")
+    g_start.add_argument("--version", action="version", version=f"ASSASSIN {__version__}",
+                         help="버전 표시")
+    g_start.add_argument("--doctor", action="store_true",
                    help="환경 자가진단(도구·LLM·VPN 점검, 스캔 안 함). 완전 초보자 권장 첫 실행")
-    p.add_argument("--setup-llm", action="store_true", dest="setup_llm",
+    g_start.add_argument("--setup-llm", action="store_true", dest="setup_llm",
                    help="LLM 연결 마법사: Claude(API 키)·로컬 LLM(Ollama 모델)을 질문에 답하며 연결하고 "
                         "실제 1회 호출로 확인 → 기본 설정 저장(이후 --llm 생략 가능). 키는 ~/.config/assassin 에 600 권한")
-    p.add_argument("--llm-test", action="store_true", dest="llm_test",
+    g_start.add_argument("--llm-test", action="store_true", dest="llm_test",
                    help="환경 자가진단 + LLM 실제 호출 테스트(짧은 요청 1회 — 틀린 키·없는 모델·막힌 네트워크 확인)")
-    p.add_argument("--revshell", metavar="LHOST:LPORT", default=None,
+    g_tool.add_argument("--revshell", metavar="LHOST:LPORT", default=None,
                    help="리버스쉘 페이로드 생성(실행 안 함). 'IP:PORT' 또는 'PORT'"
                         "(공격자 IP 자동/--attacker-ip). 권한 확인 대상 전용")
-    p.add_argument("--learn", metavar="TOPIC", default=None,
+    g_tool.add_argument("--learn", metavar="TOPIC", default=None,
                    help="권위 출처 자가학습(도구·공격기법·개념·프로토콜)을 지식베이스에 저장. "
                         "예: --learn kerberoasting / burp / http. 전체 일괄: --learn all. 목록: --learn list")
-    p.add_argument("--promote", metavar="TOPIC", default=None,
+    g_tool.add_argument("--promote", metavar="TOPIC", default=None,
                    help="로컬 학습 노트(learned-<주제>.md) 중 품질 관문을 통과한 항목을 번들 시드의 "
                         "'최신 보강(승격)' 섹션으로 승격. 결과를 커밋·PR 하면 모든 사용자에게 공유. "
                         "예: --promote sqli / 전체: --promote all")
-    p.add_argument("--kb-sync", action="store_true", dest="kb_sync",
+    g_kb.add_argument("--kb-sync", action="store_true", dest="kb_sync",
                    help="공유 저장소의 최신 번들 시드를 지금 동기화(검증 통과분만 로컬 캐시에 적용). "
                         "타겟 실행 시에는 하루 1회 자동")
-    p.add_argument("--no-kb-sync", action="store_true", dest="no_kb_sync",
+    g_kb.add_argument("--no-kb-sync", action="store_true", dest="no_kb_sync",
                    help="실행 시 공유 시드 자동 동기화 끄기(환경변수 ASSASSIN_NO_KB_SYNC=1 도 동일)")
-    p.add_argument("--ingest", metavar="PATH", default=None,
+    g_tool.add_argument("--ingest", metavar="PATH", default=None,
                    help="사용자 제공 자료(.md/.txt/.pdf 파일 또는 디렉터리)를 지식베이스 노트로 "
                         "미리 학습. 예: --ingest ./my-writeups/")
-    p.add_argument("--cloud", metavar="NAME", default=None,
+    g_tool.add_argument("--cloud", metavar="NAME", default=None,
                    help="AWS/S3 열거 자동 준비(생성 안 실행). 호스트명/도메인에서 버킷명 "
                         "후보+비인증 점검 생성. 예: --cloud acme.htb. 권한 확인 자산 전용")
-    p.add_argument("--privesc", metavar="OS", default=None,
+    g_tool.add_argument("--privesc", metavar="OS", default=None,
                    choices=["linux", "windows", "windows_ad"],
                    help="권한상승 플레이북 자동 준비(생성 안 실행). OS 별 열거·점검·LPE "
                         "체크리스트 생성. 예: --privesc linux. 획득한 대상 셸에서 직접 실행")
-    p.add_argument("--crack", metavar="HASH", default=None,
+    g_tool.add_argument("--crack", metavar="HASH", default=None,
                    help="해시 크래킹 자동 준비(생성 안 실행). 해시 종류 식별 + john/hashcat "
                         "명령 생성. 예: --crack '$krb5tgs$23$...'. 권한 확인 자산 해시 전용")
-    p.add_argument("--bench", metavar="SUITE", nargs="?", const="__default__", default=None,
+    g_tool.add_argument("--bench", metavar="SUITE", nargs="?", const="__default__", default=None,
                    help="로컬 모의 문제로 풀이 성공률·명령 수·시간·비용 측정(오프라인, 실제 통신 없음). "
                         "SUITE 생략 시 번들 문제 세트. --attempts N 으로 반복(pass@N), --llm 으로 LLM 비교")
-    p.add_argument("--attempts", type=int, default=1, metavar="N",
+    g_tool.add_argument("--attempts", type=int, default=1, metavar="N",
                    help="--bench 에서 문제당 시도 횟수(기본 1)")
-    p.add_argument("--replay", metavar="JSONL", default=None,
+    g_tool.add_argument("--replay", metavar="JSONL", default=None,
                    help="감사 로그(JSONL)를 단계별 재생 HTML 로 변환(이전/다음/자동 재생). "
                         "예: --replay state/audit_10.129.1.5.jsonl → 같은 이름의 .html")
-    p.add_argument("target", nargs="?", default=None,
+    g_start.add_argument("target", nargs="?", default=None,
                    help="대상(IP 또는 호스트명/URL). HTB=허용대역 내 IP, "
                    "CTF/Dreamhack=챌린지 host:port/URL")
-    p.add_argument("--platform", choices=["htb", "dreamhack", "ctf"], default=None,
+    g_target.add_argument("--platform", choices=["htb", "dreamhack", "ctf"], default=None,
                    help="플랫폼 프로파일 (기본 htb). dreamhack/ctf=단일 타겟+flag{} 모드")
-    p.add_argument("--category", choices=[k for k, _ in JEOPARDY_CATEGORIES], default=None,
+    g_target.add_argument("--category", choices=[k for k, _ in JEOPARDY_CATEGORIES], default=None,
                    help="Jeopardy 카테고리 힌트(web/pwn/rev/crypto/forensic/misc). "
                         "CTF/Dreamhack 에서 LLM 제안을 카테고리에 맞게 유도")
-    p.add_argument("--flag-prefix", action="append", dest="flag_prefixes",
+    g_target.add_argument("--flag-prefix", action="append", dest="flag_prefixes", metavar="PREFIX",
                    help="우선 인식할 플래그 접두 (반복 가능, 예: --flag-prefix DH). "
                         "플랫폼 기본값에 추가")
-    p.add_argument("--range", action="append", dest="ranges",
+    g_target.add_argument("--range", action="append", dest="ranges", metavar="CIDR",
                    help="허용 타겟 CIDR (반복 가능). 생략 시 플랫폼 기본(HTB만 대역 강제)")
-    p.add_argument("--attacker-ip", action="append", dest="attacker_ips",
+    g_target.add_argument("--attacker-ip", action="append", dest="attacker_ips", metavar="IP",
                    help="공격자 VPN IP (반복 가능). 생략 시 tun0 자동탐지")
-    p.add_argument("--lport", type=int, default=4444,
+    g_target.add_argument("--lport", type=int, default=4444, metavar="PORT",
                    help="리버스쉘 리스너 포트(자동 준비 페이로드용, 기본 4444)")
-    p.add_argument("--cred", action="append", dest="creds",
+    g_target.add_argument("--cred", action="append", dest="creds", metavar="USER:PASS",
                    help="자격증명 'user:pass' / 'user:pass:domain' / "
                         "'user:pass:domain:nthash' (반복 가능). Pass-the-Hash 는 "
                         "'user:<32hex>' 또는 'user::domain:<NT|LM:NT>'. "
                         "{user}/{pass}/{domain}/{hash} 제안을 실행 후보로 승격")
-    p.add_argument("--config", help="설정 파일(.json/.yaml). 우선순위: CLI > 설정파일 > 기본값")
-    p.add_argument("--autonomous", "--hackathon", action="store_true", dest="autonomous",
+    g_mode.add_argument("--config", help="설정 파일(.json/.yaml). 우선순위: CLI > 설정파일 > 기본값")
+    g_mode.add_argument("--autonomous", "--hackathon", action="store_true", dest="autonomous",
                    help="능동적 완전자동 모드: 범위내 자동승인 + 깊은 재진입 스윕 + 병렬 열거 + "
                         "변형학습 + 전 자동준비. 목표(flag/root)까지 스스로 추진(안전 게이트 유지)")
-    p.add_argument("--auto", action="store_true",
+    g_mode.add_argument("--auto", action="store_true",
                    help="완전 자동: 범위내+검증통과만 실행, 범위 밖은 조용히 건너뜀(무프롬프트)")
-    p.add_argument("--manual", action="store_true",
+    g_mode.add_argument("--manual", action="store_true",
                    help="완전 수동: 모든 명령을 실행 전 확인(승인제 최대)")
-    p.add_argument("--no-enrich", action="store_true",
+    g_kb.add_argument("--no-enrich", action="store_true",
                    help="CVE/CWE 자동 수집(NVD/GitHub) 비활성")
-    p.add_argument("--learn-gaps", action="store_true", dest="learn_gaps",
+    g_kb.add_argument("--learn-gaps", action="store_true", dest="learn_gaps",
                    help="자율 지식 획득: 풀이 중 모르는 기술을 권위 출처에서 자동 학습해 "
                         "KB 에 즉시 반영(allowlist·P1 유지). autonomous 모드에선 기본 활성")
-    p.add_argument("--no-learn-gaps", action="store_true", dest="no_learn_gaps",
+    g_kb.add_argument("--no-learn-gaps", action="store_true", dest="no_learn_gaps",
                    help="자율 지식 획득 비활성(autonomous 모드에서도 끔)")
-    p.add_argument("--web-learn", action="store_true", dest="web_learn",
+    g_kb.add_argument("--web-learn", action="store_true", dest="web_learn",
                    help="인터넷 검색 학습: 카탈로그 밖 '미해석 공백'을 웹 검색으로 학습해 "
                         "KB 반영(--learn-gaps 를 함께 켬). HTB 라이트업(공식·제3자)은 가드로 차단. autonomous 기본 활성")
-    p.add_argument("--no-web-learn", action="store_true", dest="no_web_learn",
+    g_kb.add_argument("--no-web-learn", action="store_true", dest="no_web_learn",
                    help="인터넷 검색 학습 비활성(autonomous 모드에서도 끔)")
-    p.add_argument("--offline", action="store_true",
+    g_kb.add_argument("--offline", action="store_true",
                    help="오프라인: 네트워크 수집 금지(캐시만 사용)")
-    p.add_argument("--enrich-cache", default=None,
+    g_kb.add_argument("--enrich-cache", default=None,
                    help="CVE 캐시 디렉토리 (기본 <knowledge>/cve_cache)")
     # 아래 덮어쓰기 가능 옵션은 기본값 None → 설정파일/내장기본값과 병합
-    p.add_argument("--max-attempts", type=int, default=None,
+    g_limit.add_argument("--max-attempts", type=int, default=None,
                    help="포트스캔 폴백 최대 시도 (기본 4, 무한루프 방지)")
-    p.add_argument("--max-enum", type=int, default=None,
+    g_limit.add_argument("--max-enum", type=int, default=None,
                    help="enum 자동실행 최대 개수 (기본 6, 무한확장 방지)")
-    p.add_argument("--max-rounds", type=int, default=None,
+    g_limit.add_argument("--max-rounds", type=int, default=None,
                    help="ENUM/LLM 반복 라운드 수 (기본 2, 무한루프 방지)")
-    p.add_argument("--max-sweeps", type=int, default=None,
+    g_limit.add_argument("--max-sweeps", type=int, default=None,
                    help="단계 재진입 스윕 수 (기본 2). 새 관측·크리덴셜로 이전 단계 "
                         "재시도. 상태 정체 시 조기종료(유한)")
-    p.add_argument("--max-parallel", type=int, default=None,
+    g_limit.add_argument("--max-parallel", type=int, default=None,
                    help="열거 명령 동시 실행 수 (기본 1=순차). 독립 명령의 I/O 만 "
                         "병렬 — 게이트·결과처리는 순차로 안전")
-    p.add_argument("--variants", type=int, default=None,
+    g_limit.add_argument("--variants", type=int, default=None,
                    help="명령당 옵션 조합 변형 수 (기본 2, 1=변형끔). 경우의 수 시도")
-    p.add_argument("--time-budget", type=float, default=None, metavar="분",
+    g_limit.add_argument("--time-budget", type=float, default=None, metavar="분",
                    help="해커톤 시간 예산(분). 마감이 되면 진행 중 단계를 마치고 남은 단계를 "
                         "생략한 뒤 상태를 저장한다(--resume 으로 이어감). 기본: 무제한")
-    p.add_argument("--max-cost", type=float, default=None, metavar="USD",
+    g_llm.add_argument("--max-cost", type=float, default=None, metavar="USD",
                    help="LLM 누적 추정 비용 상한(달러). 넘으면 LLM 호출을 멈추고 규칙 기반으로 "
                         "계속 진행한다. 기본: 무제한")
-    p.add_argument("--observe", action="store_true",
+    g_mode.add_argument("--observe", action="store_true",
                    help="사람 관찰 입력: 건너뛴(미승인) 명령 대신 브라우저 등으로 직접 확인한 내용을 "
                         "적어 기록에 반영한다('사람 관찰'로 표시, 에이전트 검증 결과와 구분). 대화형 실행용")
-    p.add_argument("--knowledge", default=None,
+    g_kb.add_argument("--knowledge", default=None,
                    help="지식베이스 디렉토리 (기본 ./knowledge). 사용자 규칙/노트로 성장")
-    p.add_argument("--llm", choices=["none", "claude", "ollama", "hybrid"], default=None,
+    g_llm.add_argument("--llm", choices=["none", "claude", "ollama", "hybrid"], default=None,
                    help="LLM 두뇌 백엔드 (기본 none=규칙기반). claude=API, ollama=로컬, "
                         "hybrid=둘을 단계 난이도로 라우팅+폴백·연속 오류 백엔드 차단·라우팅 집계")
-    p.add_argument("--llm-tier", choices=["cheap", "standard", "strong"], default=None,
+    g_llm.add_argument("--llm-tier", choices=["cheap", "standard", "strong"], default=None,
                    help="LLM 기본 티어(기본 standard). 명령 생성은 단계별 티어 우선"
                         "(열거=cheap·침투=standard·권한상승/측면=strong), 저확신 시 자동 승격")
-    p.add_argument("--state-dir", default=None,
+    g_out.add_argument("--state-dir", default=None,
                    help="세션 상태 저장 디렉토리 (기본 ./state)")
-    p.add_argument("--resume", action="store_true",
+    g_mode.add_argument("--resume", action="store_true",
                    help="저장된 상태에서 재개 (RECON 재사용 · 실행된 명령·결과·플래그 복원, "
                         "다시 실행 안 함). Ctrl+C 로 중단한 세션도 이어감")
-    p.add_argument("--no-save", action="store_true", help="상태 저장 안 함")
-    p.add_argument("--log-file", default=None,
+    g_out.add_argument("--no-save", action="store_true", help="상태 저장 안 함")
+    g_out.add_argument("--log-file", default=None,
                    help="감사 로그(JSONL) 경로. 생략 시 <state-dir>/audit_<타겟>.jsonl")
-    p.add_argument("--no-audit", action="store_true", help="감사 로그 비활성")
-    p.add_argument("--writeup", nargs="?", const="__auto__", default=None,
+    g_out.add_argument("--no-audit", action="store_true", help="감사 로그 비활성")
+    g_out.add_argument("--writeup", nargs="?", const="__auto__", default=None,
                    help="풀이 라이트업 Markdown 생성(경로 생략 시 writeup_<타겟>.md)")
-    p.add_argument("--writeup-format", choices=["htb", "tistory"], default="htb",
+    g_out.add_argument("--writeup-format", choices=["htb", "tistory"], default="htb",
                    help="라이트업 형식: htb(기본, htb-ctf-writeup-v5) / tistory(13섹션)")
-    p.add_argument("--json", nargs="?", const="__auto__", default=None, dest="json_out",
+    g_out.add_argument("--json", nargs="?", const="__auto__", default=None, dest="json_out",
                    help="결과를 기계판독 JSON 으로 내보내기(경로 생략 시 <state-dir>/report_<타겟>.json)")
-    p.add_argument("--html", nargs="?", const="__auto__", default=None, dest="html_out",
+    g_out.add_argument("--html", nargs="?", const="__auto__", default=None, dest="html_out",
                    help="결과를 HTML 대시보드로 내보내기(블루/네이비, 경로 생략 시 <state-dir>/report_<타겟>.html)")
     return p
+
+
+def _start_guide() -> str:
+    """인자 없이 실행했을 때의 초보자 시작 안내(긴 usage 대신)."""
+    from . import ui
+    return ui.panel("ASSASSIN 시작하기 — 타겟이 필요합니다", [
+        ui.accent2("1) ") + ui.bold("assassin --doctor") + ui.dim("        준비 상태 점검(도구·VPN·LLM)"),
+        ui.accent2("2) ") + ui.bold("assassin --setup-llm") + ui.dim("     (선택) LLM 연결 마법사"),
+        ui.accent2("3) ") + ui.bold("assassin 10.129.x.x") + ui.dim("      HTB 머신 풀이 시작"),
+        "",
+        ui.dim("CTF 문제:      assassin chall.host:1337 --platform ctf"),
+        ui.dim("배우며 실행:   assassin 10.129.x.x --manual   (모든 명령을 보고 승인)"),
+        ui.dim("이어서 하기:   assassin 10.129.x.x --resume"),
+        ui.dim("전체 옵션:     assassin --help    ·    1쪽 안내: docs/QUICKSTART.md"),
+    ], style="navy")
+
+
+def _scope_hint(err: str, target: str, platform: str) -> list[str]:
+    """타겟 바인딩 실패 시 초보자가 바로 고칠 수 있는 다음 명령(범위 판단은 바꾸지 않음)."""
+    hints = []
+    if "호스트명" in err or "파싱 실패" in err:
+        hints.append(f"CTF/Dreamhack 문제(호스트명·URL)면:  assassin {target} --platform ctf")
+        hints.append("HTB 머신이면 IP 로 입력하세요(예: 10.129.x.x) — 머신 페이지의 Target IP")
+    elif "대역" in err and platform == "htb":
+        # 대상 IP 를 그대로 넣은 명령은 만들지 않는다(공인 IP 를 우회하라는 뜻으로 읽히지 않게)
+        hints.append("권한이 확인된 대상만 가능합니다 — 공인 IP·남의 서버는 대상이 아닙니다")
+        hints.append("HTB 머신이면 VPN 연결 후 머신 페이지의 Target IP(10.10.x.x / 10.129.x.x)를 넣으세요")
+        hints.append("본인 소유 실습 환경·CTF 문제면:  --platform ctf  (또는 HTB 랩 대역은 --range <CIDR>)")
+    return hints
 
 
 def _ollama_opts(cfg) -> dict:
@@ -487,7 +547,9 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         if swallowed:   # 'assassin --html 10.129.1.5' 처럼 타겟이 경로로 읽힌 경우
             parser.error(f"타겟이 없습니다 — '{swallowed[0]}' 가 출력 경로로 읽혔습니다. "
                          "타겟을 맨 앞에 두세요: assassin <타겟> --html")
-        parser.error("target 이 필요합니다 (또는 --doctor / --setup-llm / --revshell / --cloud / --privesc / --crack / --learn / --promote / --kb-sync / --ingest). 예: assassin 10.129.1.5")
+        # 인자 없이 실행 = '어떻게 쓰지?' — 긴 옵션 목록 대신 시작 안내를 보여 준다
+        print(_start_guide(), file=sys.stderr)
+        raise SystemExit(2)
 
     # 플랫폼 프로파일(HTB/Dreamhack/CTF)
     try:
@@ -526,6 +588,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         guard.bind_target(args.target)
     except ScopeViolation as e:
         print(ui.mark_err(str(e)), file=sys.stderr)
+        for h in _scope_hint(str(e), args.target, profile.key):
+            print("  " + ui.accent2("→ ") + h, file=sys.stderr)
         return 2
 
     # 2) 공격자 VPN IP 등록 (지정 or 설정 or 자동탐지)
@@ -539,6 +603,16 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     # 3) 환경 프리플라이트
     pf = preflight(required_tool_keys=["nmap"])
     print(pf.render())
+    # 포트 스캔 도구(nmap)가 없으면 시작할 수 없다 — 4번 실패한 뒤 '호스트 응답 없음'으로
+    # 오해하게 두지 않고, 바로 설치 방법을 알려 준다(테스트처럼 러너를 주입한 경우는 제외)
+    if runner is None and not shutil.which("nmap"):
+        print(ui.panel("시작할 수 없음 — nmap 이 없습니다", [
+            "포트 스캔(첫 단계)에 nmap 이 필요합니다. 대상 문제가 아닙니다.",
+            ui.accent2("설치: ") + ui.bold("sudo apt install -y nmap")
+            + ui.dim("   (전체 도구: sudo ./scripts/install_tools.sh)"),
+            ui.dim("설치 후 같은 명령을 다시 실행하세요. 점검: assassin --doctor"),
+        ], style="warn"), file=sys.stderr)
+        return 2
     _mode = ("완전수동" if args.manual           # 승인자 선택과 같은 우선순위(manual 이 최우선)
              else "능동적 완전자동(autonomous)" if args.autonomous
              else "완전자동" if args.auto
@@ -574,8 +648,10 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     print(ui.kv("지식베이스", f"규칙 {ui.bold(str(len(kb.rules)))}개 · 노트 "
                 f"{ui.bold(str(len(kb.notes)))}개 · 취약점규칙 "
                 f"{ui.bold(str(len(vuln_kb.rules)))}개", 10))
-    if kb.warnings:
-        print(ui.mark_warn(f"지식베이스 경고 {len(kb.warnings)}건 (예: {kb.warnings[0]})"))
+    # 조건 없는 참고 규칙(크래킹·RE 등)은 의도된 보존이라 매 실행 화면에서는 숨긴다(진짜 오류만 표시)
+    kb_warn = [w for w in kb.warnings if "when 조건 없음" not in w]
+    if kb_warn:
+        print(ui.mark_warn(f"지식베이스 경고 {len(kb_warn)}건 (예: {kb_warn[0]})"))
 
     # 5) LLM 두뇌 구성(선택)
     llm_router, llm_status = _build_llm_router(llm_kind, llm_tier, **_ollama_opts(cfg))

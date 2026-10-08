@@ -135,7 +135,8 @@ def rule(title: str = "", width: int = 60, style: str = "accent") -> str:
 def panel(title: str, lines: list[str], width: int | None = None,
           style: str = "accent") -> str:
     """제목이 달린 둥근 박스. 내부 라인은 표시폭 기준 정렬."""
-    body = [str(x) for x in lines]
+    # 여러 줄 문자열(예: 설치 안내)은 줄마다 나눠 박스 정렬이 깨지지 않게
+    body = [ln for x in lines for ln in str(x).split("\n")]
     inner = max([display_width(title) + 2] + [display_width(b) for b in body]) + 2
     if width is not None:
         inner = max(inner, width - 2)

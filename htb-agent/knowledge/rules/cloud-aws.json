@@ -1,13 +1,13 @@
 [
   {
     "name": "AWS 자격증명 식별",
-    "when": {"services": ["http", "https", "aws"]},
+    "when": {"services": ["aws"]},
     "suggest": [
       "aws sts get-caller-identity",
       "aws configure list",
       "env | grep -i aws"
     ],
-    "note": "현재 AWS 자격증명/역할 확인(키 노출·IAM 역할). 출처: AWS CLI 공식문서.",
+    "note": "내 PC 에 설정된 AWS 자격증명/역할 확인(대상에서 AWS 키를 얻어 등록한 뒤 사용). 대상 명령이 아니므로 웹 서비스마다 제안하지 않음. 출처: AWS CLI 공식문서.",
     "tags": ["cloud", "aws", "creds"],
     "phase": "enum"
   },

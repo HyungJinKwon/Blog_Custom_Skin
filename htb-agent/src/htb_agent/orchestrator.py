@@ -334,9 +334,72 @@ class OrchestrationReport:
             lines.append("\n" + ui.heading("수동 제안 — 종류별 바로 적용하는 법", "✋"))
             for title, how, items in _group_manual(self.manual_suggestions):
                 lines.append("  " + ui.bold(f"{title} ({len(items)})") + "  " + ui.info("→ " + how))
-                for s in items:
+                # 초보자 화면: 옵션만 덧붙인 변형·같은 꼬리표는 숨기고 앞의 몇 개만(전체는 리포트에)
+                shown = _compact_manual(items)
+                for s in shown[:_MANUAL_SHOW]:
                     lines.append(ui.bullet(s, "·", "dim"))
+                rest = len(items) - min(len(shown), _MANUAL_SHOW)
+                if rest > 0:
+                    lines.append("    " + ui.dim(f"… 외 {rest}개 (옵션 변형 포함) — 전체 목록: --html / --json 리포트"))
+        lines.append("\n" + self.glance())
         return "\n".join(lines)
+
+    def glance(self) -> str:
+        """맨 끝 '한눈에 보기' — 결과·찾은 것·실행 현황·다음에 할 일(최대 3개)을 한 박스로.
+        긴 출력을 다 읽지 않아도 지금 상태와 다음 행동을 알 수 있게 한다(초보자용)."""
+        from . import ui
+        status = {"done": ui.ok("완료"), "interrupted": ui.warn("중단됨 — --resume 으로 이어서"),
+                  "escalate": ui.warn("사람 확인 필요"), "pending": ui.dim("진행 전")}.get(
+            self.status, self.status)
+        if self.flag_kind == "single":
+            flag = ui.flag(self.flags[0].value) if self.flags else ui.dim("미획득")
+        else:
+            flag = (f"user {ui.ok('✔') if self.user_flag else ui.dim('✗')} · "
+                    f"root {ui.ok('✔') if self.root_flag else ui.dim('✗')}")
+        ports = [f"{p.port}/{p.service or '?'}" for p in (self.host.ports if self.host else [])
+                 if p.state == "open"]
+        w = self.world
+        found = (f"자격증명 {len(w.creds) if w else 0} · 수집물 {len(w.loot) if w else 0} · "
+                 f"취약점 {len(self.vuln_matches) + len(self.detected_cve)}")
+        gs = self.gate_stats
+        runs = (f"실행 {gs.get('executed', 0)} · 도구 없음 {gs.get('tool_missing', 0)} · "
+                f"미승인 {gs.get('denied_review', 0) + gs.get('denied_scope', 0)} · "
+                f"못 돌림(상한) {sum(1 for m in self.manual_suggestions if '상한 초과' in m)}")
+        rows = [ui.kv("결과", status + "   " + ui.dim("플래그 ") + flag, 8),
+                ui.kv("서비스", ", ".join(ports) if ports else ui.dim("열린 포트 없음"), 8),
+                ui.kv("찾은 것", found, 8),
+                ui.kv("실행", runs, 8)]
+        todo = self._next_actions()
+        if todo:
+            rows.append("")
+            rows.append(ui.accent2("다음에 할 일"))
+            rows += [f"  {i}. {t}" for i, t in enumerate(todo[:3], 1)]
+        return ui.panel("한눈에 보기", rows, style="accent" if self.status == "done" else "warn")
+
+    def _next_actions(self) -> list[str]:
+        """현재 상태에서 초보자가 바로 할 수 있는 다음 행동(구체 명령). 새 공격을 만들지 않고
+        이미 나온 상태·수동 제안을 '무엇을 입력하면 되는지'로 바꿔 줄 뿐이다."""
+        out: list[str] = []
+        rec = self.recon
+        if self.status == "escalate" and rec is not None:
+            if not any(a.ran for a in rec.attempts):
+                out.append("스캔 도구가 실행되지 못했습니다 → assassin --doctor 로 점검"
+                           " (nmap 없으면: sudo apt install -y nmap)")
+            else:
+                out.append("대상이 응답하지 않습니다 → HTB 머신이 켜져 있는지(Spawn)·VPN 연결"
+                           "(sudo openvpn <파일>.ovpn)을 확인한 뒤 다시 실행")
+        if self.goal_reached:
+            out.append("목표 달성 — 정리: 같은 명령에 --writeup --html 을 붙여 라이트업·대시보드 생성")
+        over = sum(1 for m in self.manual_suggestions if "상한 초과" in m)
+        if over:
+            out.append(f"못 돌린 명령 {over}개 → 같은 명령 + --resume (이미 한 명령은 건너뜀)")
+        if any(p in m for m in self.manual_suggestions for p in ("{user}", "{pass}", "{domain}")):
+            out.append("자격증명이 필요한 명령이 있습니다 → 찾은 계정으로 --cred 사용자:비밀번호")
+        if self.gate_stats.get("tool_missing", 0):
+            out.append("설치되지 않은 도구가 있습니다 → sudo ./scripts/install_tools.sh")
+        if self.status == "done" and not self.goal_reached and not out:
+            out.append("위 '다음 선택지(NEXT OPTIONS)'에서 골라 승인 · 배우며 보려면 --manual")
+        return out
 
 
 # 수동 제안 분류: (제목, 초보자가 바로 하는 법, 판별 함수) — 위에서부터 먼저 맞는 것
@@ -350,6 +413,21 @@ _MANUAL_KINDS = [
     ("무거운 점검(직접 실행 권장)", "시간이 오래 걸려 자동 실행하지 않았습니다 — 필요할 때 복사해 실행",
      lambda s: "(수동)" in s),
 ]
+
+
+_MANUAL_SHOW = 6   # 수동 제안 묶음마다 화면에 보여 줄 개수(나머지는 리포트에)
+
+
+def _compact_manual(items: list[str]) -> list[str]:
+    """화면용 정리: 같은 묶음 제목이 이미 말해 주는 꼬리표('# (상한 초과 — 수동)')를 떼고,
+    앞 명령에 옵션만 덧붙인 변형(예: '... -L', '... -t 50')은 숨긴다."""
+    out: list[str] = []
+    for s in items:
+        core = s.replace("   # (상한 초과 — 수동)", "").rstrip()
+        if any(core.startswith(prev.split("   #")[0] + " ") for prev in out):
+            continue
+        out.append(core)
+    return out
 
 
 def _group_manual(items: list[str]) -> list[tuple[str, str, list[str]]]:

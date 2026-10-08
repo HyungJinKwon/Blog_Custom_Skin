@@ -95,12 +95,28 @@ def propose(report, *, max_items: int = 8, repetition=None) -> RecommendationSet
                 rationale=f"{status} — 전제(자격·권한 등) 확보 시 이 단계가 유효해짐",
                 source="phase", priority=4))
 
-    # 5) 대기 중 KB 수동 제안 — 사람이 승인/입력 후 실행할 구체 후보(상위 몇 개)
-    for s in (getattr(report, "manual_suggestions", []) or [])[:5]:
+    # 5) 대기 중 KB 수동 제안 — 같은 문구를 여러 번 늘어놓지 않고 '종류별 한 줄'로 묶는다
+    manual = list(getattr(report, "manual_suggestions", []) or [])
+    over = [s for s in manual if "상한 초과" in s]
+    cred = [s for s in manual if any(p in s for p in ("{user}", "{pass}", "{domain}", "{hash}"))]
+    other = [s for s in manual if s not in over and s not in cred
+             and "(수동)" not in s and "실행위험" not in s]
+    if over:
         recs.append(Recommendation(
-            title="대기 중 수동 제안 실행 검토",
-            rationale="KB 가 제안한 다음 명령 — 승인/입력(자격 등) 후 실행 가능",
-            source="kb", ref=s, priority=6))
+            title=f"못 돌린 명령 {len(over)}개 이어서 실행",
+            rationale="실행 상한(--max-enum)을 넘어 대기 중 — 같은 명령에 --resume 을 붙이면 이미 한 "
+                      "명령은 건너뛰고 이어서 실행(또는 --max-enum 을 늘려 재실행)",
+            source="kb", ref=over[0].split("   #")[0], priority=4))
+    if cred:
+        recs.append(Recommendation(
+            title=f"자격증명이 필요한 명령 {len(cred)}개",
+            rationale="찾은 계정이 있으면 --cred 사용자:비밀번호 를 붙여 재실행 — 자리표시자를 자동으로 채움",
+            source="kb", ref=cred[0].split("   #")[0], priority=4))
+    if other:
+        recs.append(Recommendation(
+            title=f"참고 명령 {len(other)}개 검토",
+            rationale="단계·플랫폼별 참고 명령 — 필요한 것을 골라 승인/입력 후 실행",
+            source="kb", ref=other[0], priority=6))
 
     # 중복 title+ref 제거, 우선순위 정렬, 상한
     uniq: list[Recommendation] = []

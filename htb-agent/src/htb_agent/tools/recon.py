@@ -160,6 +160,12 @@ class ReconExecutor:
                           if a.result and a.result.first_host()), None)
         report.host = last_host
         up = last_host and last_host.state == "up"
+        if not any(a.ran for a in report.attempts):
+            # 한 번도 실행되지 못함 = 도구·실행 환경 문제(대상 응답과 무관) — '응답 없음'으로 오해 금지
+            why = next((a.note for a in report.attempts if a.note), "")
+            report.message = ("스캔이 한 번도 실행되지 못함 — 도구/실행 환경 문제(대상 문제 아님)"
+                              + (f": {why}" if why else "") + ". 사람 개입 필요(자동 반복 안 함).")
+            return report
         report.message = (
             "모든 폴백 소진 — " + ("호스트는 up 이나 열린 포트 미발견" if up
                                    else "호스트 응답 없음") + ". 사람 개입 필요(자동 반복 안 함)."
