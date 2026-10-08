@@ -235,6 +235,10 @@ def run_live(pace: float = 0.0) -> int:
                           f"검증된 풀이율 {t['verified_solve_rate']:.0%}", 10))
     print(ui.dim("  LLM 연결 비교: assassin --bench --llm hybrid --attempts 5  (단서 추적 문제까지 해결)"))
     print(ui.dim("  실행 재생: assassin --replay <감사로그.jsonl>  → 단계별 타임라인 HTML"))
+    print(ui.dim("  라이브 성능(실서비스·진짜 도구): assassin --live-bench [--llm hybrid]"))
+    print(ui.dim("  완전자율+실제 익스플로잇: assassin <t> --autonomous --sandbox docker"
+                 "  (또는 --sandbox vm --vm-ssh user@kali-vm --vm-confine)"))
+    print(ui.dim("  LLM 연결(처음 한 번): assassin --setup-llm   ·   환경 점검: assassin --doctor"))
 
     print(ui.ok("\n라이브 데모 완료 — 실제 대상은 권한 확인된 환경의 Kali 에서 `assassin <target>`"))
     return 1 if executed_risky else 0
