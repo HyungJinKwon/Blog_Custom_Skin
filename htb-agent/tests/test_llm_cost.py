@@ -22,6 +22,17 @@ full = estimate_cost("claude-opus-5-5", 1_000_000, 0)
 cached = estimate_cost("claude-opus-5-5", 1_000_000, 0, cache_read_tokens=900_000)
 check("캐시 읽기로 비용 감소", cached < full)
 check("미등록 모델(로컬)은 0", estimate_cost("llama3.1:8b", 1_000_000, 1_000_000) == 0.0)
+# Haiku 5.5(CHEAP 티어): in $0.10 out $0.50 → 1M in + 1M out = 0.1 + 0.5 = 0.6
+check("haiku 5.5 등록됨", abs(estimate_cost("claude-haiku-5-5", 1_000_000, 1_000_000) - 0.6) < 1e-6)
+
+print("\n=== 티어 모델 세대 일관성 ===")
+from htb_agent.llm.claude_provider import ClaudeProvider
+from htb_agent.llm.base import Tier
+from htb_agent.llm.pricing import PRICES
+cp = ClaudeProvider()
+check("CHEAP = haiku 5.5(현행)", cp.models[Tier.CHEAP] == "claude-haiku-5-5")
+check("모든 티어 모델이 가격표에 존재",
+      all(cp.models[t] in PRICES for t in (Tier.CHEAP, Tier.STANDARD, Tier.STRONG)))
 
 print("\n=== 라우터 누적 집계 ===")
 # usage 가 담긴 LLMResponse 를 반환하는 FakeProvider

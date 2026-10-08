@@ -10,7 +10,7 @@ class ClaudeProvider(LLMProvider):
     name = "claude"
     # 티어별 모델 — 비용/성능 균형
     models = {
-        Tier.CHEAP: "claude-haiku-4-5",
+        Tier.CHEAP: "claude-haiku-5-5",
         Tier.STANDARD: "claude-sonnet-5-5",
         Tier.STRONG: "claude-opus-5-5",
     }
