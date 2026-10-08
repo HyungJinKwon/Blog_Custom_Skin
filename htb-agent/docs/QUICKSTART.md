@@ -9,6 +9,7 @@ cd htb-agent
 pip install -e .                    # 'assassin' 명령 생성
 sudo ./scripts/install_tools.sh     # 보안 도구 일괄 설치(Kali/Ubuntu)
 assassin --doctor                   # 도구·VPN·LLM 준비 상태 점검 — 빨간 항목만 채우면 됨
+assassin --setup-llm                # (선택) Claude·로컬 LLM 연결 마법사 — 질문에 답하면 연결·확인·저장까지
 ```
 
 ## 2. 상황별 한 줄
@@ -18,7 +19,9 @@ assassin --doctor                   # 도구·VPN·LLM 준비 상태 점검 — 
 | 처음 써 보기(위험한 것만 물어봄) | `assassin 10.129.1.5` |
 | 모든 명령을 보며 배우기 | `assassin 10.129.1.5 --manual` |
 | 해커톤: 최대 자율 + 시간 제한 | `assassin 10.129.1.5 --autonomous --time-budget 45 --writeup --html` |
-| LLM 두뇌 붙이기(비용 상한) | `assassin 10.129.1.5 --llm hybrid --max-cost 2` |
+| LLM 두뇌 붙이기(처음 한 번) | `assassin --setup-llm` → 이후 `assassin 10.129.1.5` 만으로 사용 |
+| LLM 연결 다시 확인 | `assassin --llm-test` |
+| LLM 직접 지정(비용 상한) | `assassin 10.129.1.5 --llm hybrid --max-cost 2` |
 | CTF/Dreamhack 문제 | `assassin chall.host:1337 --platform ctf --category web` |
 | 중단한 곳부터 이어서 | 같은 명령 + `--resume` (Ctrl+C 로 멈춰도 저장됨) |
 | 자격증명을 넣어 자동으로 채우기 | `--cred 사용자:비밀번호` |

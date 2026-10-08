@@ -22,31 +22,56 @@ ESSENTIAL_TOOLS = ["nmap", "curl", "ffuf", "gobuster", "netexec",
                    "smbclient", "sshpass", "hydra"]
 
 
-def _check_llm() -> list[tuple[str, bool, str, str]]:
-    """(이름, OK?, 상태, 설치힌트) 목록. import 실패도 안전 처리."""
+_SETUP_HINT = "한 번에 연결: assassin --setup-llm"
+
+
+def _check_llm(llm_test: bool = False, ollama_model: str = "",
+               ollama_host: str = "") -> list[tuple[str, bool, str, str]]:
+    """(이름, OK?, 상태, 설치힌트) 목록. import 실패도 안전 처리.
+    llm_test=True 면 사용 가능한 백엔드에 짧은 요청 1회를 보내 실제 응답까지 확인한다."""
+    import os
+
+    from . import llm_setup
     rows: list[tuple[str, bool, str, str]] = []
     try:
         from .llm.claude_provider import ClaudeProvider
-        ok, reason = ClaudeProvider().available()
+        prov_c = ClaudeProvider()
+        ok, reason = prov_c.available()
+        key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if ok and key:
+            src = ("키 파일" if llm_setup.read_credentials()[0].get("ANTHROPIC_API_KEY") == key
+                   else "환경변수")
+            reason = f"키 {llm_setup.mask(key)} ({src})"
+        if ok and llm_test:
+            ok, msg = llm_setup.test_provider(prov_c)
+            reason = (reason + " · " if ok else "") + ("호출 OK — " if ok else "호출 실패 — ") + msg
         rows.append(("Claude(API)", ok, reason,
-                     "pip install anthropic && export ANTHROPIC_API_KEY=sk-..."))
+                     f"{_SETUP_HINT}  (수동: pip install anthropic && export ANTHROPIC_API_KEY=sk-ant-...)"))
     except Exception as e:                       # noqa: BLE001 - 진단은 중단 금지
-        rows.append(("Claude(API)", False, f"로드 실패: {e}",
-                     "pip install anthropic"))
+        rows.append(("Claude(API)", False, f"로드 실패: {llm_setup.scrub(str(e))}",
+                     f"{_SETUP_HINT}  (수동: pip install anthropic)"))
     try:
-        from .llm.ollama_provider import OllamaProvider
-        prov = OllamaProvider()
+        from .main import _ollama_provider
+        prov = _ollama_provider(ollama_model, ollama_host)
         ok, reason = prov.available()
+        if ok:
+            from .llm.base import Tier
+            reason = f"{prov.host} · 모델 {prov.model_for(Tier.STANDARD)}"
+        if ok and llm_test:
+            from .llm.base import Tier
+            ok, msg = llm_setup.test_provider(prov, Tier.STANDARD)
+            reason = (reason + " · " if ok else "") + ("호출 OK — " if ok else "호출 실패 — ") + msg
         rows.append(("Ollama(로컬)", ok, reason,
-                     "ollama 설치 후 'ollama serve' + 'ollama pull llama3.1:8b' "
-                     f"(호스트 {prov.host})"))
+                     f"{_SETUP_HINT}  (수동: 'ollama serve' + 'ollama pull llama3.1:8b', "
+                     f"호스트 {prov.host})"))
     except Exception as e:                       # noqa: BLE001
         rows.append(("Ollama(로컬)", False, f"로드 실패: {e}",
-                     "https://ollama.com 설치 후 'ollama pull llama3.1:8b'"))
+                     f"{_SETUP_HINT}  (수동: https://ollama.com 설치 후 'ollama pull llama3.1:8b')"))
     return rows
 
 
-def run_doctor() -> tuple[str, bool]:
+def run_doctor(llm_test: bool = False, ollama_model: str = "",
+               ollama_host: str = "") -> tuple[str, bool]:
     """진단 텍스트와 '치명적 문제 없음' 여부를 반환."""
     blocking = False
     out: list[str] = [ui.banner("환경 자가진단 (완전 초보자용)")]
@@ -97,8 +122,8 @@ def run_doctor() -> tuple[str, bool]:
     # 3) LLM 백엔드(선택)
     llm_lines = []
     any_llm = False
-    for name, ok, reason, hint in _check_llm():
-        short = reason if len(reason) <= 60 else reason[:57] + "..."
+    for name, ok, reason, hint in _check_llm(llm_test, ollama_model, ollama_host):
+        short = reason if len(reason) <= 90 else reason[:87] + "..."
         if ok:
             any_llm = True
             llm_lines.append(ui.mark_ok(f"{name:14}") + ui.dim(short))
@@ -107,10 +132,14 @@ def run_doctor() -> tuple[str, bool]:
             llm_lines.append(ui.dim(f"   → {hint}"))
     if any_llm:
         llm_lines.append(ui.ok("LLM 사용 가능") + ui.dim("  (--llm hybrid/claude/ollama)"))
+        if not llm_test:
+            llm_lines.append(ui.dim("실제 호출까지 확인: assassin --llm-test"))
     else:
         llm_lines.append(ui.info("LLM 없이도 규칙기반으로 완전 동작")
                          + ui.dim("  (--llm none, 기본값)"))
-    out.append(ui.panel("3. LLM 두뇌 (선택)", llm_lines, style="navy"))
+        llm_lines.append(ui.accent2("LLM 연결(처음 한 번): ") + ui.bold("assassin --setup-llm"))
+    out.append(ui.panel("3. LLM 두뇌 (선택)" + (" — 실제 호출 테스트" if llm_test else ""),
+                        llm_lines, style="navy"))
 
     # 4) 종합 · 다음 단계
     nxt = []

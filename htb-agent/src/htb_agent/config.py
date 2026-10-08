@@ -22,7 +22,7 @@ _INT_KEYS = ("max_attempts", "max_enum", "max_llm", "max_rounds", "max_sweeps",
 _LIST_KEYS = ("allowed_ranges", "attacker_ips")
 _STR_KEYS = ("platform", "knowledge_dir", "knowledge", "state_dir", "llm_backend", "llm_tier")
 _KNOWN_KEYS = set(_INT_KEYS) | set(_LIST_KEYS) | set(_STR_KEYS) | {"llm"}
-_LLM_KEYS = {"backend", "tier"}
+_LLM_KEYS = {"backend", "tier", "ollama_model", "ollama_host"}
 LLM_BACKENDS = ("none", "claude", "ollama", "hybrid")
 LLM_TIERS = ("cheap", "standard", "strong")
 
@@ -59,6 +59,13 @@ def _validate(d: dict) -> list[str]:
         raise ConfigError(f"지원하지 않는 llm backend: {backend!r} (지원: {', '.join(LLM_BACKENDS)})")
     if tier is not None and tier not in LLM_TIERS:
         raise ConfigError(f"지원하지 않는 llm tier: {tier!r} (지원: {', '.join(LLM_TIERS)})")
+    for k in ("ollama_model", "ollama_host"):
+        v = llm.get(k)
+        if v is not None and not isinstance(v, str):
+            raise ConfigError(f"'llm.{k}' 는 문자열이어야 합니다 (받은 값: {v!r})")
+    host = llm.get("ollama_host")
+    if host and not str(host).startswith(("http://", "https://")):
+        raise ConfigError(f"'llm.ollama_host' 는 http:// 또는 https:// 로 시작해야 합니다 (받은 값: {host!r})")
     return warnings
 
 
@@ -69,6 +76,8 @@ class Config:
     platform: str | None = None
     llm_backend: str | None = None
     llm_tier: str | None = None
+    llm_ollama_model: str | None = None   # 로컬 모델(전 티어). 환경변수 OLLAMA_MODEL 이 우선
+    llm_ollama_host: str | None = None    # Ollama 주소. 환경변수 OLLAMA_HOST 가 우선
     max_attempts: int | None = None
     max_enum: int | None = None
     max_llm: int | None = None
@@ -94,6 +103,8 @@ class Config:
             platform=d.get("platform"),
             llm_backend=llm.get("backend", d.get("llm_backend")),
             llm_tier=llm.get("tier", d.get("llm_tier")),
+            llm_ollama_model=llm.get("ollama_model") or None,
+            llm_ollama_host=llm.get("ollama_host") or None,
             max_attempts=d.get("max_attempts"),
             max_enum=d.get("max_enum"),
             max_llm=d.get("max_llm"),
