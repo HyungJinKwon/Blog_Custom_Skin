@@ -12,9 +12,9 @@ from .base import LLMProvider, LLMResponse, Tier
 class OllamaProvider(LLMProvider):
     name = "ollama"
     models = {
-        Tier.CHEAP: "llama3.1:8b",
-        Tier.STANDARD: "llama3.1:8b",
-        Tier.STRONG: "llama3.1:70b",
+        Tier.CHEAP: "qwen2.5:7b",
+        Tier.STANDARD: "qwen2.5:7b",
+        Tier.STRONG: "llama3.3:70b",
     }
 
     def __init__(self, host: str | None = None, models: dict | None = None):
@@ -36,12 +36,12 @@ class OllamaProvider(LLMProvider):
             return False, f"Ollama 연결 실패({self.host}): {e}"
         self.installed = [m.get("name", "") for m in data.get("models", []) if isinstance(m, dict)]
         if data.get("models") is not None and not self.installed:
-            return False, "Ollama 에 설치된 모델 없음(ollama pull llama3.1:8b)"
+            return False, "Ollama 에 설치된 모델 없음(ollama pull qwen2.5:7b)"
         return True, "ok"
 
     def model_for(self, tier: Tier) -> str:
         """티어 모델이 설치돼 있지 않으면 설치된 다른 티어 모델 → 아무 설치 모델 순으로 대체.
-        (예: strong=llama3.1:70b 미설치인데 8b 만 있으면 8b 사용 — 없는 모델 호출로 항상 실패하던 문제)"""
+        (예: strong=llama3.3:70b 미설치인데 7b 만 있으면 7b 사용 — 없는 모델 호출로 항상 실패하던 문제)"""
         want = super().model_for(tier)
         if not self.installed or self._has(want):
             return want

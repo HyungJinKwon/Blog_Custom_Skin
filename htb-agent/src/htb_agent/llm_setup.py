@@ -188,10 +188,10 @@ def total_memory_gb() -> float | None:
 
 # (최소 메모리 GB, 모델, 설명) — 위에서부터 첫 번째로 맞는 것. 수치는 대략치〔추정〕
 _MODEL_TABLE = [
-    (64, "llama3.1:70b", "대형(약 40GB) — 품질 최고, 매우 느릴 수 있음"),
+    (64, "llama3.3:70b", "대형(약 40GB) — 품질 최고, 매우 느릴 수 있음"),
     (32, "qwen2.5:32b", "중대형(약 20GB) — 품질·속도 균형"),
     (16, "qwen2.5:14b", "중형(약 9GB) — 16GB+ 메모리 권장"),
-    (8, "llama3.1:8b", "소형(약 5GB) — 일반 노트북 기본값"),
+    (8, "qwen2.5:7b", "소형(약 5GB) — 일반 노트북 기본값"),
     (0, "llama3.2:3b", "초소형(약 2GB) — 메모리가 적을 때"),
 ]
 
@@ -199,7 +199,7 @@ _MODEL_TABLE = [
 def recommend_ollama_model(mem_gb: float | None) -> tuple[str, str]:
     """메모리에 맞는 로컬 모델 추천(모델, 이유). 모르면 8b."""
     if mem_gb is None:
-        return "llama3.1:8b", "메모리를 확인하지 못해 일반 기본값(약 5GB)을 추천"
+        return "qwen2.5:7b", "메모리를 확인하지 못해 일반 기본값(약 5GB)을 추천"
     for need, model, desc in _MODEL_TABLE:
         if mem_gb >= need:
             return model, f"메모리 {mem_gb:g}GB → {desc}"

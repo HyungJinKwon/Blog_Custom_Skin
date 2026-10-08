@@ -62,11 +62,11 @@ def _check_llm(llm_test: bool = False, ollama_model: str = "",
             ok, msg = llm_setup.test_provider(prov, Tier.STANDARD)
             reason = (reason + " · " if ok else "") + ("호출 OK — " if ok else "호출 실패 — ") + msg
         rows.append(("Ollama(로컬)", ok, reason,
-                     f"{_SETUP_HINT}  (수동: 'ollama serve' + 'ollama pull llama3.1:8b', "
+                     f"{_SETUP_HINT}  (수동: 'ollama serve' + 'ollama pull qwen2.5:7b', "
                      f"호스트 {prov.host})"))
     except Exception as e:                       # noqa: BLE001
         rows.append(("Ollama(로컬)", False, f"로드 실패: {e}",
-                     f"{_SETUP_HINT}  (수동: https://ollama.com 설치 후 'ollama pull llama3.1:8b')"))
+                     f"{_SETUP_HINT}  (수동: https://ollama.com 설치 후 'ollama pull qwen2.5:7b')"))
     return rows
 
 
