@@ -214,10 +214,16 @@ def _privesc_block(report) -> str:
 def _analysis_block(report) -> str:
     """LLM 분석가(B3) 판단을 라이트업에 삽입(가설·경로·집중·확신도)."""
     text = getattr(report, "analysis", "")
-    if not text:
-        return ""
-    body = "\n".join("> " + ln for ln in text.splitlines() if ln.strip())
-    return "\n**분석 (LLM — 가설·공격경로·집중):**\n\n" + body + "\n"
+    plan = getattr(report, "plan", None)
+    out = ""
+    if plan:
+        board = "\n".join("- " + ln for ln in plan.board_lines())
+        out += ("\n**가설 보드 (분석가가 세우고 결과로 갱신 — 방향 잡기용〔추정〕):**\n\n"
+                + board + "\n")
+    if text:
+        body = "\n".join("> " + ln for ln in text.splitlines() if ln.strip())
+        out += "\n**분석 (LLM — 가설·공격경로·집중):**\n\n" + body + "\n"
+    return out
 
 
 def _cloud_block(report) -> str:

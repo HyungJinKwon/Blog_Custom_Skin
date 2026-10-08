@@ -34,6 +34,7 @@ from .creds_harvest import harvest as harvest_creds
 from .creds_harvest import is_safe_for_cmd
 from .flag import FlagHit
 from .flag import scan as scan_flags
+from .hypotheses import HypothesisLedger, parse_id, strip_ledger_json
 from .knowledge import KnowledgeBase
 from .llm.router import LLMRouter
 from .observation.compressor import profile_from_nmap
@@ -86,6 +87,8 @@ class OrchestrationReport:
     profile: ProfileResult | None = None
     world: "WorldModel | None" = None  # world.WorldModel — 구조화 상태(단일 상태원)
     analysis: str = ""                # LLM 분석가(B3) — 가설·공격경로·다음집중·확신도
+    # 가설 기록(계획 원장) — 분석가가 갱신, 명령 생성은 '지금 할 일 1개'에 집중, 결과로 상태 갱신
+    plan: HypothesisLedger = field(default_factory=HypothesisLedger)
     phase_status: dict = field(default_factory=dict)   # A2 단계 게이팅 상태(phase→상태)
     # 3관문 결과 집계(열거·LLM 명령 기준, 정찰 포트스캔 제외) — 리포트·대시보드용
     gate_stats: dict = field(default_factory=_new_gate_stats)
@@ -151,6 +154,14 @@ class OrchestrationReport:
         if self.world is not None:
             lines.append("\n" + ui.heading("STATE  (월드 모델 — 구조화 상태)", "🗺️"))
             lines.append(self.world.summary())
+        if self.plan:
+            lines.append("\n" + ui.heading(
+                "PLAN  (가설 보드 — 분석가가 계획·갱신, 명령은 '지금 할 일'에 집중)", "🎯"))
+            focus = self.plan.focus()
+            for ln in self.plan.board_lines():
+                is_focus = focus is not None and ln.split(" ", 2)[1] == focus.id
+                lines.append("  " + (ui.accent2(ln + "  ← 지금") if is_focus else ln))
+            lines.append("  " + ui.dim("상태는 방향 잡기용〔추정〕 — 플래그·목표 판정은 실행 결과로만 합니다."))
         if self.analysis:
             lines.append("\n" + ui.heading("ANALYSIS  (LLM 분석 — 병렬 가설·계획·경로)", "🧠"))
             for ln in self.analysis.splitlines():
@@ -385,6 +396,7 @@ class Orchestrator:
                  max_cost: float = 0.0,
                  observer: Callable[[str], str] | None = None,
                  quiet: bool = False,
+                 replan_after: int = 2,
                  clock=None,
                  learner=None,
                  learn_gaps: bool = False,
@@ -421,6 +433,8 @@ class Orchestrator:
         # 사람 관찰 입력(선택): 건너뛴 명령 대신 사람이 직접 확인한 내용을 받아 기록한다
         self.observer = observer
         self.quiet = quiet   # 화면 경고 끔(벤치 등 비대화형) — 비고·감사 로그에는 그대로 기록
+        # 같은 가설에서 기대 신호가 연속 N회 어긋나면 '막힘' → 분석가(강력 모델) 재계획
+        self.replan_after = max(1, replan_after)
         self._clock = clock or time.monotonic      # 테스트 주입용(단조 시계)
         self.enricher = enricher
         # 자율 지식 획득 — 모르는 기술을 권위 출처에서 자동 학습(learner 주입 시)
@@ -440,6 +454,7 @@ class Orchestrator:
             raise ScopeViolation("타겟 미바인딩 — bind_target() 먼저 호출하세요.")
         target = str(self.guard.bound_target or self.guard.bound_host)
         report = OrchestrationReport(target=target, flag_kind=self.flag_kind)
+        report.plan.replan_after = self.replan_after
         # 구조화 상태(월드 모델) — 파이프라인·LLM·리포트의 단일 상태원
         self.world = WorldModel(target=target,
                                 hostname=(self.hosts_map or {}).get(target, ""))
@@ -660,6 +675,12 @@ class Orchestrator:
         for m in prior.manual_suggestions or []:
             if m not in report.manual_suggestions:
                 report.manual_suggestions.append(m)
+        # 계획 이어가기: 가설 기록·분석을 복원해 재개 후 첫 분석이 '갱신'이 되게(처음부터 다시 X)
+        if prior.plan:
+            report.plan = HypothesisLedger.from_dict(prior.plan)
+            report.plan.replan_after = self.replan_after
+        if prior.analysis and not report.analysis:
+            report.analysis = prior.analysis
         if report.enum_findings or report.llm_findings or report.flags:
             self.audit.event("resumed", findings=len(report.enum_findings)
                              + len(report.llm_findings), flags=len(report.flags))
@@ -717,13 +738,34 @@ class Orchestrator:
 
     def _refresh_analysis(self, report: OrchestrationReport, prof: ProfileResult,
                           host: NmapHost, target: str) -> None:
-        """마지막 분석 이후 상태(관측·크리덴셜·취약점·권한)가 자랐을 때만 분석가를 다시
-        부른다 — 계획이 최신 근거를 따르되, 변화 없으면 LLM 호출을 아낀다."""
-        fp = self._world_fingerprint(report)
-        if fp == self._analysis_fp:
+        """'의미 있는 변화'가 있을 때만 분석가를 다시 부른다 — 계획을 처음부터 다시 세우지
+        않고 이어서 갱신한다. 명령이 하나 더 실행된 것만으로는 다시 부르지 않는다(비용·방향 유지).
+        변화: 새 크리덴셜·서비스·수집물·취약점·권한·플래그, 가설 확인/기각, 가설 막힘."""
+        if self._plan_fingerprint(report) == self._analysis_fp:
             return
-        self._analysis_fp = fp
         self._run_analyst(report, prof, host, target)
+        # 분석가가 방금 갱신한 가설 기록까지 포함해 기준점을 잡는다(자기 갱신으로 재호출 방지)
+        self._analysis_fp = self._plan_fingerprint(report)
+
+    def _plan_fingerprint(self, report: OrchestrationReport) -> tuple:
+        """재계획 판정용 지문 — 가설 기록이 있으면 실행 건수는 넣지 않는다(명령 하나마다
+        재계획하지 않도록; 실패는 가설의 '막힘'으로 반영). 분석가가 가설을 주지 못해 기록이
+        비었으면 예전처럼 실행 결과가 늘 때마다 다시 판단한다(실패 되먹임 유지)."""
+        w = self.world
+        growth: tuple = (() if report.plan
+                         else (len(report.enum_findings), len(report.llm_findings),
+                               len(report.blockers)))
+        return growth + (
+            len(w.creds) if w else 0,
+            len(w.services) if w else 0,
+            len(w.loot) if w else 0,
+            len(w.proven_vulns) if w else 0,
+            w.access_level if w else "none",
+            len(report.flags),
+            len(report.detected_cve),
+            len(report.vuln_matches),
+            report.plan.signature(),
+        )
 
     def _persist(self, report: OrchestrationReport, prior: SessionState | None) -> None:
         """진행 상태를 저장(중단/재개용). state_store 없으면 no-op."""
@@ -757,6 +799,10 @@ class Orchestrator:
         if report.flags:
             st.flags = [{"value": f.value, "kind": f.kind, "source": f.source}
                         for f in report.flags]
+        if report.plan:
+            st.plan = report.plan.to_dict()
+        if report.analysis:
+            st.analysis = report.analysis
         st.add_history(report.message.strip() or report.status)
         self.state_store.save(st)
 
@@ -945,6 +991,9 @@ class Orchestrator:
             "state": self.world.context_lines() if self.world is not None else [],
             "findings": prior[-10:],
             "failures": self._failure_context(report),
+            # 갱신 모드: 이전 가설 기록·막힌 가설을 넘겨 '처음부터 다시'가 아니라 이어서 판단
+            "ledger": report.plan.context_lines(),
+            "stuck": [h.id for h in report.plan.stuck()],
         }
         try:
             text = self.llm_router.analyze(context, target)
@@ -952,8 +1001,17 @@ class Orchestrator:
             self.audit.event("analyst_error", error=str(e))
             return
         if text:
-            report.analysis = text
-            self.audit.event("analyst", chars=len(text), text=text[:2000])   # 재생 뷰어용
+            before = report.plan.focus()
+            n = report.plan.apply_text(text)
+            report.analysis = strip_ledger_json(text)
+            self.audit.event("analyst", chars=len(text), text=report.analysis[:2000])   # 재생 뷰어용
+            if n:
+                self.audit.event("plan_update", revision=report.plan.revision,
+                                 board=report.plan.board_lines())
+            after = report.plan.focus()
+            if after is not None and (before is None or before.id != after.id) and not self.quiet:
+                from . import ui
+                print("  " + ui.accent2("🎯 지금 집중: ") + f"{after.id} {after.text}")
 
     def _llm_round(self, report: OrchestrationReport, host: NmapHost,
                    prof: ProfileResult, target: str,
@@ -962,6 +1020,9 @@ class Orchestrator:
         router = self.llm_router
         if budget <= 0 or router is None:   # 호출부가 이미 router 를 확인 — 타입 명시용
             return 0
+        # 라운드 사이에 가설이 확인·기각·막힘이 되었으면 여기서 재계획(지문 기준, 변화 없으면 생략)
+        self._refresh_analysis(report, prof, host, target)
+        focus = report.plan.focus()
         services = [p.service for p in host.ports if p.state == "open" and p.service]
         recs = self.kb.query(prof.os_class.value, host.open_ports, services, phase=phase)
         prior = [f"{f.command} => {f.output}"
@@ -973,6 +1034,8 @@ class Orchestrator:
             "state": self.world.context_lines() if self.world is not None else [],
             # B3 분석가의 판단 — 명령 생성을 유도(가설·경로·집중)
             "analysis": report.analysis,
+            # 실행자에게는 분석 전문 대신 '지금 할 일 1개'(가설·확인 방법·기대 신호·이미 한 시도)
+            "focus": report.plan.focus_lines(focus) if focus is not None else [],
             "open_ports": [str(p) for p in host.ports if p.state == "open"],
             # 명령 없는 가이드 규칙은 이름만 가면 쓸모가 없으므로 가이드(note) 앞부분을 전달
             "kb": [f"{r.rule_name}: " + (", ".join(r.suggestions)
@@ -1020,12 +1083,42 @@ class Orchestrator:
             m = meta.get(cmd) or {}
             tags = [t for t in (("가설 " + m["hypothesis"]) if m.get("hypothesis") else "",
                                 ("근거: " + m["rationale"]) if m.get("rationale") else "") if t]
-            if tags and report.llm_findings:
+            if report.llm_findings:
                 f = report.llm_findings[-1]
-                f.note = (f.note + " · " if f.note else "") + " · ".join(tags)
+                sig = self._record_signal(report, f, m, focus)
+                if sig:
+                    tags.append(sig)
+                if tags:
+                    f.note = (f.note + " · " if f.note else "") + " · ".join(tags)
             if self._tool_ok(cmd):
                 attempted += 1
         return attempted
+
+    def _record_signal(self, report: OrchestrationReport, f: EnumFinding, meta: dict,
+                       focus) -> str:
+        """LLM 명령 결과를 가설의 기대 신호와 대조(규칙 기반)해 가설 기록을 갱신한다.
+        반환: 비고에 붙일 짧은 표시(없으면 ""). 가설 ID 는 명령 메타 → 이번 라운드 초점 순."""
+        hid = parse_id(meta.get("hypothesis", "")) or (focus.id if focus is not None else "")
+        h = report.plan.get(hid) if hid else None
+        if h is None:
+            return ""
+        last = report.blockers[-1] if report.blockers else None
+        rejected = bool(last and last[0] == f.command and last[1].is_target)
+        human = f.output.startswith("[사람 관찰]")
+        expected = meta.get("expected") or ""
+        if expected and not h.expected:
+            h.expected = expected[:120]   # 가설에 기대 신호가 없으면 명령의 기대 신호를 채택
+        res = report.plan.record(hid, f.command, f.output, f.ran and not human, rejected)
+        if res == "neutral":
+            return ""
+        self.audit.event("hypothesis_signal", hypothesis=hid, cmd=f.command, result=res,
+                         status=h.status, misses=h.misses)
+        if res == "miss" and h.misses == report.plan.replan_after:
+            self.audit.event("hypothesis_stuck", hypothesis=hid, misses=h.misses)
+            if not self.quiet:
+                from . import ui
+                print("  " + ui.mark_warn(f"{hid} 기대 신호 {h.misses}회 연속 불일치 — 분석가에게 재계획 요청"))
+        return f"{hid} 신호 일치〔추정〕" if res == "hit" else f"{hid} 신호 불일치"
 
     def _run_vuln(self, report: OrchestrationReport, host: NmapHost, target: str) -> None:
         # 관측 코퍼스: 배너 + 스크립트 + enum/LLM 출력

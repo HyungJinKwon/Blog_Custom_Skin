@@ -76,6 +76,8 @@ class SessionState:
     detected_cwe: list[str] = field(default_factory=list)
     credentials: list[dict] = field(default_factory=list)
     flags: list[dict] = field(default_factory=list)
+    analysis: str = ""                 # 마지막 분석가 판단(재개 시 계획 이어가기)
+    plan: dict | None = None           # 가설 기록(hypotheses.HypothesisLedger.to_dict)
     history: list[dict] = field(default_factory=list)
 
     def to_json(self) -> str:

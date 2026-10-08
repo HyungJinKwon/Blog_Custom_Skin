@@ -66,6 +66,7 @@ class ChallengeStats:
     avg_steps_to_flag: float
     avg_elapsed_sec: float
     cost: float
+    avg_llm_calls: float = 0.0      # 시도당 LLM 호출 수(방향성 지표 — 적을수록 헛돌지 않음)
 
 
 class BenchError(ValueError):
@@ -208,7 +209,8 @@ def summarize(challenges: list[Challenge], results: list[AttemptResult]) -> list
             avg_executed=round(sum(r.executed for r in rs) / len(rs), 1),
             avg_steps_to_flag=round(sum(r.steps_to_flag for r in ok) / len(ok), 1) if ok else 0.0,
             avg_elapsed_sec=round(sum(r.elapsed_sec for r in rs) / len(rs), 3),
-            cost=round(sum(r.cost for r in rs), 6)))
+            cost=round(sum(r.cost for r in rs), 6),
+            avg_llm_calls=round(sum(r.llm_calls for r in rs) / len(rs), 1)))
     return out
 
 
@@ -230,6 +232,10 @@ def totals(stats: list[ChallengeStats]) -> dict:
         "verified_solve_rate": round(sum(s.verified for s in stats) / tot_solved, 3) if tot_solved else 0.0,
         "by_difficulty": {k: {"solved": v[0], "total": v[1]} for k, v in by_diff.items()},
         "total_cost": round(sum(s.cost for s in stats), 6),
+        # 풀린 문제 1건당 LLM 호출 수 — 방향을 잡고 진행할수록 작아진다(LLM 미사용이면 0)
+        "llm_calls": round(sum(s.avg_llm_calls * s.attempts for s in stats)),
+        "llm_calls_per_solve": (round(sum(s.avg_llm_calls * s.attempts for s in stats) / tot_solved, 1)
+                                if tot_solved else 0.0),
     }
 
 
@@ -262,6 +268,9 @@ def render(stats: list[ChallengeStats], attempts: int, llm: str) -> str:
     lines.append(ui.kv("시도 성공률", f"{t['attempt_success_rate']:.0%}", 10))
     lines.append(ui.kv("검증된 풀이율", f"{t['verified_solve_rate']:.0%} "
                        "(성공 중 대상 상호작용 출력에서 나온 플래그 비율)", 10))
+    if t["llm_calls"]:
+        lines.append(ui.kv("LLM 호출", f"총 {t['llm_calls']}회 · 풀이 1건당 {t['llm_calls_per_solve']}회 "
+                           "(적을수록 방향을 잡고 진행)", 10))
     if t["total_cost"]:
         lines.append(ui.kv("LLM 비용", f"${t['total_cost']:.4f}", 10))
     return "\n".join(lines)

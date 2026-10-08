@@ -24,7 +24,10 @@ _SYSTEM_BASE = """\
 후보를 제안한다.
 
 진행 방식:
-- 사전 분석에 가설(H1, H2, …)이 있으면 한 가설에 몰지 말고 상위 가설들을 **병렬로**
+- '지금 할 일'이 주어지면 그 가설 하나를 확정/기각할 명령에 집중하라 — 이미 시도한
+  명령은 반복하지 말고, 기대 신호를 확인할 수 있는 다른 방법을 고르라. 각 명령의
+  hypothesis 필드에 그 가설 ID(H1 등)를 적어라.
+- '지금 할 일'이 없고 사전 분석에 가설(H1, H2, …)이 있으면 상위 가설들을 **병렬로**
   검증하라 — 가설마다 비용이 낮고 정보량이 큰 확인 명령을 먼저, 확인된 가설만 깊게.
 - 같은 정보를 다시 얻는 중복 명령은 피하고, 결과로 가설을 갈라낼 수 있는 명령을 고르라.
 
@@ -78,6 +81,10 @@ _SYSTEM_ANALYST = """\
   처리·인증·로직 결함), 인프라 운영자(기본값·잘못된 구성·노출 서비스), 방어(남는 흔적·
   막힐 지점).
 - 가설마다 이를 확정하거나 기각할 가장 싼 확인 방법과, 기각 시 넘어갈 대안을 정하라.
+- '이전 가설 기록'이 있으면 **처음부터 다시 쓰지 말고 갱신**하라: 같은 ID 를 유지하고,
+  근거에 따라 상태만 바꾸며(확인/기각), 꼭 필요할 때만 새 ID 를 추가하라. '막힘' 표시된
+  가설은 확인 방법을 바꾸거나 기각하고 대안으로 넘어가라. 확인된 가설은 다음 단계로
+  이어지는 새 가설(예: 얻은 자격증명의 재사용)로 발전시켜라.
 
 규칙(엄수):
 - 특정 문제/머신의 공개 라이트업을 인용하지 말고, 주어진 관측에서만 추론하라.
@@ -94,6 +101,7 @@ _SYSTEM_ANALYST = """\
 계획: 1) … 2) … 3) … (가설을 병렬로 검증하는 순서 — 싸고 정보량 큰 것부터)
 공격경로: (초기침투→권한상승으로 이어질 유력 경로)
 다음집중: (지금 가장 가치 높은 열거/검증 대상)
+가설기록: {"hypotheses":[{"id":"H1","text":"(가설 한 줄)","priority":"상|중|하","status":"pending|testing|confirmed|rejected","check":"(가장 싼 확인)","expected":"(확인되면 출력에 보일 신호 — 경로·상태코드·문자열 등 구체적으로)","fallback":"(기각 시 대안)"}]}   ← 한 줄 JSON
 확신도: (상/중/하 + 한 줄 근거)"""
 
 
@@ -179,6 +187,12 @@ class LLMRouter:
     @staticmethod
     def _analyst_user_prompt(context: dict, target: str) -> str:
         lines = [f"타겟: {target}"]
+        if context.get("ledger"):
+            lines.append("이전 가설 기록(갱신하라 — 처음부터 다시 쓰지 말 것):\n  "
+                         + "\n  ".join(context["ledger"]))
+        if context.get("stuck"):
+            lines.append("막힌 가설(연속으로 기대 신호 불일치 — 확인 방법을 바꾸거나 기각 후 대안으로): "
+                         + ", ".join(context["stuck"]))
         if context.get("state"):
             lines.append("현재 상태(월드 모델):\n  " + "\n  ".join(context["state"]))
         if context.get("profile"):
@@ -204,7 +218,10 @@ class LLMRouter:
             lines.append(f"OS 판정:\n{context['profile']}")
         if context.get("state"):
             lines.append("현재 상태(월드 모델):\n  " + "\n  ".join(context["state"]))
-        if context.get("analysis"):
+        if context.get("focus"):
+            lines.append("이번 라운드 과제(이 가설 하나에 집중하라):\n  "
+                         + "\n  ".join(context["focus"]))
+        elif context.get("analysis"):
             lines.append("분석가 판단(이 판단을 반영해 명령을 고르라):\n" + context["analysis"])
         if context.get("open_ports"):
             lines.append("열린 포트/서비스:\n  " + "\n  ".join(context["open_ports"]))
