@@ -116,7 +116,8 @@ def run_doctor(llm_test: bool = False, ollama_model: str = "",
     installed = sum(1 for v in avail.values() if v)
     tool_lines.append(ui.dim(f"전체 도구 {installed}/{total} 설치됨"))
     if missing_ess:
-        tool_lines.append(ui.accent2("일괄 설치: ") + ui.bold("sudo ./scripts/install_tools.sh"))
+        tool_lines.append(ui.accent2("일괄 설치: ") + ui.bold("assassin --install-missing")
+                          + ui.dim("  (또는 sudo ./scripts/install_tools.sh)"))
     out.append(ui.panel("2. 핵심 도구", tool_lines, style="navy"))
 
     # 3) LLM 백엔드(선택)
@@ -162,7 +163,7 @@ def run_doctor(llm_test: bool = False, ollama_model: str = "",
     if blocking:
         nxt.append(ui.mark_err("치명적: Python 3.10+ 로 업그레이드 후 다시 시도"))
     if missing_ess:
-        nxt.append(ui.mark_run("도구 설치: ") + "sudo ./scripts/install_tools.sh")
+        nxt.append(ui.mark_run("도구 설치: ") + "assassin --install-missing")
     if not vpn:
         nxt.append(ui.mark_run("HTB면 VPN 연결: ") + "sudo openvpn <파일>.ovpn")
     nxt.append(ui.mark_run("첫 실행(HTB): ") + "assassin 10.129.x.x")

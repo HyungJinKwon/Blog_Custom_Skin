@@ -16,6 +16,12 @@
   교정본도 3관문을 다시 통과. 끄려면 `fix_commands=False`. (`command_fixer.py`)
 - **연구 근거 문서** `docs/RESEARCH.md`: 5개 논문(AutoPentester·MazeRunner·CTF-Abacus·HackWorld·
   Anomaly-Agent)의 핵심 기여 ↔ 이 저장소 기능 대응표 + 재구현 시 지킨 안전 경계.
+- **열거 서비스별 라운드로빈**: KB 제안을 서비스(태그)별 버킷으로 모아 round-robin 으로 예산 분배 —
+  한 서비스가 예산을 독식하지 않고 각 서비스가 먼저 한 번씩 돌 기회를 갖는다(탐색 폭 확대).
+- **`--install-missing [카테고리]`**: 빠진 보안 도구를 저장소 공식 `install_tools.sh` 로 자동 설치
+  (빠진 도구가 있는 카테고리만 전달). `--doctor` 안내도 이 명령으로 갱신.
+- **실제 Kali 라이브 검증 가이드** `docs/VALIDATION.md` · **문서 일관성 검사**
+  (`tests/test_docs_consistency.py`): `assassin` 예시에 쓰인 `--옵션`이 실제 CLI 에 있는지 검사.
 
 ### 변경
 - 화면 잡음 축소(초보자): 리버스쉘 자동 준비는 대표 3종만 표시하고 전체는 `--json`/`--html` 로.
