@@ -80,7 +80,10 @@ kb = KnowledgeBase.load("knowledge")
 recs = kb.query("linux", [80], ["http"], phase="enum")
 names = [r.rule_name for r in recs]
 check("S3 비인증 열거 규칙 로드", any("S3 버킷 비인증" in n for n in names))
-check("AWS 자격증명 규칙 로드", any("AWS 자격증명 식별" in n for n in names))
+# 내 PC 의 AWS 자격증명 확인(대상 명령 아님)은 웹 서비스마다 제안하지 않는다(초보자 화면 잡음 제거)
+check("AWS 자격증명 규칙: 일반 웹에는 제안 안 함", not any("AWS 자격증명 식별" in n for n in names))
+check("AWS 자격증명 규칙: aws 서비스에서만", any("AWS 자격증명 식별" in r.rule_name
+      for r in kb.query("linux", [9000], ["aws"], phase="enum")))
 # {bucket} 등 플레이스홀더 → 수동(자동실행 아님)
 s3 = next(r for r in recs if "S3 버킷 비인증" in r.rule_name)
 auto = [kb.format_suggestion(t, "10.10.10.10")[1] for t in s3.suggestions]

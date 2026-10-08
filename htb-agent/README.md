@@ -254,7 +254,7 @@ cd htb-agent && python3 tests/run_all.py     # 전체 스위트(끝에 '총 N �
 <!-- CLI-OPTIONS:START (scripts/gen_cli_docs.py 가 자동 생성 — 직접 수정 금지) -->
 | 옵션 | 설명 |
 |---|---|
-| `--version` | show program's version number and exit |
+| `--version` | 버전 표시 |
 | `--doctor` | 환경 자가진단(도구·LLM·VPN 점검, 스캔 안 함). 완전 초보자 권장 첫 실행 |
 | `--setup-llm` | LLM 연결 마법사: Claude(API 키)·로컬 LLM(Ollama 모델)을 질문에 답하며 연결하고 실제 1회 호출로 확인 → 기본 설정 저장(이후 --llm 생략 가능). 키는 ~/.config/assassin 에 600 권한 |
 | `--llm-test` | 환경 자가진단 + LLM 실제 호출 테스트(짧은 요청 1회 — 틀린 키·없는 모델·막힌 네트워크 확인) |
@@ -272,11 +272,11 @@ cd htb-agent && python3 tests/run_all.py     # 전체 스위트(끝에 '총 N �
 | `--replay` `JSONL` | 감사 로그(JSONL)를 단계별 재생 HTML 로 변환(이전/다음/자동 재생). 예: --replay state/audit_10.129.1.5.jsonl → 같은 이름의 .html |
 | `--platform` | 플랫폼 프로파일 (기본 htb). dreamhack/ctf=단일 타겟+flag{} 모드 |
 | `--category` | Jeopardy 카테고리 힌트(web/pwn/rev/crypto/forensic/misc). CTF/Dreamhack 에서 LLM 제안을 카테고리에 맞게 유도 |
-| `--flag-prefix` | 우선 인식할 플래그 접두 (반복 가능, 예: --flag-prefix DH). 플랫폼 기본값에 추가 |
-| `--range` | 허용 타겟 CIDR (반복 가능). 생략 시 플랫폼 기본(HTB만 대역 강제) |
-| `--attacker-ip` | 공격자 VPN IP (반복 가능). 생략 시 tun0 자동탐지 |
-| `--lport` | 리버스쉘 리스너 포트(자동 준비 페이로드용, 기본 4444) |
-| `--cred` | 자격증명 'user:pass' / 'user:pass:domain' / 'user:pass:domain:nthash' (반복 가능). Pass-the-Hash 는 'user:&lt;32hex&gt;' 또는 'user::domain:&lt;NT\|LM:NT&gt;'. {user}/{pass}/{domain}/{hash} 제안을 실행 후보로 승격 |
+| `--flag-prefix` `PREFIX` | 우선 인식할 플래그 접두 (반복 가능, 예: --flag-prefix DH). 플랫폼 기본값에 추가 |
+| `--range` `CIDR` | 허용 타겟 CIDR (반복 가능). 생략 시 플랫폼 기본(HTB만 대역 강제) |
+| `--attacker-ip` `IP` | 공격자 VPN IP (반복 가능). 생략 시 tun0 자동탐지 |
+| `--lport` `PORT` | 리버스쉘 리스너 포트(자동 준비 페이로드용, 기본 4444) |
+| `--cred` `USER:PASS` | 자격증명 'user:pass' / 'user:pass:domain' / 'user:pass:domain:nthash' (반복 가능). Pass-the-Hash 는 'user:&lt;32hex&gt;' 또는 'user::domain:&lt;NT\|LM:NT&gt;'. {user}/{pass}/{domain}/{hash} 제안을 실행 후보로 승격 |
 | `--config` | 설정 파일(.json/.yaml). 우선순위: CLI &gt; 설정파일 &gt; 기본값 |
 | `--autonomous`, `--hackathon` | 능동적 완전자동 모드: 범위내 자동승인 + 깊은 재진입 스윕 + 병렬 열거 + 변형학습 + 전 자동준비. 목표(flag/root)까지 스스로 추진(안전 게이트 유지) |
 | `--auto` | 완전 자동: 범위내+검증통과만 실행, 범위 밖은 조용히 건너뜀(무프롬프트) |
