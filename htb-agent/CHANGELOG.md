@@ -5,6 +5,14 @@
 ## [미출시]
 
 ### 추가
+- **VM 실행 샌드박스 `--sandbox vm`**: 에이전트가 명령을 실행하는 환경을 Docker 외에 **SSH 로 접속한
+  가상머신/공격호스트**에서도 돌릴 수 있다(`--vm-ssh user@host` [`--vm-ssh-key`·`--vm-ssh-port`]).
+  파이프·스크립트·실도구를 VM 에서 실행하고, 작업공간 파일은 scp 로 올린다. `--vm-confine`(+`--vm-sudo`)
+  이면 접속 직후 VM 에 egress 방화벽(타겟 대역만)을 적용·검증해 docker 처럼 완전자율 동적 실행까지
+  자동 허용(그 VM 네트워크를 타겟으로 제한하므로 전용 풀이 VM 에서만). 없으면 contained=False 로
+  동적 실행은 수동 제안. `--doctor` 에 '실행 샌드박스' 점검 추가(none/docker/vm 고르는 법 안내).
+
+### 추가
 - **라이브 벤치 공개세트 확장 + VM/외부 타겟**: 공개 CTF 세트(picoCTF·Dreamhack·HTB Starting
   Point)에서 흔한 기법류를 **원본으로 재구성**해 문제를 늘렸다(복사 아님). loopback 추가 —
   `web-cookie-admin`(권한 쿠키 우회)·`web-lfi-flag`(경로 순회/LFI)·`net-banner-flag`(nc 배너

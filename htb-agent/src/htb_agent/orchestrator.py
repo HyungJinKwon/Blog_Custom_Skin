@@ -1242,6 +1242,16 @@ class Orchestrator:
             report.manual_suggestions.append(f"{cmd}   # (스크립트 저장 거부: {e})")
             self.audit.event("file_denied", path=path, cmd=cmd, reason=str(e))
             return None
+        # 원격 실행기(VM 등)는 작업공간이 로컬에만 있으므로 파일을 실행 호스트로 올린다.
+        # (Docker 는 작업공간을 바인드 마운트하므로 동기화 불필요 — sync_file 없음)
+        syncer = getattr(self.runner, "sync_file", None)
+        if callable(syncer):
+            try:
+                syncer(self.workspace.resolve(rel), rel)
+            except Exception as e:   # noqa: BLE001 — 동기화 실패 시 그 명령은 실행하지 않음
+                report.manual_suggestions.append(f"{cmd}   # (스크립트 전송 실패: {e})")
+                self.audit.event("file_sync_error", path=rel, cmd=cmd, error=str(e))
+                return None
         import hashlib
         self.audit.event("file_written", path=rel, cmd=cmd, size=len(content),
                          sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),

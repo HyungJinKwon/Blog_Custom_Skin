@@ -141,6 +141,22 @@ def run_doctor(llm_test: bool = False, ollama_model: str = "",
     out.append(ui.panel("3. LLM 두뇌 (선택)" + (" — 실제 호출 테스트" if llm_test else ""),
                         llm_lines, style="navy"))
 
+    # 3.5) 실행 샌드박스(선택) — 완전자율에서 스크립트·동적 실행을 어디서 돌릴지
+    import shutil as _sh
+    sb_lines = []
+    sb_lines.append(ui.info("none") + ui.dim("  기본 — 로컬에서 한 줄씩(파이프·스크립트 불가). 안전·간단"))
+    if _sh.which("docker"):
+        sb_lines.append(ui.mark_ok("docker") + ui.dim("  Kali 컨테이너+egress 방화벽 — 완전자율 권장. "
+                                                       "이미지: ./scripts/build_sandbox.sh"))
+    else:
+        sb_lines.append(ui.mark_warn("docker") + ui.dim("  미설치 — 설치 후 ./scripts/build_sandbox.sh"))
+    sb_lines.append((ui.mark_ok if _sh.which("ssh") else ui.mark_warn)("vm")
+                    + ui.dim("  SSH 로 접속한 가상머신/공격호스트에서 실행 — "
+                             "--sandbox vm --vm-ssh user@host (완전자율 자동은 --vm-confine)"))
+    sb_lines.append(ui.dim("고르는 법: 평소엔 none, 완전자율(--autonomous)엔 docker, "
+                           "전용 Kali VM 이 있으면 vm"))
+    out.append(ui.panel("3.5 실행 샌드박스 (선택)", sb_lines, style="navy"))
+
     # 4) 종합 · 다음 단계
     nxt = []
     if blocking:

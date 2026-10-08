@@ -160,7 +160,7 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 | | `repetition.py` | **반복·정체 감지**(AutoPentester류 Repetition Identifier): 실행 트레이스에서 같은 서명 명령·같은 실패 범주 반복·정체를 감지해 리포트 REPETITION 섹션으로 사람에게 보고. 다음 명령 자동 변경 없음(효율·깊이우선함정 완화) |
 | | `recommend.py` | **다음 선택지 제안**(휴먼인더루프): 막힌 지점·정체·대기 단계를 근거와 함께 선택지로 정리해 리포트 NEXT OPTIONS 섹션으로 제시. 사람이 골라 승인하면 3관문 거쳐 실행 — 에이전트가 자동 선택·실행하지 않음(새 기법 생성 없이 진단힌트·KB 제안 정리) |
 | **실행** | `tools/runner.py` | Subprocess(실제, 셸 비경유·stdin 차단) / Fake(테스트). `shell`·`contained` 능력 플래그 |
-| | `tools/sandbox.py` | **샌드박스 실행기**(완전자율): DockerSandbox(Kali 컨테이너 + iptables egress 강제=타겟 대역만·비root·no-new-privileges, `contained=True`) / ShellRunner(로컬 bash, 미강제). `allowlist_for` 로 바인딩 타겟만 egress 허용·호스트명 해석 고정 |
+| | `tools/sandbox.py` | **샌드박스 실행기**(완전자율): DockerSandbox(Kali 컨테이너 + iptables egress 강제=타겟 대역만·비root·no-new-privileges, `contained=True`) / VMSandbox(SSH 로 접속한 VM 에서 실행, `--vm-confine` 시 VM 에 egress 정책 적용→`contained=True`, 작업공간은 scp 동기화) / ShellRunner(로컬 bash, 미강제). `allowlist_for` 로 바인딩 타겟만 egress 허용·호스트명 해석 고정 |
 | | `workspace.py` | **작업공간**: 첨부파일(`--files`) 가져오기(zip-slip·압축폭탄 방어)·LLM 스크립트 쓰기(경로/크기 검사)·소스 발췌(LLM 컨텍스트)·매직바이트 형식판별 |
 | | `tools/recon.py` | 유한 폴백 포트스캔 + nmap 미설치 시 소켓 폴백(바인딩 타겟만) |
 | | `tools/portscan_fallback.py` | 순수 파이썬 TCP-connect 스캔(nmap 없을 때)·포트→서비스 추정·짧은 배너 → NmapResult |

@@ -278,3 +278,161 @@ def allowlist_for(guard, resolver: Callable[[str], list[str]] | None = None
     if not cidrs:
         raise SandboxError("타겟 IP 를 확정할 수 없음(호스트명 해석 실패) — egress 허용 대역을 만들 수 없음")
     return cidrs, hosts
+
+
+# ── VM 실행 샌드박스(SSH) ───────────────────────────────────────────
+class VMSandbox:
+    """SSH 로 접속한 VM(가상머신·원격 공격 호스트)에서 명령을 실행하는 러너.
+
+    Docker 가 없거나 전용 공격 VM(Kali 등)을 쓰는 환경을 위한 대안. 명령은 VM 의 로그인 셸에서
+    `bash` 로 실행되고(파이프·리다이렉트 가능), stdin 은 닫는다. 작업공간 파일은 scp 로 VM 에
+    올린다(원격이므로 바인드 마운트가 없다).
+
+    egress 경계(contained): 기본은 confine=False → contained=False(동적·원격 실행은 수동 제안으로).
+    confine=True 면 접속 직후 sudo 로 VM 에 iptables egress 정책(기본 DROP, 허용 대역만)을 적용·검증
+    하고 contained=True 로 올린다 — 단 이는 그 VM 의 네트워크를 타겟 대역으로 제한하므로(VPN 세션은
+    ESTABLISHED 로 유지), 전용 풀이 VM 에서만 쓰기를 권한다. 명령으로 정책을 되돌리지 못하도록
+    비-sudo 사용자로 실행하는 것은 VM 계정 구성에 맡긴다(루트로 접속하면 경계가 약해진다)."""
+
+    shell = True
+    real_exec = True
+
+    def __init__(self, ssh_dest: str, workspace: str, allow_cidrs: Iterable[str],
+                 ssh_key: str | None = None, ssh_port: int = 22, lports: Iterable[int] = (),
+                 sudo: bool = False, confine: bool = False, hosts: dict[str, str] | None = None,
+                 workdir: str = "/tmp/assassin-work", ssh: str = "ssh", scp: str = "scp",
+                 exec_fn: Exec | None = None):
+        if not ssh_dest or "@" not in ssh_dest:
+            raise SandboxError("VM 접속 대상은 user@host 형식이어야 합니다(--vm-ssh)")
+        self.ssh_dest = ssh_dest
+        self.workspace = os.path.abspath(workspace)
+        self.allow_cidrs = _norm_cidrs(allow_cidrs)
+        self.ssh_key = ssh_key
+        self.ssh_port = int(ssh_port)
+        self.lports = [int(p) for p in lports]
+        self.sudo = sudo
+        self.confine = confine
+        self.hosts = dict(hosts or {})
+        self.workdir = workdir
+        self.ssh = ssh
+        self.scp = scp
+        self._exec = exec_fn or subprocess.run
+        self.contained = False      # confine 성공 시 True 로
+        self.started = False
+        self._tools: dict[str, bool] = {}
+
+    # ── ssh/scp 하부 ──
+    def _ssh_base(self) -> list[str]:
+        args = [self.ssh, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new",
+                "-o", "ConnectTimeout=15", "-p", str(self.ssh_port)]
+        if self.ssh_key:
+            args += ["-i", self.ssh_key]
+        return args + [self.ssh_dest]
+
+    def _call(self, args: list[str], timeout: int = 60, input_text: str | None = None):
+        kw: dict = dict(capture_output=True, text=True, errors="replace", timeout=timeout)
+        if input_text is None:
+            kw["stdin"] = subprocess.DEVNULL
+        else:
+            kw["input"] = input_text
+        return self._exec(args, **kw)
+
+    def _remote(self, remote_cmd: str, timeout: int = 60):
+        return self._call(self._ssh_base() + [remote_cmd], timeout=timeout)
+
+    def _sudo(self, cmd: str) -> str:
+        return ("sudo " + cmd) if self.sudo else cmd
+
+    # ── 수명주기 ──
+    def start(self) -> None:
+        if self.started:
+            return
+        # 1) 접속 확인
+        try:
+            p = self._remote("true", timeout=30)
+        except Exception as e:   # noqa: BLE001
+            raise SandboxError(f"VM SSH 접속 실패: {type(e).__name__}: {e}") from e
+        if getattr(p, "returncode", 1) != 0:
+            raise SandboxError("VM SSH 접속 실패: " + (_as_text(p.stderr).strip()[:200] or "connect"))
+        # 2) 작업 디렉터리
+        self._remote(f"mkdir -p {self.workdir}", timeout=30)
+        # 3) (선택) egress 경계 적용·검증
+        if self.confine:
+            self._apply_policy()
+        self.started = True
+
+    def _apply_policy(self) -> None:
+        rules = egress_rules(self.allow_cidrs, self.lports)
+        p = self._remote(self._sudo("iptables-restore --noflush") + " <<'EOF'\n" + rules + "EOF",
+                         timeout=60)
+        if getattr(p, "returncode", 1) != 0:
+            # --noflush 실패 시 표준 적용 재시도
+            p = self._remote(self._sudo("sh -c 'iptables-restore'") + " <<'EOF'\n" + rules + "EOF",
+                             timeout=60)
+        chk = self._remote(self._sudo("iptables -S OUTPUT"), timeout=30)
+        if "-P OUTPUT DROP" not in _as_text(chk.stdout):
+            raise SandboxError("VM egress 정책 검증 실패(OUTPUT 기본 DROP 아님) — "
+                               "--vm-sudo 로 권한을 주거나 --vm-confine 없이 쓰세요")
+        self.contained = True
+
+    def stop(self) -> None:
+        # VM 은 우리가 만든 자원이 아니므로 끄지 않는다. 작업 디렉터리만 정리(best-effort).
+        try:
+            self._remote(f"rm -rf {self.workdir}", timeout=30)
+        except Exception:   # noqa: BLE001
+            pass
+        self.started = False
+
+    def __enter__(self) -> "VMSandbox":
+        self.start()
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.stop()
+
+    # ── 실행 ──
+    def has_tool(self, binary: str) -> bool:
+        b = os.path.basename(binary)
+        if not re.fullmatch(r"[A-Za-z0-9_.+-]+", b):
+            return True
+        if b not in self._tools:
+            try:
+                p = self._remote(f"command -v {b}", timeout=20)
+                self._tools[b] = getattr(p, "returncode", 1) == 0
+            except Exception:   # noqa: BLE001
+                self._tools[b] = False
+        return self._tools[b]
+
+    def sync_file(self, local_path: str, rel: str) -> None:
+        """로컬 작업공간 파일을 VM 작업 디렉터리로 scp. 실패는 예외(호출부가 그 명령을 건너뜀)."""
+        import posixpath
+        remote = posixpath.join(self.workdir, rel)
+        self._remote(f"mkdir -p {posixpath.dirname(remote) or self.workdir}", timeout=30)
+        dest = f"{self.ssh_dest}:{remote}"
+        args = [self.scp, "-B", "-o", "StrictHostKeyChecking=accept-new", "-P", str(self.ssh_port)]
+        if self.ssh_key:
+            args += ["-i", self.ssh_key]
+        args += [local_path, dest]
+        p = self._call(args, timeout=60)
+        if getattr(p, "returncode", 1) != 0:
+            raise SandboxError("scp 실패: " + (_as_text(p.stderr).strip()[:150] or "scp"))
+
+    def run(self, command: str, timeout: int = 120) -> RunOutput:
+        if not self.started:
+            return RunOutput(command, error="VM 샌드박스 미시작", returncode=-1)
+        if not command.strip():
+            return RunOutput(command, error="빈 명령", returncode=-1)
+        import base64
+        t = max(1, int(timeout))
+        b64 = base64.b64encode(command.encode("utf-8")).decode("ascii")
+        # 따옴표 지옥을 피하려 base64 로 전달 → 원격에서 복원해 timeout+bash 로 실행
+        remote = (f"cd {self.workdir} && echo {b64} | base64 -d | "
+                  f"timeout -k 5 {t} bash")
+        try:
+            p = self._remote(remote, timeout=t + 30)
+        except subprocess.TimeoutExpired as e:
+            return RunOutput(command, _as_text(e.stdout), _as_text(e.stderr),
+                             returncode=-1, timed_out=True)
+        except Exception as e:   # noqa: BLE001
+            return RunOutput(command, error=f"VM 실행 예외: {type(e).__name__}: {e}", returncode=-1)
+        return _timeout_output(command, p, t)

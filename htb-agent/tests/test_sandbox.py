@@ -125,5 +125,86 @@ out = sr.run("echo hi | tr a-z A-Z", timeout=10)
 check("로컬 셸 파이프 동작", out.launched and "HI" in out.stdout)
 check("stdin 닫힘(블록 안 함)", sr.run("cat", timeout=5).launched)
 
+print("\n=== VMSandbox(SSH 실행, 주입 exec) ===")
+from htb_agent.tools.sandbox import VMSandbox
+import base64 as _b64
+
+vm_calls = []
+def vm_exec(args, **kw):
+    vm_calls.append(args)
+    j = " ".join(args)
+    # ssh true (접속 확인)
+    if j.endswith(" true"):
+        return FakeProc(0)
+    if "iptables -S OUTPUT" in j:
+        return FakeProc(0, out="-P OUTPUT DROP\n-A OUTPUT -d 10.129.1.5/32 -j ACCEPT\n")
+    if "iptables-restore" in j:
+        return FakeProc(0)
+    if "command -v nmap" in j:
+        return FakeProc(0)
+    if "command -v" in j:
+        return FakeProc(1)
+    if "base64 -d" in j:                 # run() 의 원격 명령
+        return FakeProc(0, out="remote-output")
+    return FakeProc(0, out="")
+
+# user@host 형식 강제
+try:
+    VMSandbox("nohost", "/tmp/ws", ["10.129.1.5/32"]); check("user@host 아니면 거부", False)
+except SandboxError:
+    check("user@host 아니면 거부", True)
+
+vm = VMSandbox("kali@10.0.0.9", "/tmp/ws", ["10.129.1.5/32"], lports=[4444],
+               sudo=True, confine=True, exec_fn=vm_exec)
+check("시작 전 contained=False", vm.contained is False)
+vm.start()
+check("접속 확인(ssh true) 호출", any(" ".join(a).endswith(" true") for a in vm_calls))
+check("confine → contained=True", vm.contained is True)
+check("egress 정책 검증 수행", any("iptables -S OUTPUT" in " ".join(a) for a in vm_calls))
+check("has_tool 설치/미설치", vm.has_tool("nmap") and not vm.has_tool("doesnotexist"))
+
+# run(): base64 로 명령 전달(따옴표 안전), ssh 로 원격 실행
+out = vm.run("echo hi | grep hi", timeout=10)
+runcall = next(a for a in vm_calls if "base64 -d" in " ".join(a))
+remote = runcall[-1]
+# 원격 문자열에서 b64 추출해 복원하면 원래 명령이어야
+import re as _re
+m = _re.search(r"echo ([A-Za-z0-9+/=]+) \| base64 -d", remote)
+check("명령을 base64 로 전달", m is not None and
+      _b64.b64decode(m.group(1)).decode() == "echo hi | grep hi")
+check("원격에 timeout+bash", "timeout -k 5 10 bash" in remote and "cd /tmp/assassin-work" in remote)
+check("run 결과 반환", out.launched and "remote-output" in out.stdout)
+check("shell/real_exec 플래그", vm.shell is True and vm.real_exec is True)
+
+# sync_file: scp 로 업로드(성공)
+scp_calls = []
+def vm_exec2(args, **kw):
+    scp_calls.append(args)
+    return FakeProc(0, out="")
+vm2 = VMSandbox("kali@10.0.0.9", "/tmp/ws", ["10.129.1.5/32"], exec_fn=vm_exec2)
+vm2.started = True
+vm2.sync_file("/tmp/ws/exploit.py", "exploit.py")
+check("sync_file 가 scp 호출", any(a and a[0] == "scp" for a in scp_calls))
+
+# confine 실패(정책 검증 실패) → start 거부
+def vm_exec_bad(args, **kw):
+    j = " ".join(args)
+    if j.endswith(" true"):
+        return FakeProc(0)
+    if "iptables -S OUTPUT" in j:
+        return FakeProc(0, out="-P OUTPUT ACCEPT\n")   # DROP 아님 → 검증 실패
+    return FakeProc(0)
+vmb = VMSandbox("kali@10.0.0.9", "/tmp/ws", ["10.129.1.5/32"], confine=True, exec_fn=vm_exec_bad)
+try:
+    vmb.start(); check("egress 검증 실패 → SandboxError", False)
+except SandboxError:
+    check("egress 검증 실패 → SandboxError", True)
+
+# confine 없이 → contained False(동적 실행 수동), 그래도 실행은 됨
+vm3 = VMSandbox("kali@10.0.0.9", "/tmp/ws", ["10.129.1.5/32"], exec_fn=vm_exec)
+vm3.start()
+check("confine 없으면 contained=False", vm3.contained is False)
+
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

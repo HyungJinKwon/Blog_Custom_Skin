@@ -140,12 +140,24 @@ def build_parser() -> argparse.ArgumentParser:
     g_mode.add_argument("--autonomous", "--hackathon", action="store_true", dest="autonomous",
                    help="능동적 완전자동 모드: 범위내 자동승인 + 깊은 재진입 스윕 + 병렬 열거 + "
                         "변형학습 + 전 자동준비. 목표(flag/root)까지 스스로 추진(안전 게이트 유지)")
-    g_mode.add_argument("--sandbox", choices=["none", "shell", "docker"], default=None,
-                   help="실행기: none=셸 비경유(기본, 파이프 불가) · shell=로컬 bash(파이프 가능, "
-                        "네트워크 강제 없음) · docker=Kali 컨테이너 + egress 방화벽(타겟만 허용). "
-                        "완전자율에서 스크립트 작성·실행·동적 실행은 docker 에서만 자동")
+    g_mode.add_argument("--sandbox", choices=["none", "shell", "docker", "vm"], default=None,
+                   help="명령을 '어디서' 실행할지: none=로컬 셸 비경유(기본, 파이프 불가) · "
+                        "shell=로컬 bash(파이프 O, 네트워크 강제 X) · docker=Kali 컨테이너+egress 방화벽 · "
+                        "vm=SSH 로 접속한 가상머신/공격호스트. 스크립트 작성·동적 실행 자동은 "
+                        "egress 강제된 docker 또는 'vm --vm-confine' 에서만")
     g_mode.add_argument("--sandbox-image", default=None, metavar="IMAGE",
                    help="docker 샌드박스 이미지(기본 assassin-sandbox:latest — scripts/build_sandbox.sh)")
+    g_mode.add_argument("--vm-ssh", default=None, metavar="USER@HOST",
+                   help="--sandbox vm: 명령을 실행할 VM 의 SSH 접속 대상(예: kali@192.168.56.10)")
+    g_mode.add_argument("--vm-ssh-key", default=None, metavar="KEYFILE",
+                   help="--sandbox vm: SSH 개인키 파일(미지정 시 ssh 기본·에이전트 사용)")
+    g_mode.add_argument("--vm-ssh-port", type=int, default=22, metavar="PORT",
+                   help="--sandbox vm: SSH 포트(기본 22)")
+    g_mode.add_argument("--vm-sudo", action="store_true",
+                   help="--sandbox vm: VM 에서 egress 정책 적용 등에 sudo 사용(--vm-confine 과 함께)")
+    g_mode.add_argument("--vm-confine", action="store_true",
+                   help="--sandbox vm: 접속한 VM 에 egress 방화벽(타겟 대역만)을 적용해 docker 처럼 "
+                        "완전자율 동적 실행을 자동 허용. 그 VM 네트워크를 타겟으로 제한하므로 전용 풀이 VM 에서만")
     g_mode.add_argument("--auto", action="store_true",
                    help="완전 자동: 범위내+검증통과만 실행, 범위 밖은 조용히 건너뜀(무프롬프트)")
     g_mode.add_argument("--manual", action="store_true",
@@ -839,7 +851,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     # 7.5) 실행기 + 작업공간 — 샌드박스(docker)는 egress 방화벽을 건 뒤에만 명령을 받는다
     sandbox_kind = pick(args.sandbox, cfg.sandbox, "none")
     workspace = None
-    sandbox = None
+    import typing as _t
+    sandbox: _t.Any = None   # DockerSandbox | VMSandbox | None — 공통 수명주기(start/stop)만 사용
     if args.files or sandbox_kind != "none":
         from .state import StateStore as _SS
         from .workspace import Workspace, WorkspaceError
@@ -874,9 +887,38 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         assert workspace is not None   # sandbox_kind != "none" → 위에서 생성됨
         runner = ShellRunner(workdir=workspace.root)
         print(ui.kv("실행기", ui.warn("로컬 bash — 네트워크 강제 없음(스크립트 자동 실행 안 함)"), 10))
+    elif runner is None and sandbox_kind == "vm":
+        from .tools.sandbox import SandboxError, VMSandbox, allowlist_for
+        assert workspace is not None   # sandbox_kind != "none" → 위에서 생성됨
+        vm_ssh = args.vm_ssh
+        if not vm_ssh:
+            print(ui.panel("VM 샌드박스 — 접속 정보가 필요합니다", [
+                "명령을 실행할 VM 의 SSH 대상을 지정하세요.",
+                ui.accent2("예: ") + ui.bold("--sandbox vm --vm-ssh kali@192.168.56.10"),
+                ui.dim("키: --vm-ssh-key ~/.ssh/id_ed25519 · 포트: --vm-ssh-port 22"),
+                ui.dim("완전자율 동적 실행까지 자동으로 하려면(선택): --vm-confine --vm-sudo"),
+            ], style="warn"), file=sys.stderr)
+            return 2
+        try:
+            cidrs, hosts = allowlist_for(guard)
+            sandbox = VMSandbox(vm_ssh, workspace.root, cidrs, ssh_key=args.vm_ssh_key,
+                                ssh_port=args.vm_ssh_port, lports=[args.lport],
+                                sudo=args.vm_sudo, confine=args.vm_confine, hosts=hosts)
+            sandbox.start()
+        except SandboxError as e:
+            print(ui.panel("VM 샌드박스 시작 실패 — 실행하지 않습니다", [
+                str(e),
+                ui.dim("점검: VM 이 켜져 있고 `ssh " + str(vm_ssh) + "` 가 비밀번호 없이(키) 되는지, "
+                       "VPN/네트워크로 타겟에 닿는지."),
+                ui.dim("egress 경계 없이 쓰려면 --vm-confine 을 빼세요(동적 실행은 수동 제안)."),
+            ], style="warn"), file=sys.stderr)
+            return 2
+        runner = sandbox
+        state = ("egress 강제 " + ", ".join(cidrs)) if sandbox.contained else "네트워크 강제 없음"
+        print(ui.kv("실행기", ui.ok(f"vm {vm_ssh} · {state}"), 10))
     if args.autonomous and not getattr(runner, "contained", False):
         print(ui.mark_warn("완전자율인데 egress 강제 샌드박스가 없음 — 스크립트 작성·동적 실행은 "
-                           "수동 제안으로 남습니다(권장: --sandbox docker)"))
+                           "수동 제안으로 남습니다(권장: --sandbox docker, 또는 --sandbox vm --vm-confine)"))
     if (args.autonomous or args.auto) and not args.manual and getattr(runner, "contained", False):
         from .tools.recon import auto_approve_contained
         approver = auto_approve_contained
