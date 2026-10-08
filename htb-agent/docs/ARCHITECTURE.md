@@ -172,10 +172,11 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 | | `creds.py` | 크리덴셜 볼트(수동제안 → 실행 승격) |
 | | `creds_harvest.py` | 실행 출력에서 평문 자격 자동 수확(고신뢰 패턴·셸-안전 값만 볼트 투입, 월드 반영→A1 재진입 활성화) |
 | | `audit.py` | 실행 트랜스크립트(JSONL) |
-| | `config.py` | 설정 파일(JSON/YAML, CLI>config>기본) |
+| | `config.py` | 설정 파일(JSON/YAML, CLI>config>기본). `--config` 가 없으면 `~/.config/assassin/config.json`(마법사 저장본) 자동 로드. `llm.ollama_model`·`llm.ollama_host` 지원(환경변수가 우선) |
 | | `environment.py` · `main.py` · `__main__.py` | Kali 프리플라이트 · CLI 진입점(ASSASSIN) · `python -m` 진입 |
 | | `util.py` | 공용 헬퍼(바이너리 추출 등) |
-| | `doctor.py` | 환경 자가진단(--doctor: 도구·LLM·VPN, 초보자용) |
+| | `doctor.py` | 환경 자가진단(--doctor: 도구·LLM·VPN, 초보자용). `--llm-test` 면 짧은 실제 호출까지 확인, 키는 가린 값·출처만 표시 |
+| | `llm_setup.py` | **LLM 연결 마법사**(`--setup-llm`): 백엔드 선택 → anthropic 확인(설치는 동의 시) → API 키 입력(getpass)·실제 1회 호출 → `~/.config/assassin/credentials`(700/600, 원자적 쓰기) 저장 / Ollama 설치·서버 확인 → 메모리 기반 모델 추천 → `ollama pull`(동의 시)·실제 호출 → 기본 설정 저장. 시작 시 저장 키를 환경변수로 올림(환경변수 우선). 키는 화면에 가린 값만, 상태·감사·리포트에 기록 안 함. 오류는 초보자용 한 줄로(키 가림) |
 | | `bench.py` | 평가 하네스(--bench): 오프라인 모의 문제로 성공률·pass@N·**검증된 풀이율**(대상 상호작용 유래 플래그만)·승인 부담·명령 수·플래그까지 단계·시간·비용 측정, 시도별 감사 로그 저장 |
 | | `replay.py` | 실행 기록 재생(--replay): 감사 로그(JSONL) → 단계별 타임라인 HTML(이전/다음/자동 재생). 로그는 신뢰불가 데이터로 이스케이프 |
 | | `ui.py` | 터미널 렌더링(블루/네이비 색상·박스·정렬, NO_COLOR/비-TTY 자동 무색) |

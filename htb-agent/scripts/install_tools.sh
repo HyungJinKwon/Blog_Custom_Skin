@@ -156,7 +156,8 @@ if want llm; then
     WARN "ollama 미설치 — 로컬 LLM 쓰려면: curl -fsSL https://ollama.com/install.sh | sh"
     WARN "  설치 후: ollama pull llama3.1:8b  (또는 OLLAMA_MODEL 로 다른 모델 지정)"
   fi
-  echo "    확인:  assassin --doctor   (LLM 백엔드 가용성 점검)"
+  echo "    연결:  assassin --setup-llm   (키 입력·모델 추천·실제 호출 확인·기본 설정 저장 — sudo 없이 본인 계정으로)"
+  echo "    확인:  assassin --llm-test    (LLM 실제 호출 테스트)"
 fi
 
 LOG "요약"

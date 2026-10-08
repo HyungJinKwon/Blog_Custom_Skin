@@ -35,6 +35,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=f"ASSASSIN {__version__}")
     p.add_argument("--doctor", action="store_true",
                    help="환경 자가진단(도구·LLM·VPN 점검, 스캔 안 함). 완전 초보자 권장 첫 실행")
+    p.add_argument("--setup-llm", action="store_true", dest="setup_llm",
+                   help="LLM 연결 마법사: Claude(API 키)·로컬 LLM(Ollama 모델)을 질문에 답하며 연결하고 "
+                        "실제 1회 호출로 확인 → 기본 설정 저장(이후 --llm 생략 가능). 키는 ~/.config/assassin 에 600 권한")
+    p.add_argument("--llm-test", action="store_true", dest="llm_test",
+                   help="환경 자가진단 + LLM 실제 호출 테스트(짧은 요청 1회 — 틀린 키·없는 모델·막힌 네트워크 확인)")
     p.add_argument("--revshell", metavar="LHOST:LPORT", default=None,
                    help="리버스쉘 페이로드 생성(실행 안 함). 'IP:PORT' 또는 'PORT'"
                         "(공격자 IP 자동/--attacker-ip). 권한 확인 대상 전용")
@@ -169,13 +174,34 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def _build_llm_router(kind: str, tier_name: str):
+def _ollama_opts(cfg) -> dict:
+    """설정 파일의 Ollama 모델/주소(값이 있을 때만) — _build_llm_router 키워드 인자로."""
+    opts = {}
+    if getattr(cfg, "llm_ollama_model", None):
+        opts["ollama_model"] = cfg.llm_ollama_model
+    if getattr(cfg, "llm_ollama_host", None):
+        opts["ollama_host"] = cfg.llm_ollama_host
+    return opts
+
+
+def _ollama_provider(ollama_model: str = "", ollama_host: str = ""):
+    """OllamaProvider — 우선순위: 환경변수(OLLAMA_HOST/OLLAMA_MODEL) > 설정 파일 > 기본값."""
+    import os as _os
+
+    from .llm.base import Tier
+    from .llm.ollama_provider import OllamaProvider
+    host = _os.environ.get("OLLAMA_HOST") or ollama_host or None
+    models = ({t: ollama_model for t in Tier}
+              if ollama_model and not _os.environ.get("OLLAMA_MODEL") else None)
+    return OllamaProvider(host=host, models=models)
+
+
+def _build_llm_router(kind: str, tier_name: str, ollama_model: str = "", ollama_host: str = ""):
     """LLM 백엔드 구성. 사용 불가면 (None, 사유) 반환."""
     if kind == "none":
         return None, "LLM 미사용(규칙기반)"
     from .llm.base import Tier
     from .llm.claude_provider import ClaudeProvider
-    from .llm.ollama_provider import OllamaProvider
     from .llm.router import HybridRouter, LLMRouter
 
     def _mk(provider):
@@ -184,10 +210,11 @@ def _build_llm_router(kind: str, tier_name: str):
 
     if kind == "hybrid":
         # 두 백엔드를 단계 난이도로 라우팅 + 상호 폴백(장점극대·단점보완)
-        local, lreason = _mk(OllamaProvider())     # 열거·일반 → 무료·토큰절약
+        local, lreason = _mk(_ollama_provider(ollama_model, ollama_host))   # 열거·일반 → 무료·토큰절약
         strong, sreason = _mk(ClaudeProvider())    # 권한상승·exploit → 정확
         if local is None and strong is None:
-            return None, f"hybrid 사용 불가: ollama({lreason}) / claude({sreason})"
+            return None, (f"hybrid 사용 불가: ollama({lreason}) / claude({sreason})"
+                          " — 연결 마법사: assassin --setup-llm")
         status = (f"hybrid(local=ollama[{'OK' if local else 'X'}], "
                   f"strong=claude[{'OK' if strong else 'X'}], 티어={tier_name})")
         if local is not None:
@@ -200,10 +227,10 @@ def _build_llm_router(kind: str, tier_name: str):
         return HybridRouter(local=local, strong=strong,
                             default_tier=Tier(tier_name)), status
 
-    provider = ClaudeProvider() if kind == "claude" else OllamaProvider()
+    provider = ClaudeProvider() if kind == "claude" else _ollama_provider(ollama_model, ollama_host)
     router, reason = _mk(provider)
     if router is None:
-        return None, f"{kind} 사용 불가: {reason}"
+        return None, f"{kind} 사용 불가: {reason} — 연결 마법사: assassin --setup-llm"
     return router, f"{kind}({tier_name})"
 
 
@@ -223,7 +250,8 @@ def _run_bench(args, cfg, knowledge_dir: str) -> int:
         print(ui.mark_err(f"벤치 문제 오류: {e}"), file=sys.stderr)
         return 2
     llm_kind = pick(args.llm, cfg.llm_backend, "none")
-    router, llm_status = _build_llm_router(llm_kind, pick(args.llm_tier, cfg.llm_tier, "standard"))
+    router, llm_status = _build_llm_router(llm_kind, pick(args.llm_tier, cfg.llm_tier, "standard"),
+                                           **_ollama_opts(cfg))
     if llm_kind != "none" and router is None:
         print(ui.mark_err(llm_status), file=sys.stderr)
         return 2
@@ -265,7 +293,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
 
     # 단독 명령은 하나만, 타겟 없이 — 조합 시 조용히 하나만 실행되던 문제 방지
     standalone = [flag for flag, v in (
-        ("--doctor", args.doctor), ("--revshell", args.revshell), ("--cloud", args.cloud),
+        ("--doctor", args.doctor or args.llm_test), ("--setup-llm", args.setup_llm),
+        ("--revshell", args.revshell), ("--cloud", args.cloud),
         ("--privesc", args.privesc), ("--crack", args.crack), ("--ingest", args.ingest),
         ("--kb-sync", args.kb_sync), ("--promote", args.promote), ("--learn", args.learn),
         ("--bench", args.bench), ("--replay", args.replay))
@@ -275,12 +304,32 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     if standalone and args.target:
         parser.error(f"{standalone[0]} 은(는) 타겟 없이 단독으로 실행합니다")
 
-    # 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값) — 단독 명령도 같은 설정을 따른다
+    # LLM 연결 마법사(대화형) — 설정 파일을 읽기 전에(마법사가 기본 설정을 새로 쓴다)
+    from . import llm_setup
+    if args.setup_llm:
+        llm_setup.apply_credentials()
+        setup_res = llm_setup.run_setup()
+        return 0 if (setup_res.cancelled or setup_res.backend != "none") else 1
+
+    # 저장된 LLM 키를 환경변수로(이미 설정돼 있으면 환경변수 우선). 키는 화면·파일에 남기지 않는다
+    llm_setup.apply_credentials()
+    cred_warn = llm_setup.read_credentials()[1]
+    if cred_warn:
+        print(ui.mark_warn(cred_warn), file=sys.stderr)
+
+    # 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값) — 단독 명령도 같은 설정을 따른다.
+    # --config 가 없으면 마법사가 만든 기본 설정(~/.config/assassin/config.json)을 자동으로 읽는다.
+    import os as _os
+    user_cfg = llm_setup.user_config_path()
+    cfg_path = args.config or (user_cfg if _os.path.isfile(user_cfg) else "")
     try:
-        cfg = load_config(args.config) if args.config else Config()
+        cfg = load_config(cfg_path) if cfg_path else Config()
     except ConfigError as e:
-        print(ui.mark_err(f"설정 오류: {e}"), file=sys.stderr)
+        print(ui.mark_err(f"설정 오류({cfg_path}): {e}"), file=sys.stderr)
         return 2
+    if cfg_path and not args.config:
+        print(ui.dim(f"설정: {cfg_path} (자동 — 다른 설정은 --config, LLM 끄기는 --llm none)"),
+              file=sys.stderr)
     for w in cfg.warnings:
         print(ui.mark_warn(f"설정 경고: {w}"), file=sys.stderr)
     knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, "knowledge")
@@ -301,9 +350,9 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         return _run_bench(args, cfg, knowledge_dir)
 
     # 환경 자가진단(스캔 안 함) — 완전 초보자 권장 첫 실행
-    if args.doctor:
+    if args.doctor or args.llm_test:
         from .doctor import run_doctor
-        text, ok = run_doctor()
+        text, ok = run_doctor(llm_test=args.llm_test, **_ollama_opts(cfg))
         print(text)
         return 0 if ok else 2
 
@@ -438,7 +487,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         if swallowed:   # 'assassin --html 10.129.1.5' 처럼 타겟이 경로로 읽힌 경우
             parser.error(f"타겟이 없습니다 — '{swallowed[0]}' 가 출력 경로로 읽혔습니다. "
                          "타겟을 맨 앞에 두세요: assassin <타겟> --html")
-        parser.error("target 이 필요합니다 (또는 --doctor / --revshell / --cloud / --privesc / --crack / --learn / --promote / --kb-sync / --ingest). 예: assassin 10.129.1.5")
+        parser.error("target 이 필요합니다 (또는 --doctor / --setup-llm / --revshell / --cloud / --privesc / --crack / --learn / --promote / --kb-sync / --ingest). 예: assassin 10.129.1.5")
 
     # 플랫폼 프로파일(HTB/Dreamhack/CTF)
     try:
@@ -529,7 +578,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         print(ui.mark_warn(f"지식베이스 경고 {len(kb.warnings)}건 (예: {kb.warnings[0]})"))
 
     # 5) LLM 두뇌 구성(선택)
-    llm_router, llm_status = _build_llm_router(llm_kind, llm_tier)
+    llm_router, llm_status = _build_llm_router(llm_kind, llm_tier, **_ollama_opts(cfg))
     print(ui.kv("LLM", ui.info(llm_status), 10) + "\n")
 
     # 6) 상태 저장소 (중단/재개) + 자격증명 볼트

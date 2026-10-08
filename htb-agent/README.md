@@ -73,6 +73,8 @@ Python 3.10+ (코어는 표준 라이브러리만, 외부 의존성 없음). LLM
 
 설치(`pip install -e .`) 후에는 어디서나 `assassin` 명령을 쓸 수 있습니다.
 **처음이라면 먼저 `assassin --doctor`** 로 환경(도구·VPN·LLM)을 점검하세요.
+LLM(Claude·로컬 Ollama)은 **`assassin --setup-llm`** 마법사로 한 번에 연결합니다 — 질문에 답하면 키 입력(화면 비표시·600 권한
+저장)·로컬 모델 추천·실제 1회 호출 확인·기본 설정 저장까지 끝나고, 이후엔 `--llm` 없이 실행해도 연결된 LLM 을 씁니다.
 
 ```bash
 # 승인제 포트스캔+열거 (명령마다 3분할 해설 + 승인)
@@ -99,6 +101,8 @@ assassin 10.129.1.5 --manual
 assassin 10.129.1.5 --offline
 
 # LLM 두뇌 / 중단 후 재개 / 설정 파일
+assassin --setup-llm                                 # LLM 연결 마법사(처음 한 번) → 기본 설정 저장
+assassin --llm-test                                  # LLM 실제 호출 테스트(틀린 키·없는 모델 확인)
 assassin 10.129.1.5 --llm hybrid                     # 하이브리드(Ollama+Claude 라우팅/폴백)
 assassin 10.129.1.5 --llm claude --llm-tier standard
 assassin 10.129.1.5 --resume                         # 실행된 명령은 다시 돌리지 않고 이어서
@@ -252,6 +256,8 @@ cd htb-agent && python3 tests/run_all.py     # 전체 스위트(끝에 '총 N �
 |---|---|
 | `--version` | show program's version number and exit |
 | `--doctor` | 환경 자가진단(도구·LLM·VPN 점검, 스캔 안 함). 완전 초보자 권장 첫 실행 |
+| `--setup-llm` | LLM 연결 마법사: Claude(API 키)·로컬 LLM(Ollama 모델)을 질문에 답하며 연결하고 실제 1회 호출로 확인 → 기본 설정 저장(이후 --llm 생략 가능). 키는 ~/.config/assassin 에 600 권한 |
+| `--llm-test` | 환경 자가진단 + LLM 실제 호출 테스트(짧은 요청 1회 — 틀린 키·없는 모델·막힌 네트워크 확인) |
 | `--revshell` `LHOST:LPORT` | 리버스쉘 페이로드 생성(실행 안 함). 'IP:PORT' 또는 'PORT'(공격자 IP 자동/--attacker-ip). 권한 확인 대상 전용 |
 | `--learn` `TOPIC` | 권위 출처 자가학습(도구·공격기법·개념·프로토콜)을 지식베이스에 저장. 예: --learn kerberoasting / burp / http. 전체 일괄: --learn all. 목록: --learn list |
 | `--promote` `TOPIC` | 로컬 학습 노트(learned-&lt;주제&gt;.md) 중 품질 관문을 통과한 항목을 번들 시드의 '최신 보강(승격)' 섹션으로 승격. 결과를 커밋·PR 하면 모든 사용자에게 공유. 예: --promote sqli / 전체: --promote all |
