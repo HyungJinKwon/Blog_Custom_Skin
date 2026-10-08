@@ -22,6 +22,9 @@ _KIND = {
     "profile": ("🧭", "대상 식별", "info"),
     "analyst": ("🧠", "분석가 판단", "info"),
     "tier_escalate": ("⬆", "강력 모델로 승격", "warn"),
+    "plan_update": ("🎯", "계획(가설 기록) 갱신", "info"),
+    "hypothesis_signal": ("◎", "가설 대조", "dim"),
+    "hypothesis_stuck": ("⚠", "가설 막힘 → 재계획 요청", "warn"),
     "knowledge_acquired": ("🎓", "지식 자동 학습", "ok"),
     "knowledge_gap": ("❔", "미해석 공백", "dim"),
     "cred_harvested": ("🔑", "자격증명 발견", "ok"),
@@ -81,6 +84,13 @@ def _brief(rec: dict) -> str:
         return str(rec.get("term", ""))
     if e == "timed_out":
         return f"예산 {rec.get('budget_min', '')}분 · 경과 {rec.get('elapsed_sec', '')}초"
+    if e == "plan_update":
+        return f"갱신 {rec.get('revision', '')}회차"
+    if e == "hypothesis_signal":
+        res = {"hit": "신호 일치〔추정〕", "miss": "불일치"}.get(str(rec.get("result")), "")
+        return f"{rec.get('hypothesis', '')} {res} · 상태 {rec.get('status', '')}"
+    if e == "hypothesis_stuck":
+        return f"{rec.get('hypothesis', '')} 연속 불일치 {rec.get('misses', '')}회"
     if e == "tier_escalate":
         return f"사유 {rec.get('reason', '')} · 단계 {rec.get('phase', '')}"
     return ""
@@ -120,6 +130,8 @@ def build_steps(events: list[dict]) -> list[dict]:
             continue
         icon, label, cls = _KIND.get(e, ("·", e, "dim"))
         detail = str(rec.get("text", "")) if e == "analyst" else ""
+        if e == "plan_update":
+            detail = "\n".join(map(str, rec.get("board") or []))
         steps.append({"ts": ts, "type": "event", "icon": icon, "label": label, "cls": cls,
                       "cmd": "", "phase": str(rec.get("phase", "")), "status": _brief(rec),
                       "detail": detail})

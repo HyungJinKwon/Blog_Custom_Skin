@@ -64,7 +64,8 @@ ANALYSIS = ("가설:\n  H1 [우선:상] 웹 앱 입력 처리 결함 — 근거 
 def responder(system, user, tier):
     if "분석가" in system:
         return ANALYSIS
-    if "H1 [우선:상]" not in user:     # 분석이 명령 생성 컨텍스트로 주입돼야 함
+    # 분석(또는 가설 기록에서 고른 '지금 할 일')이 명령 생성 컨텍스트로 주입돼야 함
+    if "H1 [우선:상]" not in user and "지금 할 일: H1" not in user:
         return ""
     return json.dumps([
         {"command": "curl -i http://{t}/", "hypothesis": "H1", "rationale": "웹 헤더"},

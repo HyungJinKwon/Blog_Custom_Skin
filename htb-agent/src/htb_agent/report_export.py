@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from . import recommend as _recommend
 from .enrich import CWE_NAMES, Enricher
 
-SCHEMA_VERSION = "1.5"   # 1.1: blockers·flag_provenance·learn·next_options / 1.2: gate_stats / 1.3: knowledge / 1.4: goal_reached·llm_routing / 1.5: timed_out·elapsed_sec·cost_capped(하위호환)
+SCHEMA_VERSION = "1.6"   # 1.1: blockers·flag_provenance·learn·next_options / 1.2: gate_stats / 1.3: knowledge / 1.4: goal_reached·llm_routing / 1.5: timed_out·elapsed_sec·cost_capped / 1.6: plan(가설 기록)(하위호환)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -74,6 +74,8 @@ def to_dict(report) -> dict:
         },
         "world": report.world.to_dict() if getattr(report, "world", None) else None,
         "analysis": getattr(report, "analysis", ""),
+        # 가설 기록(계획 원장): 가설별 상태·확인 방법·기대 신호·시도·근거 — 방향 잡기용〔추정〕
+        "plan": report.plan.to_dict() if getattr(report, "plan", None) else None,
         "phase_status": dict(getattr(report, "phase_status", {}) or {}),
         "goal_reached": bool(getattr(report, "goal_reached", False)),
         "llm_routing": dict(getattr(report, "llm_routing", {}) or {}),
@@ -405,6 +407,29 @@ def _html_routing(report) -> str:
     return f"<div class='panel'><b>LLM 라우팅 (하이브리드)</b><div class='tiles'>{tiles}</div>{note}</div>"
 
 
+def _html_plan(report) -> str:
+    """가설 보드 — 분석가가 세우고 갱신한 가설과 상태(결과 대조로 갱신, 〔추정〕)."""
+    plan = getattr(report, "plan", None)
+    if not plan:
+        return ""
+    focus = plan.focus()
+    stuck = {h.id for h in plan.stuck()}
+    cls = {"confirmed": "b-done", "rejected": "b-crit", "testing": "b-med", "pending": "b-info"}
+    rows = "".join(
+        f"<tr><td><b>{_esc(h.id)}</b>{' ← 지금' if focus is not None and h.id == focus.id else ''}</td>"
+        f"<td><span class='badge {cls.get(h.status, 'b-info')}'>{_esc(h.label)}"
+        f"{' · 막힘' if h.id in stuck else ''}</span></td>"
+        f"<td>{_esc(h.priority)}</td><td>{_esc(h.text)}</td>"
+        f"<td>{_esc(h.expected) or '-'}</td><td>{len(h.tried)}</td>"
+        f"<td>{_esc('; '.join(h.evidence[-2:])) or '-'}</td></tr>"
+        for h in plan.items)
+    return ("<p class='muted'>분석가(강력 모델)가 세운 가설을 결과와 대조해 갱신합니다. 명령 생성은 "
+            "'지금' 표시된 가설 하나에 집중하고, 같은 가설이 연속으로 어긋나면 재계획합니다. "
+            "상태는 방향 잡기용〔추정〕 — 플래그·목표 판정은 실행 결과로만 합니다.</p>"
+            "<table><tr><th>가설</th><th>상태</th><th>우선</th><th>내용</th><th>기대 신호</th>"
+            f"<th>시도</th><th>최근 근거</th></tr>{rows}</table>")
+
+
 def _html_analysis(report) -> str:
     text = getattr(report, "analysis", "") or ""
     if not text.strip():
@@ -486,6 +511,7 @@ def to_html(report, machine_name: str = "") -> str:
 {_html_overview(report)}
 
 <h2>분석 (병렬 가설 · 계획)</h2>
+{_html_plan(report)}
 {_html_analysis(report)}
 
 <h2>포트 &amp; 서비스</h2>
