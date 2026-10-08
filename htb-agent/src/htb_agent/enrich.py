@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from typing import Callable
 
 _CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}", re.I)
@@ -93,8 +93,8 @@ class CveInfo:
 def _default_fetcher(timeout: int = 6) -> Callable[[str], str | None]:
     """urllib 기반 GET(프록시 env 존중, 실패 시 None). 네트워크 분리 지점."""
     def _get(url: str) -> str | None:
-        import urllib.request
         import urllib.error
+        import urllib.request
         req = urllib.request.Request(url, headers={"User-Agent": "assassin-enrich/1.0"})
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:   # noqa: S310 (공식 DB만)

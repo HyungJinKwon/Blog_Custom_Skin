@@ -24,29 +24,30 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
-from .util import binary_of
-from .command_validator import validate, ValidationReport
-from .scope_guard import ScopeGuard, ScopeViolation, CommandScopeResult
-from .observation.parsers import NmapHost
-from .observation.compressor import profile_from_nmap
-from .observation.summarize import summarize_tool_output
-from .target_profiler import ProfileResult
-from .knowledge import KnowledgeBase
-from .creds import CredentialVault
-from .audit import NullAudit
-from .llm.router import LLMRouter
-from .vuln import VulnKB, VulnMatch, extract_vuln_ids
-from .flag import FlagHit, scan as scan_flags
-from .crack import scan_hashes as crack_scan
-from .creds_harvest import harvest as harvest_creds, is_safe_for_cmd
 from . import diagnostics
 from . import provenance as _prov
-from .world import WorldModel
-from .variants import expand_variants, fragment_of
-from .state import SessionState, StateStore, host_to_dict, host_from_dict
+from .audit import NullAudit
+from .command_validator import ValidationReport, validate
+from .crack import scan_hashes as crack_scan
+from .creds import CredentialVault
+from .creds_harvest import harvest as harvest_creds
+from .creds_harvest import is_safe_for_cmd
+from .flag import FlagHit
+from .flag import scan as scan_flags
+from .knowledge import KnowledgeBase
+from .llm.router import LLMRouter
+from .observation.compressor import profile_from_nmap
+from .observation.parsers import NmapHost
+from .observation.summarize import summarize_tool_output
+from .scope_guard import CommandScopeResult, ScopeGuard, ScopeViolation
+from .state import SessionState, StateStore, host_from_dict, host_to_dict
+from .target_profiler import ProfileResult
+from .tools.recon import Approver, ReconExecutor, ReconReport, auto_approve_in_scope
 from .tools.runner import Runner, RunOutput
-from .tools.recon import ReconExecutor, ReconReport, auto_approve_in_scope, Approver
-
+from .util import binary_of
+from .variants import expand_variants, fragment_of
+from .vuln import VulnKB, VulnMatch, extract_vuln_ids
+from .world import WorldModel
 
 # 모의해킹 진행 단계(순서대로). (key, 표시라벨)
 PENTEST_PHASES: list[tuple[str, str]] = [
@@ -738,8 +739,9 @@ class Orchestrator:
             st.profile = {"os_class": report.profile.os_class.value,
                           "confidence": report.profile.confidence,
                           "is_dc": report.profile.is_domain_controller}
-        fin = lambda f: {"command": f.command, "ran": f.ran, "note": f.note,
-                         "output": f.output, "phase": f.phase}
+        def fin(f):
+            return {"command": f.command, "ran": f.ran, "note": f.note,
+                    "output": f.output, "phase": f.phase}
         if report.enum_findings:
             st.enum_findings = [fin(f) for f in report.enum_findings]
         if report.llm_findings:
@@ -957,7 +959,8 @@ class Orchestrator:
                    prof: ProfileResult, target: str,
                    seen: set[str], budget: int, phase: str = "enum") -> int:
         """해당 단계의 LLM 제안 한 라운드. 이전 관측을 컨텍스트에 반영(적응)."""
-        if budget <= 0:
+        router = self.llm_router
+        if budget <= 0 or router is None:   # 호출부가 이미 router 를 확인 — 타입 명시용
             return 0
         services = [p.service for p in host.ports if p.state == "open" and p.service]
         recs = self.kb.query(prof.os_class.value, host.open_ports, services, phase=phase)
@@ -988,18 +991,18 @@ class Orchestrator:
                               if self.flag_prefixes else ""),
         }
         try:
-            from .llm.base import tier_for_phase, Tier
+            from .llm.base import Tier, tier_for_phase
             base_tier = tier_for_phase(phase)
             # B6 적응형 tier: 분석 확신도 '하' 면 처음부터 강력 모델로 상향
             if self._low_confidence(report) and base_tier != Tier.STRONG:
                 base_tier = Tier.STRONG
                 self.audit.event("tier_escalate", reason="low_confidence", phase=phase)
-            cmds = self.llm_router.suggest_commands(
+            cmds = router.suggest_commands(
                 context, target, tier=base_tier, max_items=budget)
             # B6: 저단계 모델이 쓸만한 명령을 못 내면(빈 결과) 강력 모델로 1회 승격 재시도
             if not cmds and base_tier != Tier.STRONG:
                 self.audit.event("tier_escalate", reason="empty_result", phase=phase)
-                cmds = self.llm_router.suggest_commands(
+                cmds = router.suggest_commands(
                     context, target, tier=Tier.STRONG, max_items=budget)
         except Exception as e:  # LLM 백엔드 오류는 전체를 깨지 않는다
             report.manual_suggestions.append(f"(LLM 제안 실패: {e})")

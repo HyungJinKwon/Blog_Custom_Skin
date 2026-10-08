@@ -574,7 +574,7 @@ python3 scripts/gen_cli_docs.py --check           # README CLI 표가 최신인�
 
 | 워크플로 | 트리거 | 내용 |
 |---|---|---|
-| `htb-agent CI` | `htb-agent/**` push/PR | Python 3.10~3.13 테스트 + 컴파일 + README CLI 표 최신 여부(게이트), ruff·mypy(비차단) |
+| `htb-agent CI` | `htb-agent/**` push/PR | Python 3.10~3.13 테스트 + 컴파일 + README CLI 표 최신 여부 + ruff·mypy(모두 게이트, 버전 고정) |
 | `KB 자동 승격` | 매주 월 03:17 KST · 수동 | §9.5 |
 
 CI 가 강제하는 지식 불변식:

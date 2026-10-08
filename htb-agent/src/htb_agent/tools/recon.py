@@ -21,11 +21,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
-from ..command_validator import validate, ValidationReport
-from ..scope_guard import ScopeGuard, ScopeViolation, CommandScopeResult
-from ..observation.parsers import parse_nmap_xml, NmapResult, NmapHost
+from ..command_validator import ValidationReport, validate
+from ..observation.parsers import NmapHost, NmapResult, parse_nmap_xml
+from ..scope_guard import CommandScopeResult, ScopeGuard, ScopeViolation
 from .runner import Runner, RunOutput
-
 
 # (레이블, 명령 템플릿, 타임아웃초)
 # -sC(기본 NSE 스크립트) + -sV(버전) 은 HTB/CTF 표준 첫 스캔. 폴백 단계로 -Pn(핑생략)·
@@ -147,8 +146,8 @@ class ReconExecutor:
                    else NmapResult(parse_error=out.stderr or "빈 출력"))
             rec.result = res
 
-            if _satisfactory(res):
-                h = res.first_host()
+            h = res.first_host()
+            if _satisfactory(res) and h is not None:   # _satisfactory 가 호스트 존재를 보장(타입 명시용)
                 report.status = "success"
                 report.host = h
                 report.message = f"{label} 성공 — 열린 포트 {h.open_ports}"

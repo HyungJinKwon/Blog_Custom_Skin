@@ -16,15 +16,15 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .scope_guard import ScopeGuard, ScopeViolation
-from .environment import preflight, detect_vpn_ips
-from .tools.runner import SubprocessRunner
-from .tools.recon import auto_approve_in_scope
-from .approval import interactive_approver
 from . import __version__
+from .approval import interactive_approver
+from .environment import detect_vpn_ips, preflight
 from .knowledge import KnowledgeBase
 from .orchestrator import Orchestrator
 from .profiles import JEOPARDY_CATEGORIES
+from .scope_guard import ScopeGuard, ScopeViolation
+from .tools.recon import auto_approve_in_scope
+from .tools.runner import SubprocessRunner
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -174,9 +174,9 @@ def _build_llm_router(kind: str, tier_name: str):
     if kind == "none":
         return None, "LLM 미사용(규칙기반)"
     from .llm.base import Tier
-    from .llm.router import LLMRouter, HybridRouter
     from .llm.claude_provider import ClaudeProvider
     from .llm.ollama_provider import OllamaProvider
+    from .llm.router import HybridRouter, LLMRouter
 
     def _mk(provider):
         ok, reason = provider.available()
@@ -212,6 +212,7 @@ def _run_bench(args, cfg, knowledge_dir: str) -> int:
     import json as _json
     import os as _os
     from datetime import datetime
+
     from . import bench, ui
     from .config import pick
     from .knowledge import KnowledgeBase
@@ -310,7 +311,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     if args.revshell:
         from . import revshell
         default_host = (args.attacker_ips[0] if args.attacker_ips
-                        else (detect_vpn_ips() or [None])[0])
+                        else next(iter(detect_vpn_ips()), None))
         try:
             lhost, lport = revshell.parse_target(args.revshell, default_host)
         except ValueError as e:
@@ -450,8 +451,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     ranges = pick(args.ranges, cfg.allowed_ranges,
                   list(profile.default_ranges) or None)
     # 능동적 완전자동 모드: 명시 지정이 없으면 공격적 기본값으로 상향(한 명령 자율 풀이)
-    _auto_def = (lambda cli, cf, aggressive, base:
-                 pick(cli, cf, aggressive if args.autonomous else base))
+    def _auto_def(cli, cf, aggressive, base):
+        return pick(cli, cf, aggressive if args.autonomous else base)
     max_attempts = pick(args.max_attempts, cfg.max_attempts, 4)
     max_enum = _auto_def(args.max_enum, cfg.max_enum, 10, 6)
     max_rounds = _auto_def(args.max_rounds, cfg.max_rounds, 3, 2)
@@ -532,13 +533,14 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     print(ui.kv("LLM", ui.info(llm_status), 10) + "\n")
 
     # 6) 상태 저장소 (중단/재개) + 자격증명 볼트
+    from .creds import Credential, CredentialVault
     from .state import StateStore
-    from .creds import CredentialVault, Credential
     store = None if args.no_save else StateStore(state_dir)
     vault = CredentialVault.from_cli(args.creds)
     # 실행 결과 기반 변형 학습(세션 넘어 누적) — <state-dir>/variant_stats.json
-    from .variant_stats import VariantStats
     import os as _osvs
+
+    from .variant_stats import VariantStats
     vstats_path = _osvs.path.join(state_dir, "variant_stats.json")
     variant_stats = VariantStats() if args.no_save else VariantStats.load(vstats_path)
     if args.resume and store and store.exists(args.target):
@@ -551,8 +553,10 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         print(f"자격증명 볼트: {[c.label() for c in vault.creds]}\n")
 
     # 6.5) 감사 로그
-    from .audit import AuditLog, NullAudit
     import os as _os
+
+    from .audit import AuditLog, NullAudit
+    audit: NullAudit | AuditLog
     if args.no_audit:
         audit = NullAudit()
     else:
@@ -599,6 +603,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     # 7) 오케스트레이션 (유한 단계: RECON→PROFILE→ENUM→(LLM)→REPORT)
     # 승인 모드: --auto(완전자동) / --manual(완전수동) / 기본=스마트(범위밖만 확인)
     from .approval import smart_approver
+    from .tools.recon import Approver
+    approver: Approver
     if args.manual:                               # --manual 은 autonomous 보다 우선(안전)
         approver = interactive_approver
     elif args.auto or args.autonomous:            # autonomous → 범위내 자동승인
@@ -639,8 +645,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
 
     # 8) 라이트업 생성(선택)
     if args.writeup is not None:
-        from .writeup import generate_writeup, generate_tistory
         from .state import StateStore
+        from .writeup import generate_tistory, generate_writeup
         gen = generate_tistory if args.writeup_format == "tistory" else generate_writeup
         md = gen(report, attacker_ip=(attacker[0] if attacker else None))
         path = (args.writeup if args.writeup != "__auto__"

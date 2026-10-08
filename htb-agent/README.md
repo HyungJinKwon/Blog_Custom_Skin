@@ -220,12 +220,16 @@ assassin 10.129.1.5 --config config/config.example.json
 ## 테스트
 
 ```bash
-cd htb-agent && python3 tests/run_all.py     # 59 스위트 1622 테스트
+cd htb-agent && python3 tests/run_all.py     # 전체 스위트(끝에 '총 N 스위트 | N passed' 요약)
 ```
 
 네트워크·도구 없이도 러너 주입으로 전 로직 검증. CI(GitHub Actions)가 push/PR 마다
 **파이썬 3.10~3.13 매트릭스**로 테스트+컴파일+README CLI 옵션 표 최신 여부(게이트) + ruff/mypy(비차단) 수행.
-버전 확인: `assassin --version`.
+버전 확인: `assassin --version`. 변경 이력: [CHANGELOG.md](CHANGELOG.md).
+
+## 라이선스
+
+[MIT](LICENSE) — 권한이 확인된 대상(HTB·CTF·인가된 진단)·교육·연구 목적에 한해 사용하세요.
 
 ---
 
