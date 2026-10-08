@@ -1,0 +1,12 @@
+{
+  "name": "ftp-anon",
+  "title": "익명 FTP 로 노출된 플래그 파일",
+  "kind": "docker",
+  "difficulty": "easy",
+  "category": "",
+  "platform": "htb",
+  "ports": [[21, "ftp"]],
+  "flag": "flag{anonymous_ftp_download}",
+  "ready_timeout": 30,
+  "lesson": "anonymous:anonymous 로그인 → 파일 목록·다운로드(ftp/curl)"
+}

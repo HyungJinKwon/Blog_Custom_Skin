@@ -1,0 +1,12 @@
+{
+  "name": "smb-anon-share",
+  "title": "익명 SMB 공유로 노출된 플래그",
+  "kind": "docker",
+  "difficulty": "easy",
+  "category": "",
+  "platform": "htb",
+  "ports": [[445, "microsoft-ds"]],
+  "flag": "flag{anonymous_smb_share}",
+  "ready_timeout": 30,
+  "lesson": "게스트 허용 SMB → smbclient -N -L·smbmap 으로 공유 나열·다운로드"
+}

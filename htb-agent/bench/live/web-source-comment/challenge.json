@@ -1,0 +1,12 @@
+{
+  "name": "web-source-comment",
+  "title": "메인 페이지 HTML 주석에 남은 플래그",
+  "kind": "loopback",
+  "difficulty": "easy",
+  "category": "web",
+  "platform": "ctf",
+  "target": "target.py",
+  "ports": [[80, "http"]],
+  "flag": "flag{view_source_comment}",
+  "lesson": "응답 본문·HTML 주석(View-Source) 확인 — 디버그 값·키 노출"
+}

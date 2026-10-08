@@ -2,6 +2,74 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [미출시]
+
+### 추가
+- **VM 실행 샌드박스 `--sandbox vm`**: 에이전트가 명령을 실행하는 환경을 Docker 외에 **SSH 로 접속한
+  가상머신/공격호스트**에서도 돌릴 수 있다(`--vm-ssh user@host` [`--vm-ssh-key`·`--vm-ssh-port`]).
+  파이프·스크립트·실도구를 VM 에서 실행하고, 작업공간 파일은 scp 로 올린다. `--vm-confine`(+`--vm-sudo`)
+  이면 접속 직후 VM 에 egress 방화벽(타겟 대역만)을 적용·검증해 docker 처럼 완전자율 동적 실행까지
+  자동 허용(그 VM 네트워크를 타겟으로 제한하므로 전용 풀이 VM 에서만). 없으면 contained=False 로
+  동적 실행은 수동 제안. `--doctor` 에 '실행 샌드박스' 점검 추가(none/docker/vm 고르는 법 안내).
+
+### 추가
+- **라이브 벤치 공개세트 확장 + VM/외부 타겟**: 공개 CTF 세트(picoCTF·Dreamhack·HTB Starting
+  Point)에서 흔한 기법류를 **원본으로 재구성**해 문제를 늘렸다(복사 아님). loopback 추가 —
+  `web-cookie-admin`(권한 쿠키 우회)·`web-lfi-flag`(경로 순회/LFI)·`net-banner-flag`(nc 배너
+  상호작용). docker 추가 — `smb-anon-share`·`mysql-empty-root`·`snmp-public`(실서비스).
+  그리고 **`kind: "vm"`** — 컨테이너가 아닌 실제 머신(HTB·Dreamhack 머신, VirtualBox/VMware/
+  libvirt VM)을 타겟으로. 주소는 `challenge.json` 의 `address` 또는 환경변수 `ASSASSIN_VM_<이름>`
+  으로 지정(머신마다 IP 가 달라 파일 수정 없이 덮어쓰기), 선택적 `start_cmd`/`stop_cmd` 로
+  부팅/정리(우리가 부팅한 경우에만 종료). `bench/live/vm-htb-example/`(템플릿·README).
+- **지식베이스 경로 cwd 독립**: 기본값이 '실행한 폴더의 ./knowledge' 였던 것을, 없으면 패키지에
+  번들된 `knowledge/` 로 자동 해석(어느 디렉터리에서 실행해도·설치본에서도 동작). `pyproject.toml`
+  에 `package-data` 추가(일반 설치 시 번들 데이터 포함).
+
+### 수정
+- 포트스캔 폴백 서비스 추정에서 1337 을 `unknown` 으로(CTF pwn 규칙 매칭) — nc 상호작용 유도.
+- `tests/run_all.py`: 스위트당 제한시간(`ASSASSIN_TEST_SUITE_TIMEOUT`, 기본 300초) + 각 스위트
+  stdin=/dev/null(대화형 input() 블록 방지) — 네트워크 대기·stdin 상속으로 멈추던 문제 해소.
+
+## [2.4.0] — 2026-10-08
+
+완전자율(--autonomous)에서 **실제 익스플로잇까지 자동 수행**할 수 있도록 실행 계층을 넓혔습니다.
+기존에는 명령을 한 줄씩(셸 비경유)만 실행해 파이프·스크립트·대화형 세션·첨부파일 분석이 불가능했고,
+리버스쉘·권한상승·크래킹은 '생성만' 했습니다. 안전 경계(범위 밖·파괴명령 차단)는 그대로 유지합니다.
+
+### 추가
+
+- **라이브 벤치마크 `--live-bench [DIR]`**: 가짜 응답(오프라인 `--bench`)이 아니라 **실제 취약
+  서비스를 띄우고 진짜 도구로 풀어** 성공률·pass@k·검증된 풀이율·시간을 측정한다(발표/심사용
+  신뢰 수치). 타겟 종류 두 가지 — `loopback`(파이썬 서비스를 전용 127.0.0.x·표준 포트에 기동,
+  nmap 없이 소켓 폴백으로 발견·curl 등 실도구로 풀이) / `docker`(challenge 의 Dockerfile 로
+  컨테이너를 전용 IP·표준 포트에 기동, FTP/Redis 등 실서비스; 데몬 없으면 명확히 알리고 건너뜀).
+  번들 문제 `bench/live/`(web-robots-hidden·web-header-leak·web-source-comment·ftp-anon·redis-key).
+  집계·표·JSON·시도별 감사 로그(`--replay`)는 `--bench` 와 같은 구조 재사용.
+- **포트스캔 폴백(nmap 미설치 대응)**: nmap 이 없을 때 순수 파이썬 TCP-connect 스캔으로 열린
+  포트를 찾아 정찰이 진행되게 한다(바인딩된 타겟만 스캔 — 범위 밖 불가). 흔한 포트 서비스 추정 +
+  짧은 배너. nmap 이 있으면 항상 nmap 사용. (`tools/portscan_fallback.py`, `ReconExecutor` 통합)
+- **샌드박스 실행기 `--sandbox {none,shell,docker}`**: `docker` 는 Kali 컨테이너 안에서 `bash -c` 로
+  실행(파이프·리다이렉트 가능)하고, 컨테이너 egress 를 **타겟 대역(/32)만 허용**하도록 iptables 로
+  강제합니다(기본 DROP). 명령은 비root `agent` + no-new-privileges 로 돌아 정책을 바꿀 수 없습니다
+  (`sandbox/Dockerfile`, `scripts/build_sandbox.sh`). `shell` 은 로컬 bash(네트워크 미강제).
+- **작업공간 + 첨부파일 `--files PATH`**: 챌린지 소스·바이너리·덤프를 작업공간 `files/` 로 가져오고
+  (zip·tar 는 zip-slip 방어로 안전하게 해제), LLM 이 소스를 읽고 취약 지점을 찾습니다. 열린 포트가
+  없어도(rev/crypto/forensic) 파일 분석으로 진행합니다.
+- **LLM 스크립트 작성·실행**: LLM 이 JSON 응답에 `file:{path,content}` 를 넣으면 익스플로잇·디코더·
+  솔버 스크립트를 작업공간에 쓰고 실행합니다. 네트워크가 실행 계층에서 강제되는(docker) 때만 자동
+  실행하고, 그 외에는 수동 제안으로 남깁니다. 작성 파일은 감사 로그에 해시·본문과 함께 남습니다.
+- **완전자율 승인**: egress 강제 샌드박스에서는 동적·원격 코드 실행(파이프→셸 등)도 자동 승인합니다
+  (`auto_approve_contained`) — 정적 검사로 내용을 알 수 없어도 네트워크가 타겟으로 묶여 있기 때문.
+
+### 안전
+
+- **셸 연산자 게이트**: 셸 비경유 실행기에서 파이프·리다이렉트(`|`, `>`, `&&`, `;`)가 인자로 넘어가
+  조용히 오작동하던 문제를 실행 전에 거부합니다(따옴표 밖 연산자만 판별, `shell_operators()`).
+- **표준입력 차단**: 모든 실행기가 stdin 을 닫아 `nc` 등 입력 대기 도구가 터미널을 가로채거나
+  타임아웃까지 멈추지 않습니다.
+- **플래그 출처 보정**: 에이전트가 작성한 스크립트 본문이나 명령 문자열 자체에 들어 있는 플래그는
+  '로컬 유래(사람 확인)'로 강등해, LLM 이 지어낸 값이 '공략 유래'로 집계되지 않게 합니다.
+
 ## [2.3.0] — 2026-10-08
 
 초보자가 처음 실행할 때 막히는 지점과 긴 출력을 정리했습니다.

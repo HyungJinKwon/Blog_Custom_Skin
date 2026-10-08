@@ -47,6 +47,15 @@ def auto_approve_in_scope(cmd: str, vrep: ValidationReport,
     return vrep.ok and sres.auto_allowed and not vrep.review
 
 
+def auto_approve_contained(cmd: str, vrep: ValidationReport,
+                           sres: CommandScopeResult) -> bool:
+    """완전자율 + egress 강제 샌드박스 전용 승인. 검증 통과 + 범위내면 동적·원격 코드 실행
+    (review)도 자동 승인한다 — 실행 내용을 정적으로 알 수 없어도 네트워크는 컨테이너
+    방화벽이 타겟 대역으로 묶고, 명령은 비root 로 정책을 바꿀 수 없기 때문이다.
+    파괴명령(검증 실패)·범위 밖 대상은 여전히 거부."""
+    return vrep.ok and sres.auto_allowed
+
+
 @dataclass
 class AttemptRecord:
     label: str
@@ -92,12 +101,47 @@ class ReconExecutor:
     def __init__(self, guard: ScopeGuard, runner: Runner,
                  approver: Approver = auto_approve_in_scope,
                  max_attempts: int = 4,
-                 hosts_map: dict[str, str] | None = None):
+                 hosts_map: dict[str, str] | None = None,
+                 is_tool_available: "Callable[[str], bool] | None" = None,
+                 extra_ports: "list[int] | None" = None,
+                 scan_timeout: float = 1.0,
+                 socket_probe=None,
+                 real_exec: "bool | None" = None):
         self.guard = guard
         self.runner = runner
         self.approver = approver
         self.max_attempts = max_attempts
         self.hosts_map = hosts_map
+        # nmap 가용 여부(주입 가능). 없으면 순수 파이썬 TCP-connect 폴백으로 포트 발견.
+        import shutil
+        self.is_tool_available = is_tool_available or (lambda b: shutil.which(b) is not None)
+        self.extra_ports = [int(p) for p in (extra_ports or [])]
+        self.scan_timeout = scan_timeout
+        self._socket_probe = socket_probe
+        # 소켓 폴백은 '실제 실행' 러너에서만(FakeRunner 테스트에서 실제 네트워크 접속 금지).
+        # 명시값이 없으면 러너의 real_exec 능력에서 유도(FakeRunner=False → 폴백 안 함).
+        self.real_exec = (real_exec if real_exec is not None
+                          else getattr(runner, "real_exec", True))
+
+    def _socket_fallback(self, target: str) -> "AttemptRecord | None":
+        """nmap 없을 때 파이썬 TCP-connect 스캔. 바인딩 타겟만 스캔(범위 밖 불가).
+        호스트명 타겟은 소켓이 OS 해석기로 연결하므로 그대로 사용한다."""
+        from .portscan_fallback import DEFAULT_PORTS, socket_scan
+        ports = list(DEFAULT_PORTS) + [p for p in self.extra_ports if p not in DEFAULT_PORTS]
+        rec = AttemptRecord(label="소켓 폴백(nmap 미설치 · TCP connect)",
+                            command=f"[python socket-scan] {target} ({len(ports)} 포트)",
+                            validated=True, scope_ok=True, approved=True)
+        try:
+            res = socket_scan(target, ports, timeout=self.scan_timeout,
+                              probe=self._socket_probe)
+            rec.ran = True
+            rec.result = res
+            h = res.first_host()
+            rec.note = (f"열린 포트 {h.open_ports}" if (h and h.open_ports)
+                        else "열린 포트 없음")
+        except Exception as e:   # noqa: BLE001 — 폴백 실패가 세션을 깨지 않도록
+            rec.note = f"소켓 스캔 예외: {type(e).__name__}: {e}"
+        return rec
 
     def run_portscan(self) -> ReconReport:
         if self.guard.bound_target is None and self.guard.bound_host is None:
@@ -105,6 +149,24 @@ class ReconExecutor:
         # 호스트명 타겟(CTF)도 지원: IP 가 없으면 호스트명으로 스캔(nmap 가 해석)
         target = str(self.guard.bound_target or self.guard.bound_host)
         report = ReconReport(target=target, status="escalate")
+
+        # nmap 이 없으면 순수 파이썬 TCP-connect 폴백으로 포트를 발견한다(바인딩 타겟만).
+        # 단, 실제 실행 러너일 때만 — FakeRunner(테스트)에선 실제 소켓 접속을 하지 않는다.
+        if self.real_exec and not self.is_tool_available("nmap"):
+            fb = self._socket_fallback(target)
+            if fb is not None:
+                report.attempts.append(fb)
+                if fb.result is not None and _satisfactory(fb.result):
+                    h = fb.result.first_host()
+                    report.status = "success"
+                    report.host = h
+                    report.message = (f"소켓 폴백(nmap 미설치) 성공 — 열린 포트 "
+                                      f"{h.open_ports if h else []}")
+                    return report
+                report.host = fb.result.first_host() if fb.result else None
+                report.message = ("소켓 폴백(nmap 미설치): 열린 포트 미발견 — nmap 설치 권장"
+                                  "(sudo apt install -y nmap). 사람 개입 필요.")
+                return report
 
         for idx, (label, tmpl, timeout) in enumerate(PORTSCAN_PLAN):
             if idx >= self.max_attempts:   # 유한 상한 — 무한루프 방지

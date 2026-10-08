@@ -28,8 +28,27 @@
 > 한 명령으로 최대 자율 풀이. 범위내 자동승인 + 깊은 재진입 스윕(3) + 병렬 열거(4) +
 > 변형 학습 + 전 자동준비(리버스쉘·클라우드·권한상승·크래킹)를 묶어 목표(flag/root)까지
 > 스스로 추진합니다. 두뇌까지 쓰려면 `--llm hybrid` 추가. **안전 경계는 유지** —
-> 범위 밖·파괴명령·실제 익스플로잇은 여전히 게이트(‘건드려선 안 될 권한’만 사람).
-> `--manual` 은 autonomous 보다 우선합니다.
+> 범위 밖·파괴명령은 여전히 게이트. `--manual` 은 autonomous 보다 우선합니다.
+>
+> **샌드박스에서 실제 익스플로잇까지(`--sandbox docker`)**: 완전자율로 파이프·스크립트·
+> 대화형 도구까지 쓰려면 egress 강제 샌드박스를 켭니다. Kali 컨테이너 안에서 `bash -c` 로
+> 실행하되 **네트워크는 타겟 대역만** 허용(iptables 기본 DROP), 명령은 비root 로 돌아 정책을
+> 바꿀 수 없습니다. 이 안에서는 LLM 이 쓴 익스플로잇/솔버 스크립트를 자동 실행하고, 동적·원격
+> 코드 실행(파이프→셸 등)도 자동 승인합니다(범위는 컨테이너 방화벽이 강제).
+> 이미지 빌드: `./scripts/build_sandbox.sh`. 샌드박스 없이(기본 `none`)는 셸 연산자·스크립트
+> 실행이 수동 제안으로 남습니다.
+>
+> ```bash
+> ./scripts/build_sandbox.sh                                   # 최초 1회(Kali 이미지 빌드)
+> assassin 10.129.1.5 --autonomous --sandbox docker --llm hybrid
+> # Dreamhack/CTF 첨부파일(소스·바이너리) 분석까지:
+> assassin chall.dreamhack.io:8080 --platform dreamhack --category pwn \
+>          --files ./prob.zip --autonomous --sandbox docker --llm hybrid
+> ```
+>
+> **챌린지 첨부파일(`--files`)**: 제공 소스·바이너리·덤프를 작업공간 `files/`(읽기 전용)로
+> 가져오면 LLM 이 먼저 읽고 취약 지점을 찾습니다. zip·tar 는 안전하게 풀고, 열린 포트가
+> 없는 문제(rev/crypto/forensic)도 파일 분석으로 진행합니다.
 
 ---
 
@@ -194,6 +213,28 @@ assassin 10.129.1.5 --config config/config.example.json
 > (라이트업 저장: `python3 scripts/demo.py --write out/`). 실전 운영·트러블슈팅은
 > **[docs/OPERATIONS.md](docs/OPERATIONS.md)** 참고.
 
+> **성능 측정 — 오프라인 vs 라이브**:
+> - `assassin --bench` : 가짜 응답(오프라인 모의 문제)으로 빠르게 회귀 측정(실제 통신 없음).
+> - `assassin --live-bench` : **실제 서비스를 띄우고 진짜 도구로 풀이** — 발표/심사용 신뢰 수치
+>   (성공률·pass@k·검증된 풀이율·시간). `--attempts N`·`--llm hybrid` 적용. 체인 풀이(예:
+>   robots→숨은 경로, 쿠키 우회, LFI)는 `--llm` 을 켜야 풀립니다(KB만으로는 직접 노출형만).
+>
+> `bench/live/` 문제 종류(`challenge.json` 의 `kind`):
+> - **loopback** — 파이썬 취약 서비스를 전용 127.0.0.x·표준 포트에 기동. 어디서나 실행(nmap 없이
+>   소켓 폴백·`curl`/`nc` 로 풀이). web(robots·헤더·소스주석·쿠키우회·LFI)·misc(nc 배너).
+> - **docker** — challenge 의 Dockerfile 로 실서비스 컨테이너를 전용 IP·표준 포트에 기동. 데몬
+>   없으면 건너뜀. ftp(익명)·redis(비인증)·smb(게스트)·mysql(빈 root)·snmp(public).
+> - **vm** — 컨테이너가 아닌 실제 머신(HTB·Dreamhack 머신, VirtualBox/VMware/libvirt VM). 주소는
+>   `address` 또는 `ASSASSIN_VM_<이름>=<IP>` 로 지정, 선택적 `start_cmd`/`stop_cmd` 로 부팅/정리.
+>   자세히는 `bench/live/vm-htb-example/README.md`.
+>
+> ```bash
+> assassin --live-bench --attempts 3 --llm hybrid        # 전체(loopback + 가능한 docker) pass@3
+> assassin --live-bench --attempts 1                      # KB만(규칙기반) 기준선
+> ASSASSIN_VM_VM_FOREST=10.129.10.5 assassin --live-bench --llm hybrid   # 실제 VM(권한 확인 자산만)
+> ```
+> 문제 추가는 `bench/live/<이름>/` 에 `challenge.json` + 타겟(파이썬 `target.py` 또는 `Dockerfile`)만.
+
 ---
 
 ## 핵심 특징
@@ -268,17 +309,26 @@ cd htb-agent && python3 tests/run_all.py     # 전체 스위트(끝에 '총 N �
 | `--privesc` `OS` | 권한상승 플레이북 자동 준비(생성 안 실행). OS 별 열거·점검·LPE 체크리스트 생성. 예: --privesc linux. 획득한 대상 셸에서 직접 실행 |
 | `--crack` `HASH` | 해시 크래킹 자동 준비(생성 안 실행). 해시 종류 식별 + john/hashcat 명령 생성. 예: --crack '$krb5tgs$23$...'. 권한 확인 자산 해시 전용 |
 | `--bench` `SUITE` | 로컬 모의 문제로 풀이 성공률·명령 수·시간·비용 측정(오프라인, 실제 통신 없음). SUITE 생략 시 번들 문제 세트. --attempts N 으로 반복(pass@N), --llm 으로 LLM 비교 |
-| `--attempts` `N` | --bench 에서 문제당 시도 횟수(기본 1) |
+| `--attempts` `N` | --bench/--live-bench 에서 문제당 시도 횟수(기본 1) |
+| `--live-bench` `DIR` | 실제 서비스(loopback 파이썬 / docker 컨테이너 / vm 외부·가상머신)를 띄우거나 붙어 진짜 도구로 풀이 — 성공률·검증된 풀이율·시간 측정. DIR 생략 시 bench/live. docker 타겟은 데몬 필요. --attempts·--llm 적용 |
 | `--replay` `JSONL` | 감사 로그(JSONL)를 단계별 재생 HTML 로 변환(이전/다음/자동 재생). 예: --replay state/audit_10.129.1.5.jsonl → 같은 이름의 .html |
 | `--platform` | 플랫폼 프로파일 (기본 htb). dreamhack/ctf=단일 타겟+flag{} 모드 |
 | `--category` | Jeopardy 카테고리 힌트(web/pwn/rev/crypto/forensic/misc). CTF/Dreamhack 에서 LLM 제안을 카테고리에 맞게 유도 |
 | `--flag-prefix` `PREFIX` | 우선 인식할 플래그 접두 (반복 가능, 예: --flag-prefix DH). 플랫폼 기본값에 추가 |
 | `--range` `CIDR` | 허용 타겟 CIDR (반복 가능). 생략 시 플랫폼 기본(HTB만 대역 강제) |
 | `--attacker-ip` `IP` | 공격자 VPN IP (반복 가능). 생략 시 tun0 자동탐지 |
+| `--files` `PATH` | 챌린지 첨부파일/디렉터리(반복 가능, zip·tar 는 안전하게 풀어 둠). 작업공간 files/ 에 복사되어 LLM 이 소스를 읽고 분석. 포트가 없어도 파일 분석으로 진행 |
 | `--lport` `PORT` | 리버스쉘 리스너 포트(자동 준비 페이로드용, 기본 4444) |
 | `--cred` `USER:PASS` | 자격증명 'user:pass' / 'user:pass:domain' / 'user:pass:domain:nthash' (반복 가능). Pass-the-Hash 는 'user:&lt;32hex&gt;' 또는 'user::domain:&lt;NT\|LM:NT&gt;'. {user}/{pass}/{domain}/{hash} 제안을 실행 후보로 승격 |
 | `--config` | 설정 파일(.json/.yaml). 우선순위: CLI &gt; 설정파일 &gt; 기본값 |
 | `--autonomous`, `--hackathon` | 능동적 완전자동 모드: 범위내 자동승인 + 깊은 재진입 스윕 + 병렬 열거 + 변형학습 + 전 자동준비. 목표(flag/root)까지 스스로 추진(안전 게이트 유지) |
+| `--sandbox` | 명령을 '어디서' 실행할지: none=로컬 셸 비경유(기본, 파이프 불가) · shell=로컬 bash(파이프 O, 네트워크 강제 X) · docker=Kali 컨테이너+egress 방화벽 · vm=SSH 로 접속한 가상머신/공격호스트. 스크립트 작성·동적 실행 자동은 egress 강제된 docker 또는 'vm --vm-confine' 에서만 |
+| `--sandbox-image` `IMAGE` | docker 샌드박스 이미지(기본 assassin-sandbox:latest — scripts/build_sandbox.sh) |
+| `--vm-ssh` `USER@HOST` | --sandbox vm: 명령을 실행할 VM 의 SSH 접속 대상(예: kali@192.168.56.10) |
+| `--vm-ssh-key` `KEYFILE` | --sandbox vm: SSH 개인키 파일(미지정 시 ssh 기본·에이전트 사용) |
+| `--vm-ssh-port` `PORT` | --sandbox vm: SSH 포트(기본 22) |
+| `--vm-sudo` | --sandbox vm: VM 에서 egress 정책 적용 등에 sudo 사용(--vm-confine 과 함께) |
+| `--vm-confine` | --sandbox vm: 접속한 VM 에 egress 방화벽(타겟 대역만)을 적용해 docker 처럼 완전자율 동적 실행을 자동 허용. 그 VM 네트워크를 타겟으로 제한하므로 전용 풀이 VM 에서만 |
 | `--auto` | 완전 자동: 범위내+검증통과만 실행, 범위 밖은 조용히 건너뜀(무프롬프트) |
 | `--manual` | 완전 수동: 모든 명령을 실행 전 확인(승인제 최대) |
 | `--no-enrich` | CVE/CWE 자동 수집(NVD/GitHub) 비활성 |

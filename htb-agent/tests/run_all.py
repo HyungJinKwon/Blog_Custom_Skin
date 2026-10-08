@@ -7,6 +7,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)   # htb-agent
+SUITE_TIMEOUT = int(os.environ.get("ASSASSIN_TEST_SUITE_TIMEOUT", "300"))   # 스위트당 제한(초)
 
 
 def main() -> int:
@@ -14,7 +15,16 @@ def main() -> int:
     total_pass = total_fail = failed_suites = 0
     for path in suites:
         name = os.path.basename(path)
-        r = subprocess.run([sys.executable, path], capture_output=True, text=True, cwd=ROOT)
+        # stdin 을 /dev/null 로 — 대화형 승인(input())을 쓰는 테스트가 상속받은 stdin 에서
+        # 블록하지 않고 즉시 EOF 를 받게 한다(비대화 실행·CI 안정성).
+        try:
+            r = subprocess.run([sys.executable, path], capture_output=True, text=True, cwd=ROOT,
+                               stdin=subprocess.DEVNULL, timeout=SUITE_TIMEOUT)
+        except subprocess.TimeoutExpired as e:
+            print(f"  ⏱ {name:24} 제한시간 {SUITE_TIMEOUT}s 초과 — 실패 처리")
+            print((e.stdout or "")[-800:] if isinstance(e.stdout, str) else "")
+            failed_suites += 1
+            continue
         last = ""
         for line in reversed(r.stdout.strip().splitlines()):
             if "passed" in line:

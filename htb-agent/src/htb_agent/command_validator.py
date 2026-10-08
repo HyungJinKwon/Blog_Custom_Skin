@@ -268,6 +268,23 @@ def _find_binary(tokens: list[str]) -> str | None:
     return None
 
 
+_SHELL_OPS = frozenset({"|", "||", "&", "&&", ";", ";;", ">", ">>", "<", "<<", "<<<",
+                        ">&", "<&", "&>", "|&", "(", ")"})
+
+
+def shell_operators(command: str) -> list[str]:
+    """따옴표 밖에 있는 셸 연산자(|, &&, ;, >, < …)를 순서대로 반환.
+    셸 비경유 실행기(shell=False)에선 이 연산자들이 그냥 인자로 넘어가 조용히 오작동하므로,
+    오케스트레이터가 실행 전에 거부하는 데 쓴다. 파싱 실패(따옴표 불균형)는 빈 목록."""
+    lex = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    try:
+        toks = list(lex)
+    except ValueError:
+        return []
+    return [t for t in toks if t in _SHELL_OPS]
+
+
 def validate(command: str, require_known_binary: bool = False) -> ValidationReport:
     """명령을 다중 경로로 검증해 리포트를 반환."""
     report = ValidationReport(command=command)

@@ -1,0 +1,12 @@
+{
+  "name": "mysql-empty-root",
+  "title": "root 빈 비밀번호 MySQL 의 플래그 테이블",
+  "kind": "docker",
+  "difficulty": "medium",
+  "category": "",
+  "platform": "htb",
+  "ports": [[3306, "mysql"]],
+  "flag": "flag{mysql_empty_root_password}",
+  "ready_timeout": 60,
+  "lesson": "빈 root 비밀번호 → mysql -h <ip> -u root 로 접속, SHOW DATABASES·SELECT 로 열람"
+}

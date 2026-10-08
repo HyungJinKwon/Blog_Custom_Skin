@@ -103,7 +103,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="로컬 모의 문제로 풀이 성공률·명령 수·시간·비용 측정(오프라인, 실제 통신 없음). "
                         "SUITE 생략 시 번들 문제 세트. --attempts N 으로 반복(pass@N), --llm 으로 LLM 비교")
     g_tool.add_argument("--attempts", type=int, default=1, metavar="N",
-                   help="--bench 에서 문제당 시도 횟수(기본 1)")
+                   help="--bench/--live-bench 에서 문제당 시도 횟수(기본 1)")
+    g_tool.add_argument("--live-bench", metavar="DIR", nargs="?", const="__default__", default=None,
+                   help="실제 서비스(loopback 파이썬 / docker 컨테이너 / vm 외부·가상머신)를 띄우거나 붙어 진짜 도구로 풀이 — "
+                        "성공률·검증된 풀이율·시간 측정. DIR 생략 시 bench/live. docker 타겟은 데몬 필요. "
+                        "--attempts·--llm 적용")
     g_tool.add_argument("--replay", metavar="JSONL", default=None,
                    help="감사 로그(JSONL)를 단계별 재생 HTML 로 변환(이전/다음/자동 재생). "
                         "예: --replay state/audit_10.129.1.5.jsonl → 같은 이름의 .html")
@@ -122,6 +126,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="허용 타겟 CIDR (반복 가능). 생략 시 플랫폼 기본(HTB만 대역 강제)")
     g_target.add_argument("--attacker-ip", action="append", dest="attacker_ips", metavar="IP",
                    help="공격자 VPN IP (반복 가능). 생략 시 tun0 자동탐지")
+    g_target.add_argument("--files", action="append", dest="files", metavar="PATH",
+                   help="챌린지 첨부파일/디렉터리(반복 가능, zip·tar 는 안전하게 풀어 둠). "
+                        "작업공간 files/ 에 복사되어 LLM 이 소스를 읽고 분석. 포트가 없어도 파일 분석으로 진행")
     g_target.add_argument("--lport", type=int, default=4444, metavar="PORT",
                    help="리버스쉘 리스너 포트(자동 준비 페이로드용, 기본 4444)")
     g_target.add_argument("--cred", action="append", dest="creds", metavar="USER:PASS",
@@ -133,6 +140,24 @@ def build_parser() -> argparse.ArgumentParser:
     g_mode.add_argument("--autonomous", "--hackathon", action="store_true", dest="autonomous",
                    help="능동적 완전자동 모드: 범위내 자동승인 + 깊은 재진입 스윕 + 병렬 열거 + "
                         "변형학습 + 전 자동준비. 목표(flag/root)까지 스스로 추진(안전 게이트 유지)")
+    g_mode.add_argument("--sandbox", choices=["none", "shell", "docker", "vm"], default=None,
+                   help="명령을 '어디서' 실행할지: none=로컬 셸 비경유(기본, 파이프 불가) · "
+                        "shell=로컬 bash(파이프 O, 네트워크 강제 X) · docker=Kali 컨테이너+egress 방화벽 · "
+                        "vm=SSH 로 접속한 가상머신/공격호스트. 스크립트 작성·동적 실행 자동은 "
+                        "egress 강제된 docker 또는 'vm --vm-confine' 에서만")
+    g_mode.add_argument("--sandbox-image", default=None, metavar="IMAGE",
+                   help="docker 샌드박스 이미지(기본 assassin-sandbox:latest — scripts/build_sandbox.sh)")
+    g_mode.add_argument("--vm-ssh", default=None, metavar="USER@HOST",
+                   help="--sandbox vm: 명령을 실행할 VM 의 SSH 접속 대상(예: kali@192.168.56.10)")
+    g_mode.add_argument("--vm-ssh-key", default=None, metavar="KEYFILE",
+                   help="--sandbox vm: SSH 개인키 파일(미지정 시 ssh 기본·에이전트 사용)")
+    g_mode.add_argument("--vm-ssh-port", type=int, default=22, metavar="PORT",
+                   help="--sandbox vm: SSH 포트(기본 22)")
+    g_mode.add_argument("--vm-sudo", action="store_true",
+                   help="--sandbox vm: VM 에서 egress 정책 적용 등에 sudo 사용(--vm-confine 과 함께)")
+    g_mode.add_argument("--vm-confine", action="store_true",
+                   help="--sandbox vm: 접속한 VM 에 egress 방화벽(타겟 대역만)을 적용해 docker 처럼 "
+                        "완전자율 동적 실행을 자동 허용. 그 VM 네트워크를 타겟으로 제한하므로 전용 풀이 VM 에서만")
     g_mode.add_argument("--auto", action="store_true",
                    help="완전 자동: 범위내+검증통과만 실행, 범위 밖은 조용히 건너뜀(무프롬프트)")
     g_mode.add_argument("--manual", action="store_true",
@@ -333,6 +358,86 @@ def _run_bench(args, cfg, knowledge_dir: str) -> int:
     return 0
 
 
+def _run_live_bench(args, cfg, knowledge_dir: str) -> int:
+    """--live-bench: 실제 서비스를 띄우고 '진짜' 에이전트를 돌려 풀이율을 측정한다.
+    집계·표·JSON·시도별 감사 로그는 오프라인 --bench 와 같은 구조를 재사용한다."""
+    import json as _json
+    import os as _os
+    from datetime import datetime
+
+    from . import bench, livebench, ui
+    from .config import pick
+    from .knowledge import KnowledgeBase
+    suite = "bench/live" if args.live_bench == "__default__" else args.live_bench
+    if not _os.path.isdir(suite):
+        alt = _os.path.join(_os.path.dirname(__file__), "..", "..", "bench", "live")
+        suite = suite if _os.path.isdir(suite) else _os.path.normpath(alt)
+    try:
+        challenges = livebench.load_live_suite(suite)
+    except livebench.LiveBenchError as e:
+        print(ui.mark_err(f"라이브 벤치 문제 오류: {e}"), file=sys.stderr)
+        return 2
+    # docker 타겟은 데몬이 '실제로 응답'해야 실행(없으면 명확히 알리고 건너뜀).
+    # vm 타겟은 주소(challenge.address 또는 ASSASSIN_VM_<이름>)가 있어야 실행.
+    has_docker = livebench.docker_available()
+    runnable: list = []
+    skipped: list = []
+    for c in challenges:
+        if c.kind == "loopback":
+            runnable.append(c)
+        elif c.kind == "docker":
+            (runnable if has_docker else skipped).append(c)
+        elif c.kind == "vm":
+            addr = _os.environ.get(livebench.vm_env_key(c.name)) or c.address
+            (runnable if addr else skipped).append(c)
+        else:
+            skipped.append(c)
+    llm_kind = pick(args.llm, cfg.llm_backend, "none")
+    router, llm_status = _build_llm_router(llm_kind, pick(args.llm_tier, cfg.llm_tier, "standard"),
+                                           **_ollama_opts(cfg))
+    if llm_kind != "none" and router is None:
+        print(ui.mark_err(llm_status), file=sys.stderr)
+        return 2
+    state_dir = pick(args.state_dir, cfg.state_dir, "state")
+    run_dir = _os.path.join(state_dir, "livebench", datetime.now().strftime("%Y%m%d-%H%M%S"))
+    print(ui.kv("라이브 문제", f"{suite} · 실행 {len(runnable)}개"
+                + (f" · 건너뜀 {len(skipped)}개" if skipped else "")
+                + f" · 문제당 {max(1, args.attempts)}회", 10))
+    print(ui.kv("LLM", llm_status, 10))
+    print(ui.kv("실행", ui.warn("실제 서비스 기동 + 진짜 도구 실행 — 권한 확인 자산에서만"), 10) + "\n")
+    if skipped:
+        print(ui.dim("  건너뜀: " + ", ".join(f"{c.name}({c.kind})" for c in skipped)
+                     + "  — docker 는 데몬 필요(./scripts/build_sandbox.sh 와 동일 환경), "
+                     + "vm 은 challenge.address 또는 ASSASSIN_VM_<이름>=<IP> 필요"))
+    results = livebench.run_live_bench(
+        runnable, args.attempts, KnowledgeBase.load(base_dir=knowledge_dir),
+        router=router, trace_dir=run_dir, progress=lambda m: print(ui.dim("  · " + m)))
+    stats = bench.summarize(runnable, results)
+    print("\n" + bench.render(stats, max(1, args.attempts), llm_kind))
+    out = _os.path.join(run_dir, "results.json")
+    _os.makedirs(run_dir, exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        _json.dump(bench.to_dict(suite, max(1, args.attempts), llm_kind, stats, results),
+                   f, ensure_ascii=False, indent=2)
+    print(ui.kv("결과", out, 10))
+    return 0 if any(r.solved for r in results) else 1
+
+
+def _default_knowledge_dir() -> str:
+    """지식베이스 폴더 기본값을 '실행한 폴더'가 아니라 '어디서 실행해도' 찾도록 해석한다.
+    우선순위: ./knowledge(현재 폴더) → 패키지에 번들된 knowledge/(설치본·다른 cwd 안전)."""
+    import os as _os
+    cwd = _os.path.join(_os.getcwd(), "knowledge")
+    if _os.path.isdir(cwd):
+        return cwd
+    bundled = _os.path.normpath(_os.path.join(_os.path.dirname(__file__), "..", "..", "knowledge"))
+    if _os.path.isdir(bundled):
+        return bundled
+    # 패키지 안에 동봉된 경우(src/htb_agent/knowledge) — 휠 설치 대비
+    inpkg = _os.path.join(_os.path.dirname(__file__), "knowledge")
+    return inpkg if _os.path.isdir(inpkg) else cwd
+
+
 def _print_kb_sync(r, verbose: bool = False) -> None:
     """공유 시드 동기화 결과 한 줄 요약(변화 없으면 자동 실행 시엔 조용히)."""
     from . import ui
@@ -357,7 +462,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         ("--revshell", args.revshell), ("--cloud", args.cloud),
         ("--privesc", args.privesc), ("--crack", args.crack), ("--ingest", args.ingest),
         ("--kb-sync", args.kb_sync), ("--promote", args.promote), ("--learn", args.learn),
-        ("--bench", args.bench), ("--replay", args.replay))
+        ("--bench", args.bench), ("--live-bench", args.live_bench), ("--replay", args.replay))
         if v not in (None, False)]
     if len(standalone) > 1:
         parser.error(f"함께 쓸 수 없는 단독 명령: {' '.join(standalone)}")
@@ -392,7 +497,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
               file=sys.stderr)
     for w in cfg.warnings:
         print(ui.mark_warn(f"설정 경고: {w}"), file=sys.stderr)
-    knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, "knowledge")
+    knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, None) or _default_knowledge_dir()
 
     # 실행 기록 재생(감사 로그 → 단계별 HTML)
     if args.replay:
@@ -408,6 +513,10 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     # 평가 하네스(오프라인 모의 문제) — 성공률·pass@N·명령 수·시간·비용
     if args.bench:
         return _run_bench(args, cfg, knowledge_dir)
+
+    # 라이브 평가 하네스(실제 서비스·진짜 도구) — 신뢰할 수 있는 발표용 수치
+    if args.live_bench:
+        return _run_live_bench(args, cfg, knowledge_dir)
 
     # 환경 자가진단(스캔 안 함) — 완전 초보자 권장 첫 실행
     if args.doctor or args.llm_test:
@@ -738,7 +847,83 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         approver = smart_approver
     from .approval import interactive_observer
     observer = interactive_observer if (args.observe and runner is None) else None
+
+    # 7.5) 실행기 + 작업공간 — 샌드박스(docker)는 egress 방화벽을 건 뒤에만 명령을 받는다
+    sandbox_kind = pick(args.sandbox, cfg.sandbox, "none")
+    workspace = None
+    import typing as _t
+    sandbox: _t.Any = None   # DockerSandbox | VMSandbox | None — 공통 수명주기(start/stop)만 사용
+    if args.files or sandbox_kind != "none":
+        from .state import StateStore as _SS
+        from .workspace import Workspace, WorkspaceError
+        workspace = Workspace(_os.path.join(state_dir, "work", _SS._safe(args.target)))
+        if args.files:
+            try:
+                added = workspace.import_paths(args.files)
+            except (WorkspaceError, OSError) as e:
+                print(ui.mark_err(f"첨부파일 가져오기 실패: {e}"), file=sys.stderr)
+                return 2
+            print(ui.kv("첨부파일", ui.ok(", ".join(added)) + ui.dim(f"  → {workspace.root}"), 10))
+    if runner is None and sandbox_kind == "docker":
+        from .tools.sandbox import DEFAULT_IMAGE, DockerSandbox, SandboxError, allowlist_for
+        assert workspace is not None   # sandbox_kind != "none" → 위에서 생성됨
+        try:
+            cidrs, hosts = allowlist_for(guard)
+            sandbox = DockerSandbox(workspace.root, cidrs,
+                                    image=args.sandbox_image or DEFAULT_IMAGE,
+                                    lports=[args.lport], hosts=hosts)
+            sandbox.start()
+        except SandboxError as e:
+            print(ui.panel("샌드박스 시작 실패 — 실행하지 않습니다", [
+                str(e),
+                ui.accent2("이미지 빌드: ") + ui.bold("./scripts/build_sandbox.sh"),
+                ui.dim("Docker 데몬·권한(docker 그룹) 확인. 샌드박스 없이: --sandbox none"),
+            ], style="warn"), file=sys.stderr)
+            return 2
+        runner = sandbox
+        print(ui.kv("샌드박스", ui.ok(f"docker {sandbox.name} · egress 허용 {', '.join(cidrs)}"), 10))
+    elif runner is None and sandbox_kind == "shell":
+        from .tools.sandbox import ShellRunner
+        assert workspace is not None   # sandbox_kind != "none" → 위에서 생성됨
+        runner = ShellRunner(workdir=workspace.root)
+        print(ui.kv("실행기", ui.warn("로컬 bash — 네트워크 강제 없음(스크립트 자동 실행 안 함)"), 10))
+    elif runner is None and sandbox_kind == "vm":
+        from .tools.sandbox import SandboxError, VMSandbox, allowlist_for
+        assert workspace is not None   # sandbox_kind != "none" → 위에서 생성됨
+        vm_ssh = args.vm_ssh
+        if not vm_ssh:
+            print(ui.panel("VM 샌드박스 — 접속 정보가 필요합니다", [
+                "명령을 실행할 VM 의 SSH 대상을 지정하세요.",
+                ui.accent2("예: ") + ui.bold("--sandbox vm --vm-ssh kali@192.168.56.10"),
+                ui.dim("키: --vm-ssh-key ~/.ssh/id_ed25519 · 포트: --vm-ssh-port 22"),
+                ui.dim("완전자율 동적 실행까지 자동으로 하려면(선택): --vm-confine --vm-sudo"),
+            ], style="warn"), file=sys.stderr)
+            return 2
+        try:
+            cidrs, hosts = allowlist_for(guard)
+            sandbox = VMSandbox(vm_ssh, workspace.root, cidrs, ssh_key=args.vm_ssh_key,
+                                ssh_port=args.vm_ssh_port, lports=[args.lport],
+                                sudo=args.vm_sudo, confine=args.vm_confine, hosts=hosts)
+            sandbox.start()
+        except SandboxError as e:
+            print(ui.panel("VM 샌드박스 시작 실패 — 실행하지 않습니다", [
+                str(e),
+                ui.dim("점검: VM 이 켜져 있고 `ssh " + str(vm_ssh) + "` 가 비밀번호 없이(키) 되는지, "
+                       "VPN/네트워크로 타겟에 닿는지."),
+                ui.dim("egress 경계 없이 쓰려면 --vm-confine 을 빼세요(동적 실행은 수동 제안)."),
+            ], style="warn"), file=sys.stderr)
+            return 2
+        runner = sandbox
+        state = ("egress 강제 " + ", ".join(cidrs)) if sandbox.contained else "네트워크 강제 없음"
+        print(ui.kv("실행기", ui.ok(f"vm {vm_ssh} · {state}"), 10))
+    if args.autonomous and not getattr(runner, "contained", False):
+        print(ui.mark_warn("완전자율인데 egress 강제 샌드박스가 없음 — 스크립트 작성·동적 실행은 "
+                           "수동 제안으로 남습니다(권장: --sandbox docker, 또는 --sandbox vm --vm-confine)"))
+    if (args.autonomous or args.auto) and not args.manual and getattr(runner, "contained", False):
+        from .tools.recon import auto_approve_contained
+        approver = auto_approve_contained
     orchestrator = Orchestrator(guard, runner or SubprocessRunner(), kb, approver,
+                                workspace=workspace,
                                 observer=observer,
                                 max_enum=max_enum,
                                 max_llm=pick(None, cfg.max_llm, 5),
@@ -761,7 +946,11 @@ def main(argv: list[str] | None = None, runner=None) -> int:
                                 learner=learner, learn_gaps=learn_gaps,
                                 web_learner=web_learner,
                                 state_store=store, resume=args.resume, audit=audit)
-    report = orchestrator.run()
+    try:
+        report = orchestrator.run()
+    finally:
+        if sandbox is not None:
+            sandbox.stop()
     if not args.no_save:
         variant_stats.save(vstats_path)   # 학습 결과 영속화(다음 실행에 반영)
     print("\n" + report.summary())

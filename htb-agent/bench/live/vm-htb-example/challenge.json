@@ -1,0 +1,16 @@
+{
+  "name": "vm-htb-example",
+  "title": "(템플릿) 외부/가상머신 타겟 — HTB·Dreamhack·VirtualBox 등",
+  "kind": "vm",
+  "difficulty": "medium",
+  "category": "",
+  "platform": "htb",
+  "address": "",
+  "ranges": ["10.129.0.0/16", "10.10.10.0/23"],
+  "ports": [[22, "ssh"]],
+  "flag": "HTB{replace_with_real_user_or_root_flag}",
+  "ready_timeout": 60,
+  "start_cmd": "",
+  "stop_cmd": "",
+  "lesson": "컨테이너가 아닌 실제 머신. address 또는 ASSASSIN_VM_VM_HTB_EXAMPLE=<IP> 로 지정"
+}

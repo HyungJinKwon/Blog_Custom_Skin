@@ -1,0 +1,12 @@
+{
+  "name": "web-lfi-flag",
+  "title": "page 파라미터 경로 순회(LFI)로 읽는 플래그",
+  "kind": "loopback",
+  "difficulty": "medium",
+  "category": "web",
+  "platform": "ctf",
+  "target": "target.py",
+  "ports": [[80, "http"]],
+  "flag": "flag{path_traversal_include}",
+  "lesson": "page/file 파라미터가 파일을 포함 → ?page=../../flag 로 순회(LFI)"
+}
