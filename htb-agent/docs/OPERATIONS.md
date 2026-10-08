@@ -22,6 +22,10 @@ assassin chall.site:1337 --platform ctf   # CTF/Dreamhack
 
 `--doctor` 가 알려주는 대로 빠진 것만 채우면 됩니다. 막히면 아래 트러블슈팅(§4) 참고.
 
+> 설치 직후 또는 발표 전, **처음부터 끝까지 검증**하려면 [VALIDATION.md](VALIDATION.md)
+> (오프라인 흐름 → 도구/VPN → 실제 HTB 머신 → 샌드박스(docker/vm) → 라이브 벤치 → 산출물,
+> 단계별 기대 결과와 체크리스트).
+
 ---
 
 ## 1. 빠른 시작
