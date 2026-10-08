@@ -72,6 +72,8 @@
 **처음이라면 [docs/QUICKSTART.md](docs/QUICKSTART.md)(1쪽 빠른 시작)부터.** 처음부터 끝까지의 사용법은 [docs/USAGE.md](docs/USAGE.md) (설치·모드·플랫폼·지식 자동 반영·산출물·트러블슈팅).
 발표·연습은 `./scripts/showcase.sh` 한 번으로 데모·성능 측정·재생 HTML·대시보드를 만듭니다.
 구조·다이어그램·모듈 지도는 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** 참고.
+실제 Kali 에서 처음부터 끝까지 검증(수용 테스트)하려면 **[docs/VALIDATION.md](docs/VALIDATION.md)**
+(단계별 명령·기대 결과·체크리스트·기록표).
 
 ---
 
