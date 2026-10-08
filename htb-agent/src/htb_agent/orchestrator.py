@@ -40,6 +40,9 @@ from .llm.router import LLMRouter
 from .observation.compressor import profile_from_nmap
 from .observation.parsers import NmapHost
 from .observation.summarize import summarize_tool_output
+
+# 렌더링은 report_view 로 분리 — 하위호환으로 수동제안 헬퍼를 여기서 재노출(테스트·외부 참조)
+from .report_view import _compact_manual, _group_manual  # noqa: F401
 from .scope_guard import CommandScopeResult, ScopeGuard, ScopeViolation
 from .state import SessionState, StateStore, host_from_dict, host_to_dict
 from .target_profiler import ProfileResult
@@ -139,315 +142,13 @@ class OrchestrationReport:
         return next((f.value for f in self.flags if f.kind == "root"), None)
 
     def summary(self) -> str:
-        from . import ui
-        st = ui.ok if self.status == "done" else ui.accent2
-        head = (ui.accent("ASSASSIN") + ui.dim(" · 오케스트레이션 ")
-                + ui.bold(self.target) + "  " + st(f"[{self.status}]")
-                + (("  " + ui.dim(self.message)) if self.message else ""))
-        lines = [head, ui.rule("", 60, "navy")]
-        if self.recon:
-            lines.append(ui.heading("RECON", "📡"))
-            lines.append(self.recon.summary())
-        if self.profile:
-            lines.append("\n" + ui.heading("PROFILE", "🧭"))
-            lines.append(self.profile.summary())
-        if self.world is not None:
-            lines.append("\n" + ui.heading("STATE  (월드 모델 — 구조화 상태)", "🗺️"))
-            lines.append(self.world.summary())
-        if self.plan:
-            lines.append("\n" + ui.heading(
-                "PLAN  (가설 보드 — 분석가가 계획·갱신, 명령은 '지금 할 일'에 집중)", "🎯"))
-            focus = self.plan.focus()
-            for ln in self.plan.board_lines():
-                is_focus = focus is not None and ln.split(" ", 2)[1] == focus.id
-                lines.append("  " + (ui.accent2(ln + "  ← 지금") if is_focus else ln))
-            lines.append("  " + ui.dim("상태는 방향 잡기용〔추정〕 — 플래그·목표 판정은 실행 결과로만 합니다."))
-        if self.analysis:
-            lines.append("\n" + ui.heading("ANALYSIS  (LLM 분석 — 병렬 가설·계획·경로)", "🧠"))
-            for ln in self.analysis.splitlines():
-                if ln.strip():
-                    lines.append("  " + ui.dim(ln.strip()))
-        if self.acquired_knowledge or self.knowledge_gaps:
-            lines.append("\n" + ui.heading(
-                "LEARN  (자율 지식 획득 — 권위 출처만, P1 유지)", "🎓"))
-            for a in self.acquired_knowledge:
-                lines.append("  " + ui.ok("학습") + " " + a)
-            for g in self.knowledge_gaps:
-                lines.append("  " + ui.dim("미해석 공백(수동 조사): ") + g)
-        # 모의해킹 단계 순서대로 그룹화 출력
-        all_findings = self.enum_findings + self.llm_findings
-        for key, label in PENTEST_PHASES:
-            group = [f for f in all_findings if f.phase == key]
-            st_label = self.phase_status.get(key, "")
-            if group or st_label:
-                suffix = ("  " + ui.dim(f"[{st_label}]")) if st_label else ""
-                lines.append("\n" + ui.rule(f"단계: {label}{suffix}", 60))
-            for f in group:
-                mark = ui.mark_run() if f.ran else ui.dim("·")
-                note = ui.dim(f"  — {f.note}") if f.note else ""
-                lines.append(f"  {mark} {f.command}{note}")
-                if f.output:
-                    lines.append("      " + ui.dim(f.output))
-        if self.blockers:
-            from . import diagnostics as _diag
-            lines.append("\n" + ui.heading(
-                "BLOCKERS  (막힌 지점 — 사람 확인용. 자동 재공격 아님)", "🧯"))
-            diags = [d for _, d in self.blockers]
-            tgt = [(c, d) for c, d in self.blockers if d.is_target]
-            env = [(c, d) for c, d in self.blockers if not d.is_target]
-            if tgt:
-                lines.append("  " + ui.accent2("대상 응답(경로 판단에 유효):"))
-                for cmd, d in tgt[:8]:
-                    lines.append(f"    · {d.label}  — {ui.dim(cmd[:60])}")
-                    if d.hint:
-                        lines.append("      " + ui.dim("↳ " + d.hint))
-            if env:
-                lines.append("  " + ui.accent2("환경/도구/네트워크(경로 실패 아님):"))
-                for cmd, d in env[:8]:
-                    lines.append(f"    · {d.label}  — {ui.dim(cmd[:60])}")
-                    if d.hint:
-                        lines.append("      " + ui.dim("↳ " + d.hint))
-            # 오판 방지: '대상이 거듭 거부'한 범주만 경로 재검토 후보로 '표시'(결정은 사람)
-            signals = _diag.abandonment_signals(diags)
-            repeated = {c: n for c, n in signals.items() if n >= 2}
-            if repeated:
-                lines.append("  " + ui.warn("경로 재검토 후보(대상이 2회+ 거부): ")
-                             + ", ".join(f"{c}×{n}" for c, n in repeated.items())
-                             + ui.dim("  — 환경 문제는 제외됨. 포기 여부는 사람이 판단."))
-        from . import repetition as _rep
-        _rr = _rep.analyze(self.enum_findings + self.llm_findings, self.blockers)
-        if _rr.has_findings:
-            lines.append("\n" + ui.heading(
-                "REPETITION  (반복·정체 감지 — 사람 확인용. 자동 재계획 아님)", "🔁"))
-            for sig, n in _rr.repeated_cmds[:6]:
-                lines.append("  " + ui.warn(f"반복 명령 ×{n}: ") + ui.dim(sig))
-            for cat, n in _rr.repeated_failures[:6]:
-                lines.append("  " + ui.warn(f"같은 실패 ×{n}: ") + ui.dim(cat))
-            if _rr.stalled:
-                lines.append("  " + ui.warn("정체: ")
-                             + ui.dim("실행은 여러 번이나 유의미한 출력이 희박 — 다른 각도를 사람이 검토"))
-        if self.flag_provenance:
-            lines.append("\n" + ui.heading(
-                "PROVENANCE  (플래그 출처 검증 — 실행 트레이스 기반)", "🔎"))
-            for p in self.flag_provenance:
-                pmark = ui.ok if p.verdict == "exploit-derived" else ui.warn
-                lines.append("  " + pmark(f"[{p.label}] ") + f"{p.kind} flag")
-                lines.append("      " + ui.dim(f"↳ {p.reason} · {p.command[:60]}"))
-            susp = [p for p in self.flag_provenance if p.verdict != "exploit-derived"]
-            if susp:
-                lines.append("  " + ui.warn(
-                    f"※ {len(susp)}건은 공략 유래가 아닐 수 있음 — 사람이 실제 공략 경로 확인"))
-        from . import recommend as _recommend
-        _recs = _recommend.propose(self, repetition=_rr)   # 반복 분석 1회만
-        if _recs.has_items:
-            lines.append("\n" + ui.heading(
-                "NEXT OPTIONS  (다음 선택지 — 사람이 골라 승인. 자동 실행 아님)", "🧭"))
-            for i, r in enumerate(_recs.items, 1):
-                lines.append(f"  {ui.accent2(str(i) + '.')} {r.title}")
-                lines.append("      " + ui.dim("근거: " + r.rationale))
-                if r.ref:
-                    lines.append("      " + ui.dim("참고: " + r.ref[:72]))
-            lines.append("  " + ui.dim("→ 번호를 골라 해당 명령/각도를 승인하면 3관문을 거쳐 실행됩니다."))
-        if self.detected_cve or self.detected_cwe or self.vuln_matches:
-            lines.append("\n" + ui.heading(
-                "VULN  (탐지된 취약점 — 수동 검증/익스플로잇 필요)", "🛑"))
-            if self.detected_cve:
-                lines.append(ui.kv("탐지 CVE", ui.warn(", ".join(self.detected_cve)), 9))
-            if self.detected_cwe:
-                lines.append(ui.kv("탐지 CWE", ui.warn(", ".join(self.detected_cwe)), 9))
-            for m in self.vuln_matches:
-                sev = f"[{m.severity}] " if m.severity else ""
-                ids = " ".join(m.cve + m.cwe)
-                lines.append("  " + ui.mark_warn(
-                    ui.warn(sev) + m.name + ui.dim(f" ({ids}) — 매칭:{m.matched_on}")))
-                if m.note:
-                    lines.append(ui.dim(f"       비고: {m.note}"))
-                for s in m.suggest:
-                    lines.append("       " + ui.accent2("제안: ") + s)
-        if self.enriched:
-            lines.append("\n" + ui.heading("CVE 레퍼런스 (자동 수집 — NVD/GitHub)", "📚"))
-            for e in self.enriched:
-                sev = f"[{e.severity} {e.cvss}] " if e.severity else ""
-                lines.append("  " + ui.warn(sev) + ui.bold(e.id)
-                             + (ui.dim("  " + ", ".join(e.cwe)) if e.cwe else ""))
-                if e.description:
-                    lines.append(ui.dim("     " + e.description[:160]))
-                for r in e.references[:3]:
-                    lines.append("     " + ui.accent2("ref: ") + ui.dim(r))
-                for p in e.poc_repos[:3]:
-                    lines.append("     " + ui.accent2("PoC: ") + ui.dim(p))
-        if self.flags:
-            lines.append("\n" + ui.heading("🚩 플래그 (FLAG)"))
-            if self.flag_kind == "single":
-                for fh in self.flags:
-                    lines.append("  " + ui.flag(fh.value)
-                                 + ui.dim(f"  ← {fh.source}"))
-            else:
-                uf = ui.flag(self.user_flag) if self.user_flag else ui.dim("미획득")
-                rf = ui.flag(self.root_flag) if self.root_flag else ui.dim("미획득")
-                lines.append("  " + ui.dim("user.txt:") + " " + uf)
-                lines.append("  " + ui.dim("root.txt:") + " " + rf)
-                for fh in self.flags:
-                    if fh.kind == "unknown":
-                        lines.append(ui.dim(f"  (미분류) {fh.value} ← {fh.source}"))
-        if self.revshells:
-            from .revshell import listener_hints
-            lines.append("\n" + ui.heading(
-                "리버스쉘 (자동 준비 — 초기 침투용 · 생성만, 에이전트는 실행 안 함)", "🐚"))
-            lines.append(ui.dim(
-                f"  LHOST={self.revshell_lhost}  LPORT={self.revshell_lport}"
-                "  ·  권한 확인 대상에서 사용자가 직접 실행"))
-            lines.append("  " + ui.accent2("리스너: ") + listener_hints(self.revshell_lport)[0])
-            # 화면 잡음 축소(초보자): 대표 3개만 보여 주고 전체는 --json/--html 로
-            _show = self.revshells[:3]
-            for s in _show:
-                lines.append("  " + ui.accent2(f"[{s.name}]"))
-                lines.append("    " + s.payload)
-            if len(self.revshells) > len(_show):
-                lines.append(ui.dim(f"  … 외 {len(self.revshells) - len(_show)}종(bash/nc/python/php/"
-                                    "powershell/socat 등) — 전체는 --json/--html"))
-        if self.cloud_checks:
-            lines.append("\n" + ui.heading(
-                "AWS/S3 열거 (자동 준비 — 생성만, AWS 는 범위 밖·실행 안 함)", "☁️"))
-            if self.cloud_candidates:
-                lines.append(ui.dim(
-                    f"  버킷 후보({len(self.cloud_candidates)}): "
-                    + ", ".join(self.cloud_candidates[:12])
-                    + (" …" if len(self.cloud_candidates) > 12 else "")))
-            for c in self.cloud_checks:
-                lines.append("  " + ui.accent2(f"[{c.name}] ") + c.command)
-        if self.privesc_steps:
-            lines.append("\n" + ui.heading(
-                "권한 상승 플레이북 (자동 준비 — 대상 셸에서 실행 · 생성만)", "⬆️"))
-            for s in self.privesc_steps:
-                lines.append("  " + ui.accent2(f"[{s.category}] ") + s.command)
-                if s.note:
-                    lines.append(ui.dim("      " + s.note))
-            for c in self.privesc_cve_candidates:
-                lines.append("  " + ui.mark_warn(ui.warn("LPE 후보: ") + c))
-        if self.crack_jobs:
-            lines.append("\n" + ui.heading(
-                "해시 크래킹 (자동 준비 — 생성만, 사용자 환경에서 실행)", "🔑"))
-            for j in self.crack_jobs:
-                gnames = ", ".join(g.name for g in j.guesses) or "미상"
-                lines.append("  " + ui.accent2("해시: ") + ui.dim(j.hash[:64]
-                             + ("…" if len(j.hash) > 64 else "")))
-                lines.append("    " + ui.dim(f"식별: {gnames}"))
-                for c in j.commands:
-                    lines.append("    " + ui.accent2(f"[{c.tool}] ") + c.command)
-        if self.manual_suggestions:
-            lines.append("\n" + ui.heading("수동 제안 — 종류별 바로 적용하는 법", "✋"))
-            for title, how, items in _group_manual(self.manual_suggestions):
-                lines.append("  " + ui.bold(f"{title} ({len(items)})") + "  " + ui.info("→ " + how))
-                # 초보자 화면: 옵션만 덧붙인 변형·같은 꼬리표는 숨기고 앞의 몇 개만(전체는 리포트에)
-                shown = _compact_manual(items)
-                for s in shown[:_MANUAL_SHOW]:
-                    lines.append(ui.bullet(s, "·", "dim"))
-                rest = len(items) - min(len(shown), _MANUAL_SHOW)
-                if rest > 0:
-                    lines.append("    " + ui.dim(f"… 외 {rest}개 (옵션 변형 포함) — 전체 목록: --html / --json 리포트"))
-        lines.append("\n" + self.glance())
-        return "\n".join(lines)
+        from . import report_view
+        return report_view.render_summary(self)
 
     def glance(self) -> str:
-        """맨 끝 '한눈에 보기' — 결과·찾은 것·실행 현황·다음에 할 일(최대 3개)을 한 박스로.
-        긴 출력을 다 읽지 않아도 지금 상태와 다음 행동을 알 수 있게 한다(초보자용)."""
-        from . import ui
-        status = {"done": ui.ok("완료"), "interrupted": ui.warn("중단됨 — --resume 으로 이어서"),
-                  "escalate": ui.warn("사람 확인 필요"), "pending": ui.dim("진행 전")}.get(
-            self.status, self.status)
-        if self.flag_kind == "single":
-            flag = ui.flag(self.flags[0].value) if self.flags else ui.dim("미획득")
-        else:
-            flag = (f"user {ui.ok('✔') if self.user_flag else ui.dim('✗')} · "
-                    f"root {ui.ok('✔') if self.root_flag else ui.dim('✗')}")
-        ports = [f"{p.port}/{p.service or '?'}" for p in (self.host.ports if self.host else [])
-                 if p.state == "open"]
-        w = self.world
-        found = (f"자격증명 {len(w.creds) if w else 0} · 수집물 {len(w.loot) if w else 0} · "
-                 f"취약점 {len(self.vuln_matches) + len(self.detected_cve)}")
-        gs = self.gate_stats
-        runs = (f"실행 {gs.get('executed', 0)} · 도구 없음 {gs.get('tool_missing', 0)} · "
-                f"미승인 {gs.get('denied_review', 0) + gs.get('denied_scope', 0)} · "
-                f"못 돌림(상한) {sum(1 for m in self.manual_suggestions if '상한 초과' in m)}")
-        rows = [ui.kv("결과", status + "   " + ui.dim("플래그 ") + flag, 8),
-                ui.kv("서비스", ", ".join(ports) if ports else ui.dim("열린 포트 없음"), 8),
-                ui.kv("찾은 것", found, 8),
-                ui.kv("실행", runs, 8)]
-        todo = self._next_actions()
-        if todo:
-            rows.append("")
-            rows.append(ui.accent2("다음에 할 일"))
-            rows += [f"  {i}. {t}" for i, t in enumerate(todo[:3], 1)]
-        return ui.panel("한눈에 보기", rows, style="accent" if self.status == "done" else "warn")
-
-    def _next_actions(self) -> list[str]:
-        """현재 상태에서 초보자가 바로 할 수 있는 다음 행동(구체 명령). 새 공격을 만들지 않고
-        이미 나온 상태·수동 제안을 '무엇을 입력하면 되는지'로 바꿔 줄 뿐이다."""
-        out: list[str] = []
-        rec = self.recon
-        if self.status == "escalate" and rec is not None:
-            if not any(a.ran for a in rec.attempts):
-                out.append("스캔 도구가 실행되지 못했습니다 → assassin --doctor 로 점검"
-                           " (nmap 없으면: sudo apt install -y nmap)")
-            else:
-                out.append("대상이 응답하지 않습니다 → HTB 머신이 켜져 있는지(Spawn)·VPN 연결"
-                           "(sudo openvpn <파일>.ovpn)을 확인한 뒤 다시 실행")
-        if self.goal_reached:
-            out.append("목표 달성 — 정리: 같은 명령에 --writeup --html 을 붙여 라이트업·대시보드 생성")
-        over = sum(1 for m in self.manual_suggestions if "상한 초과" in m)
-        if over:
-            out.append(f"못 돌린 명령 {over}개 → 같은 명령 + --resume (이미 한 명령은 건너뜀)")
-        if any(p in m for m in self.manual_suggestions for p in ("{user}", "{pass}", "{domain}")):
-            out.append("자격증명이 필요한 명령이 있습니다 → 찾은 계정으로 --cred 사용자:비밀번호")
-        if self.gate_stats.get("tool_missing", 0):
-            out.append("설치되지 않은 도구가 있습니다 → sudo ./scripts/install_tools.sh")
-        if self.status == "done" and not self.goal_reached and not out:
-            out.append("위 '다음 선택지(NEXT OPTIONS)'에서 골라 승인 · 배우며 보려면 --manual")
-        return out
-
-
-# 수동 제안 분류: (제목, 초보자가 바로 하는 법, 판별 함수) — 위에서부터 먼저 맞는 것
-_MANUAL_KINDS = [
-    ("자격증명이 필요한 명령", "--cred 사용자:비밀번호 를 붙여 다시 실행하면 자동으로 채워 실행합니다",
-     lambda s: any(p in s for p in ("{user}", "{pass}", "{domain}", "{hash}"))),
-    ("실행 위험 — 내용 확인 필요", "각 줄의 '대안'대로 먼저 내용을 확인한 뒤 직접 실행하세요",
-     lambda s: "실행위험" in s),
-    ("상한 초과로 미실행", "--max-enum 을 늘리거나 --resume 으로 이어서 실행하세요",
-     lambda s: "상한 초과" in s),
-    ("무거운 점검(직접 실행 권장)", "시간이 오래 걸려 자동 실행하지 않았습니다 — 필요할 때 복사해 실행",
-     lambda s: "(수동)" in s),
-]
-
-
-_MANUAL_SHOW = 6   # 수동 제안 묶음마다 화면에 보여 줄 개수(나머지는 리포트에)
-
-
-def _compact_manual(items: list[str]) -> list[str]:
-    """화면용 정리: 같은 묶음 제목이 이미 말해 주는 꼬리표('# (상한 초과 — 수동)')를 떼고,
-    앞 명령에 옵션만 덧붙인 변형(예: '... -L', '... -t 50')은 숨긴다."""
-    out: list[str] = []
-    for s in items:
-        core = s.replace("   # (상한 초과 — 수동)", "").rstrip()
-        if any(core.startswith(prev.split("   #")[0] + " ") for prev in out):
-            continue
-        out.append(core)
-    return out
-
-
-def _group_manual(items: list[str]) -> list[tuple[str, str, list[str]]]:
-    groups: dict[str, list[str]] = {}
-    hows: dict[str, str] = {}
-    for s in items:
-        for title, how, match in _MANUAL_KINDS:
-            if match(s):
-                break
-        else:
-            title, how = "기타 안내", "단계·플랫폼별 참고 명령입니다 — 필요한 것을 골라 실행하세요"
-        groups.setdefault(title, []).append(s)
-        hows[title] = how
-    order = [k for k, _, _ in _MANUAL_KINDS] + ["기타 안내"]
-    return [(t, hows[t], groups[t]) for t in order if t in groups]
+        """맨 끝 '한눈에 보기' — report_view.render_glance 로 위임(렌더링은 report_view)."""
+        from . import report_view
+        return report_view.render_glance(self)
 
 
 class Orchestrator:
@@ -918,10 +619,12 @@ class Orchestrator:
             return 0
         services = [p.service for p in host.ports if p.state == "open" and p.service]
         recs = self.kb.query(prof.os_class.value, host.open_ports, services, phase=phase)
-        # 실행 후보(base, vcmd) 수집 — seen·budget·수동제안 처리는 여기서(결정적)
-        to_run: list[tuple[str, str]] = []
-        slots = 0   # 예산을 쓰는 후보 수(미설치 도구는 기록만 하고 예산 미사용)
+        # 1) 실행 후보를 '서비스(태그)별 버킷'으로 모은다 — 예산은 아직 쓰지 않는다.
+        #    (한 서비스가 예산을 독식하지 않도록, 2)에서 서비스 round-robin 으로 분배해 탐색 폭을 넓힌다)
+        buckets: dict[str, list[tuple[str, str]]] = {}
+        order: list[str] = []   # 버킷 최초 등장 순서(결정적 — recs 는 점수순 정렬됨)
         for rec in recs:
+            key = rec.tags[0] if rec.tags else "기타"   # 서비스/카테고리 키(web·smb·ftp·ad…)
             for tmpl in rec.suggestions:
                 for cmd, runnable in self._expand(tmpl, target):
                     if not runnable:
@@ -937,12 +640,35 @@ class Orchestrator:
                         if vcmd in seen:
                             continue
                         seen.add(vcmd)
-                        if slots >= budget:
-                            report.manual_suggestions.append(vcmd + "   # (상한 초과 — 수동)")
-                            continue
-                        to_run.append((cmd, vcmd))
-                        if self._tool_ok(vcmd):
-                            slots += 1
+                        if key not in buckets:
+                            buckets[key] = []
+                            order.append(key)
+                        buckets[key].append((cmd, vcmd))
+        # 2) 서비스 round-robin 으로 예산 분배 — 각 서비스가 먼저 한 개씩 돌 기회를 갖는다.
+        #    (미설치 도구는 예산을 쓰지 않음 — 기존 의미 유지). 버킷이 하나면 기존과 동일 순서.
+        to_run: list[tuple[str, str]] = []
+        slots = 0
+        idxs = {k: 0 for k in order}
+        while slots < budget:
+            advanced = False
+            for key in order:
+                if slots >= budget:
+                    break
+                i = idxs[key]
+                if i >= len(buckets[key]):
+                    continue
+                idxs[key] = i + 1
+                advanced = True
+                base, vcmd = buckets[key][i]
+                to_run.append((base, vcmd))
+                if self._tool_ok(vcmd):
+                    slots += 1
+            if not advanced:
+                break
+        # 예산 초과로 못 돌린 후보는 수동 제안으로 남긴다
+        for key in order:
+            for _base, vcmd in buckets[key][idxs[key]:]:
+                report.manual_suggestions.append(vcmd + "   # (상한 초과 — 수동)")
         if not to_run:
             return 0
         base_by_cmd = {vcmd: base for base, vcmd in to_run}

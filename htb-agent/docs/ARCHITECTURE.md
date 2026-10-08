@@ -145,7 +145,8 @@ PowerShell `IEX`·`DownloadString`·`-EncodedCommand`, 명령 치환(`$(…)`·�
 | **식별** | `target_profiler.py` | Linux vs Windows-AD, 증거기반 확신도 |
 | **지능** | `knowledge.py` + `knowledge/` | 단계별 규칙·노트·취약점(사용자 학습으로 성장) · **관련도 기반 노트 랭킹**(relevant_notes, 경량 RAG — 서비스/OS/단계/CVE 키워드 겹침) |
 | | `world.py` | 월드 모델 — 구조화 상태(hosts/services/creds/loot/flags/vulns/access_level) 단일 상태원. 파이프라인·LLM 컨텍스트·리포트의 출처. 각 사실에 '어느 명령에서 나왔나'(evidence)를 달아 '왜 아는지'를 보여줌(교육) |
-| | `orchestrator.py` | 단계 순서 상태머신(유한) + 월드 모델 갱신 |
+| | `orchestrator.py` | 단계 순서 상태머신(유한) + 월드 모델 갱신. 열거는 서비스별 round-robin 으로 예산 분배(탐색 폭) |
+| | `report_view.py` | 결과 터미널 렌더링(요약·한눈에보기·다음행동) — orchestrator 에서 출력을 분리(상태/판정과 렌더링 분리). `OrchestrationReport.summary()/glance()` 가 위임 |
 | | `variants.py` | 도구별 옵션 조합 변형(경우의 수) 생성 |
 | | `variant_stats.py` | 실행 결과 기반 변형 학습(성공률로 변형 순서 재정렬, 세션 넘어 영속) |
 | | `llm/` | Claude/Ollama/Fake(테스트·데모) 프로바이더 + 티어링 + 캐싱·비용 · **HybridRouter**(단계 난이도→로컬/강력 라우팅+상호 폴백·연속 오류 서킷 브레이커·거절 구분·라우팅 집계, Ollama 미설치 티어 모델 자동 대체) · **분석가 역할**(analyze: 레드팀·개발자·인프라 운영자·방어 관점으로 가설 2~4개를 병렬 비교→검증 계획·공격경로·집중·확신도, 명령 생성 유도. 명령은 가설별로 분산되고 finding 비고에 `가설 H1` 로 추적) · **구조화 출력**(JSON 배열 command/rationale/expected_signal 우선 파싱, 라인 폴백) · **적응형 tier**(저확신/빈결과 시 강력 모델 승격) |

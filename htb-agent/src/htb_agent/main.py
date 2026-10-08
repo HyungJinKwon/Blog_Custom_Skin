@@ -66,6 +66,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="버전 표시")
     g_start.add_argument("--doctor", action="store_true",
                    help="환경 자가진단(도구·LLM·VPN 점검, 스캔 안 함). 완전 초보자 권장 첫 실행")
+    g_start.add_argument("--install-missing", nargs="?", const="__all__", default=None,
+                   dest="install_missing", metavar="CATS",
+                   help="빠진 보안 도구를 install_tools.sh 로 자동 설치(카테고리 지정 가능: "
+                        "'recon web smb …'). 저장소의 공식 스크립트만 실행, 루트 필요")
     g_start.add_argument("--setup-llm", action="store_true", dest="setup_llm",
                    help="LLM 연결 마법사: Claude(API 키)·로컬 LLM(Ollama 모델)을 질문에 답하며 연결하고 "
                         "실제 1회 호출로 확인 → 기본 설정 저장(이후 --llm 생략 가능). 키는 ~/.config/assassin 에 600 권한")
@@ -459,6 +463,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     # 단독 명령은 하나만, 타겟 없이 — 조합 시 조용히 하나만 실행되던 문제 방지
     standalone = [flag for flag, v in (
         ("--doctor", args.doctor or args.llm_test), ("--setup-llm", args.setup_llm),
+        ("--install-missing", args.install_missing is not None),
         ("--revshell", args.revshell), ("--cloud", args.cloud),
         ("--privesc", args.privesc), ("--crack", args.crack), ("--ingest", args.ingest),
         ("--kb-sync", args.kb_sync), ("--promote", args.promote), ("--learn", args.learn),
@@ -517,6 +522,15 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     # 라이브 평가 하네스(실제 서비스·진짜 도구) — 신뢰할 수 있는 발표용 수치
     if args.live_bench:
         return _run_live_bench(args, cfg, knowledge_dir)
+
+    # 빠진 도구 자동 설치(옵트인) — 저장소 공식 스크립트만 실행
+    if args.install_missing is not None:
+        from . import installer
+        cats = (None if args.install_missing == "__all__"
+                else [c for c in args.install_missing.split() if c])
+        rc, msg = installer.install_missing(cats)
+        print(ui.kv("도구 설치", msg, 10))
+        return rc
 
     # 환경 자가진단(스캔 안 함) — 완전 초보자 권장 첫 실행
     if args.doctor or args.llm_test:
