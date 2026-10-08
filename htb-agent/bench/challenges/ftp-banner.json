@@ -1,0 +1,11 @@
+{
+  "name": "ftp-banner",
+  "title": "FTP 환영 배너의 정보 노출",
+  "difficulty": "easy",
+  "lesson": "서비스 배너에도 민감 정보가 남을 수 있음",
+  "ports": [[21, "ftp"]],
+  "responses": [
+    {"match": "ftp://", "stdout": "220-Welcome to the build server\n220 FLAG{banners_talk}\ndrwxr-xr-x 2 ftp ftp 4096 Jan 01 pub"}
+  ],
+  "flag": "FLAG{banners_talk}"
+}

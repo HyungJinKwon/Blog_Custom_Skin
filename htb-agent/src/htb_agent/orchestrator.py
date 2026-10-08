@@ -383,6 +383,7 @@ class Orchestrator:
                  time_budget: float = 0.0,
                  max_cost: float = 0.0,
                  observer: Callable[[str], str] | None = None,
+                 quiet: bool = False,
                  clock=None,
                  learner=None,
                  learn_gaps: bool = False,
@@ -418,6 +419,7 @@ class Orchestrator:
         self.max_cost = max(0.0, max_cost)         # LLM 누적 추정 비용 상한(USD, 0=무제한)
         # 사람 관찰 입력(선택): 건너뛴 명령 대신 사람이 직접 확인한 내용을 받아 기록한다
         self.observer = observer
+        self.quiet = quiet   # 화면 경고 끔(벤치 등 비대화형) — 비고·감사 로그에는 그대로 기록
         self._clock = clock or time.monotonic      # 테스트 주입용(단조 시계)
         self.enricher = enricher
         # 자율 지식 획득 — 모르는 기술을 권위 출처에서 자동 학습(learner 주입 시)
@@ -1210,7 +1212,8 @@ class Orchestrator:
         if warn:
             from . import ui
             finding.note = (finding.note + " · " if finding.note else "") + warn
-            print("  " + ui.mark_warn(warn))   # 승인 전 경고(초보자: 같은 실패 반복 주의)
+            if not self.quiet:
+                print("  " + ui.mark_warn(warn))   # 승인 전 경고(초보자: 같은 실패 반복 주의)
             self.audit.event("repetition_warn", cmd=cmd, detail=warn)
         if not self.approver(cmd, vrep, sres):
             review = [i.message for i in vrep.review]

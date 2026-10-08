@@ -1,0 +1,11 @@
+{
+  "name": "web-html-comment",
+  "title": "HTML 주석에 남은 개발 메모",
+  "difficulty": "easy",
+  "lesson": "페이지 소스의 주석까지 확인",
+  "ports": [[8080, "http-proxy"]],
+  "responses": [
+    {"match": "curl -i http://", "stdout": "HTTP/1.1 200 OK\nServer: Jetty\n\n<html><!-- dev: FLAG{view_source_always} --><h1>Portal</h1></html>"}
+  ],
+  "flag": "FLAG{view_source_always}"
+}
