@@ -102,13 +102,13 @@ LLM 두뇌(선택): `--llm hybrid`(Ollama+Claude) · `--llm claude` · `--llm ol
 ### 4.4 LLM 백엔드 사용 불가
 - 증상: `hybrid 사용 불가: ollama(Ollama 연결 실패(http://localhost:11434): …) /
   claude(anthropic SDK 미설치 (pip install anthropic))`. 다른 사유 예: `ANTHROPIC_API_KEY 환경변수 미설정`,
-  `Ollama 에 설치된 모델 없음(ollama pull llama3.1:8b)`.
+  `Ollama 에 설치된 모델 없음(ollama pull qwen2.5:7b)`.
 - 먼저: `assassin --doctor` 로 어느 백엔드가 왜 안 되는지 확인(복붙 설치 힌트 제공).
 - 일괄 설치: `sudo ./scripts/install_tools.sh llm` (anthropic 설치 + ollama 안내).
 - 조치: Claude=`pip install anthropic` + `export ANTHROPIC_API_KEY=sk-...`.
-  Ollama=`ollama serve` + `ollama pull llama3.1:8b`(다른 모델은 `export OLLAMA_MODEL=...`,
+  Ollama=`ollama serve` + `ollama pull qwen2.5:7b`(다른 모델은 `export OLLAMA_MODEL=...`,
   원격 서버는 `export OLLAMA_HOST=http://ip:11434`).
-- strong 티어 기본 모델(`llama3.1:70b`)이 없으면 설치된 모델로 자동 대체된다(시작 시
+- strong 티어 기본 모델(`llama3.3:70b`)이 없으면 설치된 모델로 자동 대체된다(시작 시
   "로컬 모델 대체: strong→…" 표시). 한 백엔드가 연속 2회 오류면 세션 동안 건너뛰며(서킷 브레이커),
   실행 끝 `라우팅: 로컬 N · 강력 N · 폴백 N · 거절 N · 빈응답 N · 오류 N · 미응답 N` 으로 어느
   백엔드가 응답·거절·실패했는지 확인한다.

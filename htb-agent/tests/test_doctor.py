@@ -71,7 +71,7 @@ try:
           all(prov.model_for(t) == "qwen2.5:7b" for t in Tier))
 finally:
     del os.environ["OLLAMA_MODEL"]
-check("env 없으면 기본 모델", "llama" in OllamaProvider().model_for(Tier.CHEAP))
+check("env 없으면 기본 모델", OllamaProvider().model_for(Tier.CHEAP) == "qwen2.5:7b")
 
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

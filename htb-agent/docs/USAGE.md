@@ -230,7 +230,7 @@ assassin 10.129.1.5       # 이후엔 --llm 없이도 마법사에서 고른 백
 |---|---|
 | ① 선택 | `[1] 하이브리드(권장)` · `[2] Claude 만` · `[3] 로컬만` · `[q] 취소` |
 | ② Claude | `anthropic` 패키지 확인(없으면 설치할지 물음) → API 키 붙여넣기(화면에 안 보임) → 실제 호출 → 성공하면 키 저장 |
-| ③ 로컬 | Ollama 설치·서버 확인 → 받아 둔 모델 목록 → **PC 메모리에 맞는 추천 모델**(8GB→`llama3.1:8b`, 16GB→`qwen2.5:14b` 등) → 받을지 물음 → 실제 호출 |
+| ③ 로컬 | Ollama 설치·서버 확인 → 받아 둔 모델 목록 → **PC 메모리에 맞는 추천 모델**(8GB→`qwen2.5:7b`, 16GB→`qwen2.5:14b` 등) → 받을지 물음 → 실제 호출 |
 | ④ 저장 | `~/.config/assassin/config.json`(백엔드·로컬 모델·비용 상한 기본 $2) — `--config` 없이 자동으로 읽음 |
 
 - **키 보관**: `~/.config/assassin/credentials`(폴더 700·파일 600, 본인만 읽기). 화면엔 `sk-ant-…abcd` 처럼 가린 값만 보이고,
@@ -246,7 +246,7 @@ assassin 10.129.1.5       # 이후엔 --llm 없이도 마법사에서 고른 백
 | 백엔드 | 명령 | 준비 |
 |---|---|---|
 | Claude | `--llm claude` | `pip install anthropic` + `export ANTHROPIC_API_KEY=...` |
-| Ollama(로컬) | `--llm ollama` | `ollama serve` + `ollama pull llama3.1:8b` |
+| Ollama(로컬) | `--llm ollama` | `ollama serve` + `ollama pull qwen2.5:7b` |
 | hybrid | `--llm hybrid` | 위 둘 중 하나 이상. 단계 난이도로 라우팅하고 실패 시 폴백 |
 
 - 비용/성능: `--llm-tier {cheap,standard,strong}`(기본 standard). 어려운 단계에서 자동 승격된다.
@@ -260,7 +260,7 @@ assassin 10.129.1.5       # 이후엔 --llm 없이도 마법사에서 고른 백
 | 열거·일반 단계(cheap/standard) | 로컬(Ollama) 우선 → 빈 응답·오류·거절이면 Claude 로 폴백 |
 | 권한상승·분석(strong) | Claude 우선 → 실패 시 로컬로 폴백 |
 | 한 백엔드가 연속 2회 오류(타임아웃 등) | 그 세션 동안 건너뜀(서킷 브레이커) — 매 호출 180초 대기 방지 |
-| 설정된 Ollama 모델(예: strong=`llama3.1:70b`)이 미설치 | 설치된 다른 모델로 대체하고 시작 시 `로컬 모델 대체: strong→llama3.1:8b` 로 표시 |
+| 설정된 Ollama 모델(예: strong=`llama3.3:70b`)이 미설치 | 설치된 다른 모델로 대체하고 시작 시 `로컬 모델 대체: strong→qwen2.5:7b` 로 표시 |
 | 모델이 응답을 거절(refusal) | 빈 응답과 구분해 집계하고 다른 백엔드로 폴백 |
 
 **LLM 이 생각하는 방식(다관점 · 병렬 가설)**
@@ -494,7 +494,7 @@ assassin 10.129.1.5 --config config/config.example.json
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude 백엔드 API 키 |
 | `OLLAMA_HOST` | Ollama 서버 주소(기본 `http://localhost:11434`) |
-| `OLLAMA_MODEL` | 모든 tier 에 쓸 Ollama 모델 이름(미설정 시 설정 파일 `llm.ollama_model` → cheap/standard `llama3.1:8b`, strong `llama3.1:70b`) |
+| `OLLAMA_MODEL` | 모든 tier 에 쓸 Ollama 모델 이름(미설정 시 설정 파일 `llm.ollama_model` → cheap/standard `qwen2.5:7b`, strong `llama3.3:70b`) |
 | `ASSASSIN_CONFIG_DIR` | 마법사의 키·기본 설정 위치(기본 `~/.config/assassin`, `XDG_CONFIG_HOME` 존중) |
 | `ASSASSIN_NO_KB_SYNC` | `1` 이면 실행 시 공유 시드 자동 동기화 끄기 |
 | `ASSASSIN_KB_SYNC_REPO` | 동기화할 공유 저장소(`owner/repo`, 기본 `HyungJinKwon/HTB_AUTO_AGENT`) — 포크 운영 시 |

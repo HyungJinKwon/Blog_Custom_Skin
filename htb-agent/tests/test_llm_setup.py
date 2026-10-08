@@ -77,10 +77,10 @@ check("알 수 없는 llm 키는 경고", any("llm.foo" in w for w in Config.fro
 
 print("\n=== 로컬 모델 추천 ===")
 check("4GB → 3b", S.recommend_ollama_model(4)[0] == "llama3.2:3b")
-check("8GB → 8b", S.recommend_ollama_model(8)[0] == "llama3.1:8b")
+check("8GB → 7b", S.recommend_ollama_model(8)[0] == "qwen2.5:7b")
 check("16GB → 14b", S.recommend_ollama_model(16)[0] == "qwen2.5:14b")
-check("64GB → 70b", S.recommend_ollama_model(64)[0] == "llama3.1:70b")
-check("모르면 8b", S.recommend_ollama_model(None)[0] == "llama3.1:8b")
+check("64GB → 70b", S.recommend_ollama_model(64)[0] == "llama3.3:70b")
+check("모르면 7b", S.recommend_ollama_model(None)[0] == "qwen2.5:7b")
 
 print("\n=== 오류 메시지(초보자용 · 키 가림) ===")
 class AuthenticationError(Exception): pass
@@ -189,7 +189,7 @@ check("모델 받기 거절 → 실행 안 함", runs6 == [] and not r6.ollama_o
 io7, outs7, runs7 = make_io(["3", "y"], ollama=lambda host=None, models=None: FakeP(
     avail=(True, "ok") if models else (False, "Ollama 에 설치된 모델 없음"), host=host, models=models), mem=8)
 r7 = S.run_setup(io7)
-check("동의 → ollama pull <추천> 실행", runs7 == [["ollama", "pull", "llama3.1:8b"]] and r7.ollama_ok)
+check("동의 → ollama pull <추천> 실행", runs7 == [["ollama", "pull", "qwen2.5:7b"]] and r7.ollama_ok)
 io8, outs8, runs8 = make_io(["3"], which=lambda n: None)
 r8 = S.run_setup(io8)
 check("Ollama 미설치 → 설치 명령 안내만(자동 실행 안 함)", runs8 == [] and S.OLLAMA_INSTALL_CMD in "\n".join(outs8))

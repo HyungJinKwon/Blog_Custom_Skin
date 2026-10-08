@@ -5,6 +5,10 @@
 ## [미출시]
 
 ### 변경
+- **로컬(Ollama) 기본 모델 현행화**: 티어 기본값을 `llama3.1:8b/70b` → `qwen2.5:7b`(cheap/standard)·
+  `llama3.3:70b`(strong)로 교체. 도구 사용·지시이행이 개선된 세대로 정렬하고 setup 추천표·doctor 안내·
+  문서도 동반 갱신. 설치돼 있지 않으면 기존대로 설치된 모델로 자동 대체(`model_for`)하고 `OLLAMA_MODEL`
+  로 덮어쓸 수 있어 기존 사용자 영향 없음.
 - **CHEAP 티어 모델 현행화**: Claude 백엔드 CHEAP 티어를 `claude-haiku-4-5`(구세대, $1/$5) →
   `claude-haiku-5-5`(현행, ≤100K 프롬프트 $0.10/$0.50·컨텍스트 1M)로 교체. CHEAP 은 호출이 가장
   잦은 enum 단계에 매핑되므로 열거 단계 Claude 비용이 크게 감소하고 지시이행 품질도 개선.
