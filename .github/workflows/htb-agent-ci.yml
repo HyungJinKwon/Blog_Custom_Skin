@@ -50,3 +50,26 @@ jobs:
         run: |
           pip install "mypy==2.3.1"
           mypy src/ --ignore-missing-imports
+
+  install-smoke:
+    runs-on: ubuntu-latest
+    # 새 가상환경에 설치해 'assassin' 명령이 소스 밖(다른 cwd)에서도 동작하는지 확인
+    # (지식베이스 경로 cwd 독립 + 엔트리포인트). 네트워크 없이 동작하도록 ASSASSIN_NO_NET.
+    defaults:
+      run:
+        working-directory: htb-agent
+    env:
+      ASSASSIN_NO_NET: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 편집모드 설치
+        run: pip install -e .
+      - name: 소스 밖에서 --doctor (지식경로 cwd 독립)
+        run: cd /tmp && assassin --doctor
+      - name: 소스 밖에서 오프라인 벤치(규칙기반)
+        run: cd /tmp && assassin --bench --offline
+      - name: 하위호환 별칭(htb-agent) 동작
+        run: cd /tmp && htb-agent --version

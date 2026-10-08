@@ -93,6 +93,9 @@ class CveInfo:
 def _default_fetcher(timeout: int = 6) -> Callable[[str], str | None]:
     """urllib 기반 GET(프록시 env 존중, 실패 시 None). 네트워크 분리 지점."""
     def _get(url: str) -> str | None:
+        from .util import network_blocked
+        if network_blocked():
+            return None
         import urllib.error
         import urllib.request
         req = urllib.request.Request(url, headers={"User-Agent": "assassin-enrich/1.0"})

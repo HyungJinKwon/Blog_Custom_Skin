@@ -157,6 +157,9 @@ def _default_fetcher(timeout: int = 8, delay: float = 0.4) -> Callable[[str], st
     last = [0.0]
 
     def _get(url: str) -> str | None:
+        from .util import network_blocked
+        if network_blocked():
+            return None
         import urllib.error
         import urllib.request
         for attempt in range(2):

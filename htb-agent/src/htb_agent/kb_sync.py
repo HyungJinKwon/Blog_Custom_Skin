@@ -152,6 +152,9 @@ def active_overlays(knowledge_dir: str) -> dict[str, str]:
 
 def _default_fetch(timeout: int = 6) -> Callable[[str], bytes | None]:
     def fetch(url: str) -> bytes | None:
+        from .util import network_blocked
+        if network_blocked():
+            return None
         req = urllib.request.Request(url, headers={
             "User-Agent": "assassin-kb-sync", "Accept": "application/vnd.github+json"})
         try:

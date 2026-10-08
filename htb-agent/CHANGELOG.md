@@ -2,7 +2,7 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
-## [미출시]
+## [2.4.1] — 2026-10-08
 
 ### 추가
 - **VM 실행 샌드박스 `--sandbox vm`**: 에이전트가 명령을 실행하는 환경을 Docker 외에 **SSH 로 접속한
@@ -29,6 +29,10 @@
 - 포트스캔 폴백 서비스 추정에서 1337 을 `unknown` 으로(CTF pwn 규칙 매칭) — nc 상호작용 유도.
 - `tests/run_all.py`: 스위트당 제한시간(`ASSASSIN_TEST_SUITE_TIMEOUT`, 기본 300초) + 각 스위트
   stdin=/dev/null(대화형 input() 블록 방지) — 네트워크 대기·stdin 상속으로 멈추던 문제 해소.
+- 설치 스모크 CI 잡: 새 가상환경 설치 후 소스 밖(다른 cwd)에서 `assassin --doctor`·`--bench`·
+  별칭 동작 확인(지식경로 cwd 독립·엔트리포인트 검증).
+- 테스트 네트워크 차단: `ASSASSIN_NO_NET=1`(run_all 기본)이면 기본 fetcher(enrich·kb_sync·learn·
+  web_search)가 실제 요청을 보내지 않는다(주입 fake fetcher 는 영향 없음) — CI 안정성.
 
 ## [2.4.0] — 2026-10-08
 
