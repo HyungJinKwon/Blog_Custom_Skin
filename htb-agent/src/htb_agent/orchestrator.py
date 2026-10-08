@@ -24,7 +24,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
-from . import diagnostics
+from . import command_fixer, diagnostics
 from . import provenance as _prov
 from .audit import NullAudit
 from .command_validator import ValidationReport, shell_operators, validate
@@ -482,6 +482,7 @@ class Orchestrator:
                  web_learner=None,
                  is_tool_available: Callable[[str], bool] | None = None,
                  recon_extra_ports: "list[int] | None" = None,
+                 fix_commands: bool = True,
                  workspace=None):
         self.guard = guard
         self.runner = runner
@@ -531,6 +532,8 @@ class Orchestrator:
         self.workspace = workspace
         # nmap 미설치 시 소켓 폴백에 추가로 확인할 포트(라이브 벤치가 아는 서비스 포트)
         self.recon_extra_ports = [int(p) for p in (recon_extra_ports or [])]
+        # Results Verifier: 범위 밖 명령의 타겟 자동 교정 복구(AutoPentester). 끄려면 False.
+        self.fix_commands = fix_commands
 
     def run(self) -> OrchestrationReport:
         # 경과 시간은 정찰부터 포함, 마감 확인은 스윕 루프에서(정찰은 유한 폴백으로 별도 관리)
@@ -1480,6 +1483,21 @@ class Orchestrator:
             gs["rejected_scope"] += 1
             self.audit.event("rejected", cmd=cmd, stage="scope", reason=str(e))
             return None
+        # Results Verifier(AutoPentester): 범위 밖으로 거부될 명령만, 타겟을 자동 교정해 복구 시도.
+        # 교정본이 '검증 통과 + 범위 안'이면 그 명령으로 바꿔 진행(불완전 명령으로 버리는 낭비 감소).
+        if self.fix_commands and not sres.auto_allowed:
+            fixed, why = command_fixer.correct_target(cmd, self.guard)
+            if fixed != cmd:
+                try:
+                    fres = self.guard.inspect_command(fixed, hosts_map=self.hosts_map)
+                    fvrep = validate(fixed)
+                except ScopeViolation:
+                    fres = None
+                if fres is not None and fres.auto_allowed and fvrep.ok and not fvrep.review:
+                    self.audit.event("verifier_fixed", original=cmd, fixed=fixed, reason=why)
+                    finding.command = fixed
+                    finding.note = (finding.note + " · " if finding.note else "") + f"✎ 자동교정({why})"
+                    cmd, sres, vrep = fixed, fres, fvrep
         warn = self._repetition_warning(report, cmd)
         if warn:
             from . import ui
