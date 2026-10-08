@@ -298,9 +298,14 @@ class OrchestrationReport:
                 f"  LHOST={self.revshell_lhost}  LPORT={self.revshell_lport}"
                 "  ·  권한 확인 대상에서 사용자가 직접 실행"))
             lines.append("  " + ui.accent2("리스너: ") + listener_hints(self.revshell_lport)[0])
-            for s in self.revshells:
+            # 화면 잡음 축소(초보자): 대표 3개만 보여 주고 전체는 --json/--html 로
+            _show = self.revshells[:3]
+            for s in _show:
                 lines.append("  " + ui.accent2(f"[{s.name}]"))
                 lines.append("    " + s.payload)
+            if len(self.revshells) > len(_show):
+                lines.append(ui.dim(f"  … 외 {len(self.revshells) - len(_show)}종(bash/nc/python/php/"
+                                    "powershell/socat 등) — 전체는 --json/--html"))
         if self.cloud_checks:
             lines.append("\n" + ui.heading(
                 "AWS/S3 열거 (자동 준비 — 생성만, AWS 는 범위 밖·실행 안 함)", "☁️"))

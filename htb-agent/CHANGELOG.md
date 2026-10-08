@@ -2,6 +2,24 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [미출시]
+
+### 추가
+- **네이티브 tool use(구조화 명령 제안)**: Claude 백엔드에서 `propose_commands` 도구를 강제 호출해
+  명령 후보를 스키마대로 JSON 으로 받는다(텍스트 파싱 취약성 제거). tool_calls 가 있으면 우선 사용,
+  없으면 기존 텍스트 파싱으로 폴백 — Ollama·구버전 프로바이더 호환.
+- **플래그 출처 강화(CTF-Abacus 2608.26237)**: `looked-up`(값이 웹학습·자가학습 노트에 그대로
+  있었음 — 라이트업·검색 의심) · `reasoning-only`(값이 명령 입력에 있음 — 지어냈을 수 있음) 판정 추가.
+  '검증된 풀이율'은 `genuine`(exploit-derived)만 집계. `KnowledgeBase.external_notes()` 추가.
+- **Results Verifier(AutoPentester 2510.05605)**: 범위 밖으로 거부될 명령만, 타겟 자리표시자·사설
+  (RFC1918)/타겟대역 IP 오타를 바인딩 타겟으로 자동 교정해 복구(공격자 IP·공인/문서 IP 보존).
+  교정본도 3관문을 다시 통과. 끄려면 `fix_commands=False`. (`command_fixer.py`)
+- **연구 근거 문서** `docs/RESEARCH.md`: 5개 논문(AutoPentester·MazeRunner·CTF-Abacus·HackWorld·
+  Anomaly-Agent)의 핵심 기여 ↔ 이 저장소 기능 대응표 + 재구현 시 지킨 안전 경계.
+
+### 변경
+- 화면 잡음 축소(초보자): 리버스쉘 자동 준비는 대표 3종만 표시하고 전체는 `--json`/`--html` 로.
+
 ## [2.4.1] — 2026-10-08
 
 ### 추가
