@@ -68,8 +68,8 @@ def follower(system, user, tier):
 router = LLMRouter(FakeProvider(follower))
 res2 = B.run_bench(SUITE, attempts=1, kb=KB, router=router)
 st2 = {s.name: s for s in B.summarize(SUITE, res2)}
-check("LLM 사용 시 easy+medium 5/6 해결(hard 1건은 요약기 한계)",
-      sum(s.pass_at_k for s in st2.values()) == 5 and not st2["web-version-cve"].pass_at_k)
+check("LLM 사용 시 6/6 해결(요약기가 본문 단서 보존 → hard 도 해결)",
+      sum(s.pass_at_k for s in st2.values()) == 6 and st2["web-version-cve"].pass_at_k)
 check("시도별 LLM 호출 수 기록", any(r.llm_calls > 0 for r in res2))
 txt = B.render(list(st2.values()), 1, "fake")
 check("표: 풀린 문제·난이도별", "풀린 문제" in txt and "medium 3/3" in txt)
