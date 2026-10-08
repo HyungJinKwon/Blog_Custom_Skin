@@ -5,6 +5,24 @@
 ## [미출시]
 
 ### 추가
+- **네이티브 tool use(구조화 명령 제안)**: Claude 백엔드에서 `propose_commands` 도구를 강제 호출해
+  명령 후보를 스키마대로 JSON 으로 받는다(텍스트 파싱 취약성 제거). tool_calls 가 있으면 우선 사용,
+  없으면 기존 텍스트 파싱으로 폴백 — Ollama·구버전 프로바이더 호환.
+- **플래그 출처 강화(CTF-Abacus 2608.26237)**: `looked-up`(값이 웹학습·자가학습 노트에 그대로
+  있었음 — 라이트업·검색 의심) · `reasoning-only`(값이 명령 입력에 있음 — 지어냈을 수 있음) 판정 추가.
+  '검증된 풀이율'은 `genuine`(exploit-derived)만 집계. `KnowledgeBase.external_notes()` 추가.
+- **Results Verifier(AutoPentester 2510.05605)**: 범위 밖으로 거부될 명령만, 타겟 자리표시자·사설
+  (RFC1918)/타겟대역 IP 오타를 바인딩 타겟으로 자동 교정해 복구(공격자 IP·공인/문서 IP 보존).
+  교정본도 3관문을 다시 통과. 끄려면 `fix_commands=False`. (`command_fixer.py`)
+- **연구 근거 문서** `docs/RESEARCH.md`: 5개 논문(AutoPentester·MazeRunner·CTF-Abacus·HackWorld·
+  Anomaly-Agent)의 핵심 기여 ↔ 이 저장소 기능 대응표 + 재구현 시 지킨 안전 경계.
+
+### 변경
+- 화면 잡음 축소(초보자): 리버스쉘 자동 준비는 대표 3종만 표시하고 전체는 `--json`/`--html` 로.
+
+## [2.4.1] — 2026-10-08
+
+### 추가
 - **VM 실행 샌드박스 `--sandbox vm`**: 에이전트가 명령을 실행하는 환경을 Docker 외에 **SSH 로 접속한
   가상머신/공격호스트**에서도 돌릴 수 있다(`--vm-ssh user@host` [`--vm-ssh-key`·`--vm-ssh-port`]).
   파이프·스크립트·실도구를 VM 에서 실행하고, 작업공간 파일은 scp 로 올린다. `--vm-confine`(+`--vm-sudo`)
@@ -29,6 +47,10 @@
 - 포트스캔 폴백 서비스 추정에서 1337 을 `unknown` 으로(CTF pwn 규칙 매칭) — nc 상호작용 유도.
 - `tests/run_all.py`: 스위트당 제한시간(`ASSASSIN_TEST_SUITE_TIMEOUT`, 기본 300초) + 각 스위트
   stdin=/dev/null(대화형 input() 블록 방지) — 네트워크 대기·stdin 상속으로 멈추던 문제 해소.
+- 설치 스모크 CI 잡: 새 가상환경 설치 후 소스 밖(다른 cwd)에서 `assassin --doctor`·`--bench`·
+  별칭 동작 확인(지식경로 cwd 독립·엔트리포인트 검증).
+- 테스트 네트워크 차단: `ASSASSIN_NO_NET=1`(run_all 기본)이면 기본 fetcher(enrich·kb_sync·learn·
+  web_search)가 실제 요청을 보내지 않는다(주입 fake fetcher 는 영향 없음) — CI 안정성.
 
 ## [2.4.0] — 2026-10-08
 

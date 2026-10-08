@@ -24,7 +24,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
-from . import diagnostics
+from . import command_fixer, diagnostics
 from . import provenance as _prov
 from .audit import NullAudit
 from .command_validator import ValidationReport, shell_operators, validate
@@ -298,9 +298,14 @@ class OrchestrationReport:
                 f"  LHOST={self.revshell_lhost}  LPORT={self.revshell_lport}"
                 "  ·  권한 확인 대상에서 사용자가 직접 실행"))
             lines.append("  " + ui.accent2("리스너: ") + listener_hints(self.revshell_lport)[0])
-            for s in self.revshells:
+            # 화면 잡음 축소(초보자): 대표 3개만 보여 주고 전체는 --json/--html 로
+            _show = self.revshells[:3]
+            for s in _show:
                 lines.append("  " + ui.accent2(f"[{s.name}]"))
                 lines.append("    " + s.payload)
+            if len(self.revshells) > len(_show):
+                lines.append(ui.dim(f"  … 외 {len(self.revshells) - len(_show)}종(bash/nc/python/php/"
+                                    "powershell/socat 등) — 전체는 --json/--html"))
         if self.cloud_checks:
             lines.append("\n" + ui.heading(
                 "AWS/S3 열거 (자동 준비 — 생성만, AWS 는 범위 밖·실행 안 함)", "☁️"))
@@ -482,6 +487,7 @@ class Orchestrator:
                  web_learner=None,
                  is_tool_available: Callable[[str], bool] | None = None,
                  recon_extra_ports: "list[int] | None" = None,
+                 fix_commands: bool = True,
                  workspace=None):
         self.guard = guard
         self.runner = runner
@@ -531,6 +537,8 @@ class Orchestrator:
         self.workspace = workspace
         # nmap 미설치 시 소켓 폴백에 추가로 확인할 포트(라이브 벤치가 아는 서비스 포트)
         self.recon_extra_ports = [int(p) for p in (recon_extra_ports or [])]
+        # Results Verifier: 범위 밖 명령의 타겟 자동 교정 복구(AutoPentester). 끄려면 False.
+        self.fix_commands = fix_commands
 
     def run(self) -> OrchestrationReport:
         # 경과 시간은 정찰부터 포함, 마감 확인은 스윕 루프에서(정찰은 유한 폴백으로 별도 관리)
@@ -1480,6 +1488,21 @@ class Orchestrator:
             gs["rejected_scope"] += 1
             self.audit.event("rejected", cmd=cmd, stage="scope", reason=str(e))
             return None
+        # Results Verifier(AutoPentester): 범위 밖으로 거부될 명령만, 타겟을 자동 교정해 복구 시도.
+        # 교정본이 '검증 통과 + 범위 안'이면 그 명령으로 바꿔 진행(불완전 명령으로 버리는 낭비 감소).
+        if self.fix_commands and not sres.auto_allowed:
+            fixed, why = command_fixer.correct_target(cmd, self.guard)
+            if fixed != cmd:
+                try:
+                    fres = self.guard.inspect_command(fixed, hosts_map=self.hosts_map)
+                    fvrep = validate(fixed)
+                except ScopeViolation:
+                    fres = None
+                if fres is not None and fres.auto_allowed and fvrep.ok and not fvrep.review:
+                    self.audit.event("verifier_fixed", original=cmd, fixed=fixed, reason=why)
+                    finding.command = fixed
+                    finding.note = (finding.note + " · " if finding.note else "") + f"✎ 자동교정({why})"
+                    cmd, sres, vrep = fixed, fres, fvrep
         warn = self._repetition_warning(report, cmd)
         if warn:
             from . import ui
@@ -1573,10 +1596,10 @@ class Orchestrator:
         """출처 분류 + 작업공간 보정.
         - 에이전트가 쓴 스크립트 본문에 플래그 문자열이 그대로 있으면 '로컬 유래'(지어낸 값일 수 있음)
         - 첨부파일만 있는 문제(열린 포트 없음)에서 files/ 를 읽은 로컬 명령의 출력은 풀이 결과로 인정"""
-        prov = _prov.classify(hit.kind, hit.value, cmd, phase)
-        if hit.value in cmd:
-            prov.verdict = "local-derived"
-            prov.reason = "명령 문자열 자체에 플래그가 들어 있음 — 출력이 아니라 입력에서 나온 값"
+        # 외부/학습 자료(웹학습·ingest 노트)에 플래그가 그대로 있으면 looked-up(라이트업·검색 의심)
+        in_external = self._flag_in_external_notes(hit.value)
+        prov = _prov.classify(hit.kind, hit.value, cmd, phase, in_external=in_external)
+        if prov.verdict in ("reasoning-only", "looked-up"):
             return prov
         ws = self.workspace
         if ws is None:
@@ -1595,6 +1618,18 @@ class Orchestrator:
             prov.verdict = "exploit-derived"
             prov.reason = "첨부파일 분석 출력에서 추출(오프라인 문제)"
         return prov
+
+    def _flag_in_external_notes(self, value: str) -> bool:
+        """플래그 값이 웹학습·ingest 등 '외부에서 가져온' 노트 본문에 그대로 있는가(looked-up 판정).
+        사용자가 직접 올린 라이트업(ingest)이라도, 플래그가 거기 적혀 있었다면 공략이 아니라
+        '본 것'이므로 사람이 확인하도록 표시한다. 번들 시드(공략 흔적 없는 레퍼런스)는 제외."""
+        if not value or self.kb is None:
+            return False
+        try:
+            notes = self.kb.external_notes()
+        except Exception:   # noqa: BLE001 — 분류 보조 실패가 본 작업을 막지 않음
+            return False
+        return any(value in n for n in notes)
 
     def _diagnose(self, report: OrchestrationReport, finding: EnumFinding, out) -> None:
         """실패를 원인별로 분류해 finding 비고에 덧붙이고 report.blockers 에 기록한다.

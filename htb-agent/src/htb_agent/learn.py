@@ -230,6 +230,9 @@ class LearnResult:
 
 def _default_fetcher(timeout: int = 6) -> Callable[[str], str | None]:
     def _get(url: str) -> str | None:
+        from .util import network_blocked
+        if network_blocked():
+            return None
         import urllib.error
         import urllib.request
         req = urllib.request.Request(url, headers={"User-Agent": "assassin-learn/1.0"})

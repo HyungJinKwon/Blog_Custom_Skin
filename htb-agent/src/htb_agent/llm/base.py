@@ -12,7 +12,7 @@ LLM Provider 추상화 + 티어링
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -48,6 +48,8 @@ class LLMResponse:
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
     stop_reason: str = ""           # "refusal" 이면 모델이 응답을 거절(빈 응답과 구분)
+    # 네이티브 tool use 응답(지원 백엔드만) — [{"name": str, "input": dict}]. 비면 텍스트 파싱 폴백.
+    tool_calls: list = field(default_factory=list)
 
 
 class LLMProvider(ABC):
@@ -65,5 +67,8 @@ class LLMProvider(ABC):
 
     @abstractmethod
     def complete(self, system: str, user: str,
-                 tier: Tier = Tier.STANDARD, max_tokens: int = 1024) -> LLMResponse:
+                 tier: Tier = Tier.STANDARD, max_tokens: int = 1024,
+                 tools: "list | None" = None) -> LLMResponse:
+        """tools 가 주어지면(네이티브 tool use 지원 백엔드) 구조화 호출을 시도하고 결과를
+        LLMResponse.tool_calls 에 담는다. 미지원 백엔드는 tools 를 무시하고 텍스트로 답한다."""
         ...

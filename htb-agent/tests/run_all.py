@@ -8,6 +8,8 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)   # htb-agent
 SUITE_TIMEOUT = int(os.environ.get("ASSASSIN_TEST_SUITE_TIMEOUT", "300"))   # 스위트당 제한(초)
+# 테스트는 실제 아웃바운드 네트워크를 쓰지 않는다(기본 fetcher 차단). 주입 fake fetcher 는 영향 없음.
+os.environ.setdefault("ASSASSIN_NO_NET", "1")
 
 
 def main() -> int:
