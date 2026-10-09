@@ -2,6 +2,20 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.23] — 2026-10-09
+
+### 추가(Added) — 자동 루트 체인 E단계: 플래그 읽기를 발판 셸로(채널 무관)
+- **`flag_read`**(생성 전용): 지금까지 SSH 전용(sshpass)이던 플래그 읽기를 **`ShellSession`
+  인터페이스로** 수행 → 리버스셸(B)·웹RCE(C) 발판에서도 **같은 코드로** user.txt/root.txt 수집.
+  - `read_flags(session, flag_kind)` — 세션으로 플래그 파일을 읽어 `{kind: value}` 수집.
+    user+root 확보 시 조기 종료, `run` 예외 흡수, 죽은/없는 세션은 빈 결과(섣부른 실행 없음).
+  - `flag_read_commands(flag_kind)` — boot2root(user/root)·single(CTF) 별 읽기 명령 생성.
+- **테스트**: `test_flag_read.py`(16) — 채널 무관 수집·부분수집·조기종료·예외흡수·single·경계.
+
+### 안전(Safety)
+- 명령 생성·출력 분류(flag.scan) 글루만 — 실제 실행은 `session.run`→발판 transport(사용자 주입,
+  RCE 표면). subprocess/socket 미임포트. 자동 루트 체인 A~E 생성 전용 스캐폴딩 완료.
+
 ## [2.6.22] — 2026-10-09
 
 ### 추가(Added) — 자동 루트 체인 D단계: 발판 후 자격 수확
