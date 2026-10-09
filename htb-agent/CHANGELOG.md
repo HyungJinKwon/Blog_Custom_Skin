@@ -2,6 +2,22 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.19] — 2026-10-09
+
+### 추가(Added) — 자동 루트 체인 보강 A단계
+- **PoC 정확 호출 조립**(`exploit_fetch.build_invocation`, 생성 전용): 받은 PoC '소스'를
+  `analyze_poc` 로 정적분석해 **locator 추측보다 정밀한 실행 호출(제안)**을 조립한다.
+  transport(http/https/tcp)·LHOST 필요 여부·usage 를 실제 소스에서 판단하고, usage 가 요구하는
+  인자 수가 채운 것보다 많으면 **'인자 부족'으로 표시**(섣부른 자동실행 방지)·확신도(high/low) 부여.
+  - `PocInvocation{command, usage, needs_lhost, confidence, notes}`.
+  - 역쉘 PoC 는 LHOST·리스너 필요를 알리고 발판 세션(B)과 함께 쓰도록 안내.
+- **테스트**: `test_exploit_fetch.py` build_invocation(인자 충족/부족·역쉘·usage 미검출) 가드(43).
+
+### 참고(Note)
+- 자동 루트 실패의 근본 원인(발판 셸 채널 부재) 보강의 첫 단계. 실제 fetch(`searchsploit -m`)
+  실행 후 소스를 읽어 `build_invocation` 으로 명령을 만들고 실행하는 연결은 사용자 리포의
+  `--exploit-exec` 스테이지 몫(RCE 실행 표면). 본 모듈은 **문자열·메타 생성만** 한다.
+
 ## [2.6.18] — 2026-10-09
 
 ### 수정(Fixed) — connected.htb 실전 피드백
