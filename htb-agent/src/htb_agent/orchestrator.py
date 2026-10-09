@@ -121,6 +121,7 @@ class OrchestrationReport:
     # 자동 준비된 권한상승 플레이북(OS 식별 시 — 생성만, 대상 셸에서 사용자 실행)
     privesc_steps: list = field(default_factory=list)      # list[privesc.PrivescStep]
     privesc_cve_candidates: list = field(default_factory=list)  # list[str]
+    privesc_vectors: list = field(default_factory=list)    # list[privesc_analyze.PrivescVector]
     # 자동 준비된 해시 크래킹 작업(출력/볼트에서 해시 수집 시 — 생성만, 사용자 실행)
     crack_jobs: list = field(default_factory=list)         # list[crack.CrackJob]
     # 자율 지식 획득(모르는 기술 → 권위 출처에서 자동 학습, P1 유지)
@@ -1446,8 +1447,33 @@ class Orchestrator:
             self.audit.event("privesc_prepared", os=os_class,
                              steps=len(plan.steps),
                              cve_candidates=len(plan.cve_candidates))
+            # ③ 폐루프 '후보 선정': 획득한 셸에서 이미 실행된 privesc 열거 출력(findings)이
+            # 있으면 파싱해 구체적 상승 벡터를 랭킹한다(생성 전용 — 제안만, 실행 아님).
+            if os_class == "linux":
+                self._privesc_analyze_stage(report)
         except Exception as e:   # noqa: BLE001 — 준비 실패가 전체를 깨지 않도록
             self.audit.event("privesc_error", error=str(e))
+
+    def _privesc_analyze_stage(self, report: OrchestrationReport) -> None:
+        """③ 폐루프 후보 선정 — findings 에 privesc 열거 출력(sudo -l·SUID·getcap)이 있으면
+        파싱해 구체적 상승 벡터를 랭킹하고 수동 제안으로 surface 한다. 생성 전용(실행 아님).
+        벡터의 '실제 실행 → root 확인 → world 권한레벨 전이 → 재열거'(폐루프 발사)는 사용자
+        리포의 실행 스테이지(target_shell) 몫 — 여기선 후보·계획만 만든다."""
+        corpus = "\n".join(f.output for f in (report.enum_findings + report.llm_findings)
+                           if f.output)
+        if not corpus.strip():
+            return
+        from .privesc_analyze import analyze_enum, render_vectors
+        vectors = analyze_enum(corpus)
+        if not vectors:
+            return
+        report.privesc_vectors = vectors
+        suggestion = render_vectors(vectors)
+        if suggestion not in report.manual_suggestions:
+            report.manual_suggestions.append(
+                "# 권한상승 벡터(열거 출력 자동 분석 — 권한 확인 자산 전용):\n" + suggestion)
+        self.audit.event("privesc_vectors", count=len(vectors),
+                         kinds=[v.kind for v in vectors[:5]])
 
     def _world_fingerprint(self, report: OrchestrationReport) -> tuple:
         """스윕 간 '상태 성장' 판정용 지문. 관측·크리덴셜·서비스·권한이 늘면 달라진다.
