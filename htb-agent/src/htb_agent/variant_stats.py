@@ -48,6 +48,19 @@ class VariantStats:
         return [f for _, f in indexed]
 
     # ── 영속화 ──
+    def merge(self, other: "VariantStats") -> int:
+        """다른 통계를 합산(성장 공유, G1). 키는 binary+fragment 뿐 — 명령 전체·타겟·출력은
+        담기지 않아 공유해도 안전. 같은 키는 succ/att 를 더한다. 반환: 병합된 키 수."""
+        n = 0
+        for k, v in (other.stats or {}).items():
+            if not isinstance(v, dict):
+                continue
+            cur = self.stats.setdefault(k, {"succ": 0, "att": 0})
+            cur["succ"] = int(cur.get("succ", 0)) + int(v.get("succ", 0))
+            cur["att"] = int(cur.get("att", 0)) + int(v.get("att", 0))
+            n += 1
+        return n
+
     def to_dict(self) -> dict:
         return {"stats": self.stats}
 

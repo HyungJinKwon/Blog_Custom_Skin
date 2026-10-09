@@ -307,6 +307,9 @@ cd htb-agent && python3 tests/run_all.py     # 전체 스위트(끝에 '총 N �
 | `--promote` `TOPIC` | 로컬 학습 노트(learned-&lt;주제&gt;.md) 중 품질 관문을 통과한 항목을 번들 시드의 '최신 보강(승격)' 섹션으로 승격. 결과를 커밋·PR 하면 모든 사용자에게 공유. 예: --promote sqli / 전체: --promote all |
 | `--list-sessions` | 저장된 세션(타겟) 목록 출력 — --resume 대상 확인용(타겟 없이 단독 실행) |
 | `--kb-sync` | 공유 저장소의 최신 번들 시드를 지금 동기화(검증 통과분만 로컬 캐시에 적용). 타겟 실행 시에는 하루 1회 자동 |
+| `--update` | 최신화 원클릭: 공유 시드 동기화 + 권위출처 재학습·승격(--offline 이면 네트워크 생략) |
+| `--export-stats` `파일` | 실행 학습 통계(변형 성공률) 내보내기 — 성장 공유용(명령 전체·타겟·출력 미포함) |
+| `--import-stats` `파일` | 공유된 실행 학습 통계를 로컬에 병합(성장 공유 — succ/att 합산) |
 | `--no-kb-sync` | 실행 시 공유 시드 자동 동기화 끄기(환경변수 ASSASSIN_NO_KB_SYNC=1 도 동일) |
 | `--ingest` `PATH` | 사용자 제공 자료(.md/.txt/.pdf 파일 또는 디렉터리)를 지식베이스 노트로 미리 학습. 예: --ingest ./my-writeups/ |
 | `--cloud` `NAME` | AWS/S3 열거 자동 준비(생성 안 실행). 호스트명/도메인에서 버킷명 후보+비인증 점검 생성. 예: --cloud acme.htb. 권한 확인 자산 전용 |

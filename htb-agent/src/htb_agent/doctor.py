@@ -70,6 +70,26 @@ def _check_llm(llm_test: bool = False, ollama_model: str = "",
     return rows
 
 
+def _capability_grade(strong_llm: bool, any_llm: bool, essentials_ok: bool,
+                      sandbox_ok: bool) -> tuple[str, list[str]]:
+    """환경 역량 등급과 '한 단계 올리는 법'을 반환(G2). 사용자·환경별 성능 편차를 가시화한다.
+      full     = 강력 LLM(claude/hybrid) + 핵심 도구 + 실행 샌드박스(docker/vm)
+      standard = (LLM 아무거나) 또는 핵심 도구 — 규칙+적응이 제대로 도는 상태
+      baseline = LLM 없음 + 핵심 도구 미비 — 규칙 기반 최소 동작
+    등급은 안전·정확성과 무관(모든 등급에서 3관문·범위 강제 동일). 성능/자율성의 폭을 나타낸다."""
+    tips: list[str] = []
+    if strong_llm and essentials_ok and sandbox_ok:
+        return "full", ["최상위 — 완전자율(--autonomous --sandbox docker --llm hybrid) 권장"]
+    if not strong_llm:
+        tips.append("강력 LLM 연결(assassin --setup-llm → hybrid/claude): 분석·명령 품질↑")
+    if not essentials_ok:
+        tips.append("핵심 도구 설치(assassin --install-missing): 열거·공격 커버리지↑")
+    if not sandbox_ok:
+        tips.append("실행 샌드박스(docker 설치 + ./scripts/build_sandbox.sh): 스크립트·동적 실행 자동화")
+    grade = "standard" if (any_llm or essentials_ok) else "baseline"
+    return grade, tips
+
+
 def run_doctor(llm_test: bool = False, ollama_model: str = "",
                ollama_host: str = "") -> tuple[str, bool]:
     """진단 텍스트와 '치명적 문제 없음' 여부를 반환."""
@@ -123,10 +143,13 @@ def run_doctor(llm_test: bool = False, ollama_model: str = "",
     # 3) LLM 백엔드(선택)
     llm_lines = []
     any_llm = False
+    strong_llm = False   # claude/hybrid 등 비-ollama 백엔드 가용(역량 등급용)
     for name, ok, reason, hint in _check_llm(llm_test, ollama_model, ollama_host):
         short = reason if len(reason) <= 90 else reason[:87] + "..."
         if ok:
             any_llm = True
+            if "ollama" not in name.lower():
+                strong_llm = True
             llm_lines.append(ui.mark_ok(f"{name:14}") + ui.dim(short))
         else:
             llm_lines.append(ui.mark_warn(f"{name:14}") + ui.dim(short))
@@ -158,6 +181,18 @@ def run_doctor(llm_test: bool = False, ollama_model: str = "",
                            "전용 Kali VM 이 있으면 vm"))
     out.append(ui.panel("3.5 실행 샌드박스 (선택)", sb_lines, style="navy"))
 
+    # 3.9) 역량 등급(G2) — 환경·사용자별 성능 편차를 한눈에 + 올리는 법
+    sandbox_ok = bool(_sh.which("docker") or _sh.which("ssh"))
+    grade, tips = _capability_grade(strong_llm, any_llm, not missing_ess, sandbox_ok)
+    _GRADE_LABEL = {"full": ui.ok("full (최상위)"),
+                    "standard": ui.info("standard (표준)"),
+                    "baseline": ui.mark_warn("baseline (최소)")}
+    grade_lines = [ui.kv("현재 등급", _GRADE_LABEL.get(grade, grade), 10),
+                   ui.dim("  등급은 성능·자율성의 폭 — 안전·범위 강제는 모든 등급 동일")]
+    for tip in tips:
+        grade_lines.append(ui.mark_run("↑ ") + tip)
+    out.append(ui.panel("3.9 역량 등급", grade_lines, style="navy"))
+
     # 4) 종합 · 다음 단계
     nxt = []
     if blocking:
@@ -172,5 +207,7 @@ def run_doctor(llm_test: bool = False, ollama_model: str = "",
     out.append(ui.panel("4. 다음 단계", nxt,
                         style="accent" if not blocking else "warn"))
 
-    out.append(ui.dim(f"ASSASSIN {__version__} · 이 진단은 네트워크·대상 없이 동작합니다."))
+    from .knowledge import KB_VERSION
+    out.append(ui.dim(f"ASSASSIN {__version__} · KB v{KB_VERSION} · "
+                      "이 진단은 네트워크·대상 없이 동작합니다."))
     return "\n".join(out), not blocking
