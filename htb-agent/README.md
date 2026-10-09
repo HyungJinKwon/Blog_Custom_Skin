@@ -349,6 +349,7 @@ cd htb-agent && python3 tests/run_all.py     # 전체 스위트(끝에 '총 N �
 | `--enrich-cache` | CVE 캐시 디렉토리 (기본 &lt;knowledge&gt;/cve_cache) |
 | `--max-attempts` | 포트스캔 폴백 최대 시도 (기본 4, 무한루프 방지) |
 | `--max-enum` | enum 자동실행 최대 개수 (기본 6, 무한확장 방지) |
+| `--max-llm` | LLM 제안 명령 최대 개수 (기본 5, 자율모드 8) |
 | `--max-rounds` | ENUM/LLM 반복 라운드 수 (기본 2, 무한루프 방지) |
 | `--max-sweeps` | 단계 재진입 스윕 수 (기본 2). 새 관측·크리덴셜로 이전 단계 재시도. 상태 정체 시 조기종료(유한) |
 | `--max-parallel` | 열거 명령 동시 실행 수 (기본 1=순차). 독립 명령의 I/O 만 병렬 — 게이트·결과처리는 순차로 안전 |

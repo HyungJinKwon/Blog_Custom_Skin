@@ -45,7 +45,7 @@ _HELP_EPILOG = """\
 
 class _SuggestingParser(argparse.ArgumentParser):
     """알 수 없는 옵션에 '가장 가까운 실제 옵션'을 제안(초보자 오타 바로잡기). 예:
-    'assassin 10.129.1.5 --prt' → "'--prt' → 혹시 '--port'?" """
+    'assassin 10.129.1.5 --autonomus' → "'--autonomus' → 혹시 '--autonomous'?" """
     def error(self, message):   # noqa: A003 (argparse 시그니처)
         if message.startswith("unrecognized arguments:"):
             import difflib
@@ -218,6 +218,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="포트스캔 폴백 최대 시도 (기본 4, 무한루프 방지)")
     g_limit.add_argument("--max-enum", type=int, default=None,
                    help="enum 자동실행 최대 개수 (기본 6, 무한확장 방지)")
+    g_limit.add_argument("--max-llm", type=int, default=None,
+                   help="LLM 제안 명령 최대 개수 (기본 5, 자율모드 8)")
     g_limit.add_argument("--max-rounds", type=int, default=None,
                    help="ENUM/LLM 반복 라운드 수 (기본 2, 무한루프 방지)")
     g_limit.add_argument("--max-sweeps", type=int, default=None,
@@ -283,7 +285,9 @@ def _start_guide() -> str:
 def _scope_hint(err: str, target: str, platform: str) -> list[str]:
     """타겟 바인딩 실패 시 초보자가 바로 고칠 수 있는 다음 명령(범위 판단은 바꾸지 않음)."""
     hints = []
-    if "호스트명" in err or "파싱 실패" in err:
+    if "IPv6" in err:
+        hints.append("현재 IPv4 타겟만 지원합니다 — HTB 머신은 IPv4 입니다(머신 페이지의 Target IP).")
+    elif "호스트명" in err or "파싱 실패" in err:
         hints.append(f"CTF/Dreamhack 문제(호스트명·URL)면:  assassin {target} --platform ctf")
         hints.append("HTB 머신이면 IP 로 입력하세요(예: 10.129.x.x) — 머신 페이지의 Target IP")
     elif "대역" in err and platform == "htb":
@@ -505,6 +509,7 @@ def _run_target(args, cfg, knowledge_dir, runner) -> int:
         return pick(cli, cf, aggressive if args.autonomous else base)
     max_attempts = pick(args.max_attempts, cfg.max_attempts, 4)
     max_enum = _auto_def(args.max_enum, cfg.max_enum, 10, 6)
+    max_llm = _auto_def(args.max_llm, cfg.max_llm, 8, 5)
     max_rounds = _auto_def(args.max_rounds, cfg.max_rounds, 3, 2)
     max_sweeps = _auto_def(args.max_sweeps, cfg.max_sweeps, 3, 2)
     max_parallel = _auto_def(args.max_parallel, getattr(cfg, "max_parallel", None), 4, 1)
@@ -763,7 +768,7 @@ def _run_target(args, cfg, knowledge_dir, runner) -> int:
                                 dry_run=args.dry_run,
                                 observer=observer,
                                 max_enum=max_enum,
-                                max_llm=pick(None, cfg.max_llm, 5),
+                                max_llm=max_llm,
                                 recon_max_attempts=max_attempts,
                                 max_rounds=max_rounds,
                                 max_sweeps=max_sweeps,
@@ -1098,6 +1103,31 @@ def _dispatch_standalone(args, cfg, knowledge_dir):
 
 
 def main(argv: list[str] | None = None, runner=None) -> int:
+    """최상위 진입점 — 학습용 도구이므로 Ctrl+C·예기치 못한 오류를 raw 트레이스백 대신
+    실행 가능한 한 줄 안내로 바꾼다(전체 추적은 ASSASSIN_DEBUG=1). 타겟 실행은
+    중단돼도 상태가 저장돼 --resume 으로 이어진다(품질검수 MED)."""
+    import os as _os
+    try:
+        return _main(argv, runner)
+    except KeyboardInterrupt:
+        from . import ui
+        print("\n" + ui.mark_warn(
+            "중단됨 — 타겟 실행은 저장된 지점부터 '--resume' 으로 이어갈 수 있습니다."),
+            file=sys.stderr)
+        return 130
+    except SystemExit:
+        raise   # argparse·정상 종료 코드는 그대로 전달
+    except Exception as e:   # noqa: BLE001 — 사용자에게는 한 줄, 전체 추적은 디버그 플래그로
+        if _os.environ.get("ASSASSIN_DEBUG"):
+            raise
+        from . import ui
+        print(ui.mark_err(f"예기치 못한 오류: {type(e).__name__}: {e}"), file=sys.stderr)
+        print(ui.dim("진단은 'assassin --doctor', 전체 추적은 ASSASSIN_DEBUG=1 로 다시 실행하세요."),
+              file=sys.stderr)
+        return 1
+
+
+def _main(argv: list[str] | None = None, runner=None) -> int:
     # runner 주입 가능(테스트). 기본은 실제 Kali 용 SubprocessRunner.
     parser = build_parser()
     args = parser.parse_args(argv)

@@ -106,5 +106,31 @@ check("OUTPUT 기본 DROP 아님 → 거부", not output_chain_is_safe(NO_DROP, 
 check("호스트(/32) 허용대역도 -d 매칭", output_chain_is_safe(
     "-P OUTPUT DROP\n-A OUTPUT -d 10.129.5.5/32 -j ACCEPT\n", ["10.129.5.5"]))
 
+print("\n=== FINDING A. rm 외 파괴적 바이너리 차단(디바이스/시스템 경로 한정) ===")
+A_BLOCK = [
+    "shred -u /etc/passwd", "shred -n 3 -z /dev/sda", "wipefs -a /dev/sda",
+    "find / -delete", "find /home -type f -delete", "find /boot -delete",
+    "find / -exec rm -rf {} ;", "chmod -R 000 /", "chmod --recursive 777 ~",
+    "chown -R nobody:nobody /", "mke2fs /dev/sda1", "mkfs.ext4 /dev/sda1",
+    "mkswap /dev/sda2", "dd if=/dev/zero of=/dev/loop0",
+    "dd of=/dev/disk/by-id/foo if=/dev/zero", "dd if=/dev/null of=/etc/passwd",
+    "truncate -s 0 /etc/shadow", ": > /etc/passwd", "cat /dev/null > /etc/passwd",
+    "sudo wipefs -a /dev/nvme0n1", "tee /dev/mapper/x",
+]
+for c in A_BLOCK:
+    rep = validate(c)
+    check(f"차단: {c}", (not rep.ok) and any(i.code == "DESTRUCTIVE" for i in rep.errors))
+
+print("\n=== FINDING A(대조). 정상 디스크/파일 작업은 오탐 없이 통과 ===")
+A_ALLOW = [
+    "shred ./creds.txt", "mkfs.ext4 disk.img", "dd if=/dev/zero of=out.img bs=1M count=10",
+    "dd if=/dev/sda of=disk.img", "truncate -s 100M sparse.img", "find / -name flag.txt",
+    "find . -type f -delete", "chmod -R 755 ./www", "chown -R user:user /home/user/app",
+    "cp /dev/null ./empty", "find /var/www -name config.php", "echo data > ./out.txt",
+]
+for c in A_ALLOW:
+    rep = validate(c)
+    check(f"허용: {c}", not any(i.code == "DESTRUCTIVE" for i in rep.errors))
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
