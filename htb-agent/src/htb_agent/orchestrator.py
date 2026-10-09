@@ -442,10 +442,6 @@ class Orchestrator:
                 except Exception as e:   # noqa: BLE001 — 수집 실패는 진행 방해 금지
                     self.audit.event("enrich_error", error=str(e))
 
-        # PHASE 3.9(리버스쉘 준비) 직전
-        if self.exploit_exec and not interrupted:
-            self._exploit_exec_stage(report, host)
-
         # PHASE 3.9(리버스쉘 준비) 직전: exploit-exec 발판 시도
         if self.exploit_exec and not interrupted:
             self._exploit_exec_stage(report, host)
