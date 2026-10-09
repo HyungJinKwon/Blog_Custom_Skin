@@ -35,8 +35,13 @@ def next_actions(report) -> list[str]:
     return out
 
 
+# 익스플로잇 후보 묶음 제목(전용 — 맨 위에, 전부 표시). 자율 풀이의 핵심 결정이라 숨기지 않는다.
+_EXPLOIT_TITLE = "🎯 익스플로잇 후보 — PoC 고르기"
+
 # 수동 제안 분류: (제목, 초보자가 바로 하는 법, 판별 함수) — 위에서부터 먼저 맞는 것
 _MANUAL_KINDS = [
+(_EXPLOIT_TITLE, "대상 버전에 맞는 PoC 를 골라 --exploit-exec --poc \"<PoC>\" 로 실행하면 침입→자격→플래그가 이어집니다",
+ lambda s: ("익스 후보" in s) or ("PoC 후보" in s)),
 ("자격증명이 필요한 명령", "--cred 사용자:비밀번호 를 붙여 다시 실행하면 자동으로 채워 실행합니다",
  lambda s: any(p in s for p in ("{user}", "{pass}", "{domain}", "{hash}"))),
 ("실행 위험 — 내용 확인 필요", "각 줄의 '대안'대로 먼저 내용을 확인한 뒤 직접 실행하세요",
@@ -286,6 +291,11 @@ def render_summary(report) -> str:
         lines.append("\n" + ui.heading("수동 제안 — 종류별 바로 적용하는 법", "✋"))
         for title, how, items in _group_manual(report.manual_suggestions):
             lines.append("  " + ui.bold(f"{title} ({len(items)})") + "  " + ui.info("→ " + how))
+            # 익스플로잇 후보는 '고를 대상'이므로 자르지 않고 전부 보여 준다(핵심 결정).
+            if title == _EXPLOIT_TITLE:
+                for s in items:
+                    lines.append(ui.bullet(s, "·", "accent2"))
+                continue
             # 초보자 화면: 옵션만 덧붙인 변형·같은 꼬리표는 숨기고 앞의 몇 개만(전체는 리포트에)
             shown = _compact_manual(items)
             for s in shown[:_MANUAL_SHOW]:

@@ -2,6 +2,27 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.9] — 2026-10-09
+
+실전(connected.htb) 피드백 — PoC 후보가 터미널에 안 보이고, 요약된 출력에서 파싱이 어긋나던
+문제를 고치고, 1순위 PoC 자동 선택(⭐)을 추가. 실행 경계(생성 전용)는 그대로.
+
+### 수정(Fixed)
+- **searchsploit 파싱이 요약(collapsed) 출력에서 어긋남**: `finding.output` 은 요약기가 줄바꿈을
+  공백으로 합치는데, 기존 라인 기반 파서가 전체를 1개 항목으로 오인했다. 토큰 기반(정규식)으로
+  바꿔 '제목 | locator(경로/URL)' 을 항목별로 정확히 분리(헤더 'Path'·구분선 자동 제외, `-w` URL
+  지원). collapsed·raw 둘 다 견고.
+- **PoC 후보가 터미널에 안 보임**: 공개 익스 후보가 '기타 안내'로 분류돼 6개 컷오프에 밀려
+  숨겨졌다. 전용 묶음 **`🎯 익스플로잇 후보 — PoC 고르기`** 로 맨 위에, 전부 표시(자율 풀이의
+  핵심 결정이라 자르지 않음).
+
+### 추가(Added)
+- **1순위 PoC 자동 선택(⭐)**: 버전 접두 매칭으로 추려진 후보 중 1순위를 ⭐로 자동 선택하고,
+  받아 검토할 명령(`searchsploit -m <edb-id>`)까지 제시. 실제 실행은 사람이 `--exploit-exec
+  --poc` 로(생성 전용 경계 유지 — 자동 선택까지, 자동 실행은 옵트인 수동 트리거).
+- **테스트**: `test_exploit_view.py`(전용 묶음·전부 표시 회귀 가드) + `test_searchsploit.py`
+  collapsed/URL 파싱 가드 + `test_exploit_lookup.py` ⭐·fetch 검증.
+
 ## [2.6.8] — 2026-10-09
 
 ### 추가(Added)
