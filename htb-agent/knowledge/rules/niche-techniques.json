@@ -1,0 +1,33 @@
+[
+  {
+    "name": "AD CS 취약 템플릿 탐색(certipy ESC)",
+    "when": { "os": ["windows_ad"], "ports": [445, 389, 636], "services": ["ldap", "smb", "microsoft-ds"] },
+    "suggest": [
+      "certipy-ad find -u {user} -p {pass} -dc-ip {t} -vulnerable -stdout"
+    ],
+    "note": "도메인 크리덴셜 확보 후 AD CS(인증서 서비스)의 잘못 구성된 템플릿을 찾는다. certipy find -vulnerable 로 ESC1~ESC8 후보를 식별 → 악용은 사람이 검토(ESC1: req 로 임의 UPN 인증서 발급 후 PKINIT/getnthash). 일반 기법 — {user}/{pass} 는 확보된 도메인 자격, 대상은 관측된 DC.",
+    "tags": ["ad", "adcs", "certipy", "privesc", "lateral"],
+    "phase": "lateral"
+  },
+  {
+    "name": "NoSQL 인젝션 점검(MongoDB 등)",
+    "when": { "ports": [80, 443, 8080, 3000], "services": ["http", "https"] },
+    "suggest": [
+      "curl -s -X POST http://{t}/login -H 'Content-Type: application/json' -d '{\"username\":{\"$ne\":null},\"password\":{\"$ne\":null}}' -i"
+    ],
+    "note": "JSON 바디를 받는 로그인/검색 API 는 NoSQL(MongoDB) 인젝션에 취약할 수 있다. 연산자 주입($ne/$gt/$regex)으로 인증 우회·불린 추출을 점검한다. 폼(x-www-form-urlencoded)이면 username[$ne]= 형태. 일반 기법 — 관측된 API 엔드포인트에만.",
+    "tags": ["web", "nosqli", "injection", "auth-bypass"],
+    "phase": "access"
+  },
+  {
+    "name": "JWT 약점 점검(alg none / HS-RS 혼동)",
+    "when": { "ports": [80, 443, 8080, 3000], "services": ["http", "https"] },
+    "suggest": [
+      "jwt_tool <캡처한_JWT> -M at -t http://{t}/",
+      "jwt_tool <캡처한_JWT> -X a"
+    ],
+    "note": "Authorization: Bearer / 쿠키의 JWT 를 수집했으면 alg:none 수용, HS256↔RS256 키 혼동(공개키를 HMAC 비밀로), 약한 HMAC 비밀(브루트) 을 점검한다. 서명 우회 시 권한 상승(role=admin 등). 캡처한 토큰을 자리표시자에 넣어 실행. 일반 기법.",
+    "tags": ["web", "jwt", "auth-bypass", "creds"],
+    "phase": "access"
+  }
+]
