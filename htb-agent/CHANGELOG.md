@@ -2,6 +2,19 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.6] — 2026-10-09
+
+### 추가(Added)
+- **Exploit 레지스트리(3단계 기반, `exploits.py`)**: 핑거프린트된 웹앱 제품키
+  (`world.web_product`, 2.6.4)에 맞는 **공개 익스 '조회' 명령**(searchsploit)을 access 단계에서
+  게이트로 올린다(제품당 1회·멱등). 지원: FreePBX·Elastix·WordPress·Joomla·Drupal·Tomcat·
+  Jenkins·Grafana·GitLab·Gitea·phpMyAdmin·Nextcloud·osTicket. 조회 결과(버전별 공개 익스
+  목록)는 enum_findings 에 남아 다음 분석·명령 생성에 되먹여지고, 특정된 PoC 는 **대상 버전
+  대조 후 사람/LLM 이 골라 3관문으로 실행**한다.
+  · **안전 경계**: 레지스트리에는 searchsploit **조회 명령만** 담긴다 — 실제 익스 실행 명령·
+    PoC 코드·원격 RCE 는 하드코딩하지 않는다(생성 전용 경계·RCE 표면 금지 유지).
+- **테스트**: `test_exploit_lookup.py`(레지스트리 데이터·게이트 경유 조회·캡처·멱등, 10건).
+
 ## [2.6.5] — 2026-10-09
 
 실제 머신 실행 중 드러난 LLM 신뢰성 문제(하이브리드 두뇌가 400 에러·거절로 사실상
