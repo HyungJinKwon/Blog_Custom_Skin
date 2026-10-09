@@ -1434,9 +1434,9 @@ class Orchestrator:
 
     def _acquire_session(self, report, host):
         """발판 세션 획득 + 성립 검증(헛발판 폐기). --exploit-exec/--auto-poc 전용."""
+        from .session_verify import looks_like_shell, verify_probe_command
         from .shell_session import WebRceSession
         from .shell_transport import web_http_fn
-        from .session_verify import looks_like_shell, verify_probe_command
 
         if self.world.web_product and self.auto_poc:
             # PoC 가 성립시킨 cmd 엔드포인트(없으면 기본 config.php) — ②에서 정교화
