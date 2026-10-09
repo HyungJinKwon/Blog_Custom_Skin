@@ -48,5 +48,18 @@ check("버전 미상 → 상위 N 그대로", len(shortlist(hits, "", limit=2)) 
 check("빈 입력 안전", shortlist([], "1.0") == [])
 check("상한 적용", len(shortlist(hits, "", limit=1)) == 1)
 
+print("\n=== summarize_tool_output: searchsploit 행 보존(200자 트렁케이트 회귀 가드) ===")
+from htb_agent.observation.summarize import summarize_tool_output  # noqa: E402
+# 기본 폴백은 200자 컷 → 익스 행(제목|경로)이 날아가 후보 추출 불가였다. 전용 요약이 쌍 보존.
+raw = ("---------- ----------\n Exploit Title | Path\n---------- ----------\n"
+       " FreePBX 2.10.0 / 2.9.0 (Elastix) - Remote Command Execution | php/webapps/18650.py\n"
+       " FreePBX 13.0.188 - Remote Command Execution (Metasploit) | php/remote/40434.rb\n"
+       " Sangoma FreePBX 14/15 - Authentication Bypass | php/webapps/48523.txt\n"
+       " Some Other Long Title To Push Past Two Hundred Chars Easily Here Now | php/webapps/99999.py")
+summ = summarize_tool_output("searchsploit freepbx", raw)
+check("searchsploit 요약이 '제목|경로' 쌍 보존", "40434.rb" in summ and "48523.txt" in summ)
+check("요약이 200자 트렁케이트 아님(폴백 회피)", "searchsploit:" in summ)
+check("요약을 재파싱하면 후보 복원", len(parse_searchsploit(summ)) >= 4)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
