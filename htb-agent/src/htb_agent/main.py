@@ -90,6 +90,12 @@ def build_parser() -> argparse.ArgumentParser:
     g_kb.add_argument("--kb-sync", action="store_true", dest="kb_sync",
                    help="공유 저장소의 최신 번들 시드를 지금 동기화(검증 통과분만 로컬 캐시에 적용). "
                         "타겟 실행 시에는 하루 1회 자동")
+    g_kb.add_argument("--update", action="store_true",
+                   help="최신화 원클릭: 공유 시드 동기화 + 권위출처 재학습·승격(--offline 이면 네트워크 생략)")
+    g_kb.add_argument("--export-stats", dest="export_stats", default=None, metavar="파일",
+                   help="실행 학습 통계(변형 성공률) 내보내기 — 성장 공유용(명령 전체·타겟·출력 미포함)")
+    g_kb.add_argument("--import-stats", dest="import_stats", default=None, metavar="파일",
+                   help="공유된 실행 학습 통계를 로컬에 병합(성장 공유 — succ/att 합산)")
     g_kb.add_argument("--no-kb-sync", action="store_true", dest="no_kb_sync",
                    help="실행 시 공유 시드 자동 동기화 끄기(환경변수 ASSASSIN_NO_KB_SYNC=1 도 동일)")
     g_tool.add_argument("--ingest", metavar="PATH", default=None,
@@ -822,6 +828,65 @@ def _run_target(args, cfg, knowledge_dir, runner) -> int:
     return 0 if report.status == "done" else 1
 
 
+def _run_update(args, cfg, knowledge_dir) -> int:
+    """최신화 원클릭(G3): 공유 시드 동기화 + 권위출처 재학습·승격. --offline 이면 네트워크 생략.
+    CVE/CWE 참조는 실행 시 자동 수집·캐시되므로 여기선 KB(시드·규칙)만 최신화한다."""
+    import os as _os
+
+    from . import ui
+    if args.offline:
+        print(ui.dim("--offline — 네트워크 최신화 생략(기존 KB 유지). 오프라인에선 할 일이 없습니다."))
+        return 0
+    print(ui.heading("최신화 — 공유 시드 동기화 + 권위출처 재학습·승격", "🔄"))
+    from . import kb_sync as _kbs
+    sres = _kbs.sync(knowledge_dir)
+    if sres.error:
+        print(ui.mark_warn(f"공유 시드 동기화 실패(건너뜀): {sres.error}"))
+    else:
+        _print_kb_sync(sres, verbose=True)
+    from . import learn
+    from . import promote as _promote
+    ndir = _os.path.join(knowledge_dir, "notes", "learned")
+    lresults = learn.ReferenceLearner(cache_dir=ndir, enabled=True).learn_all()
+    n_ok = sum(1 for lr in lresults if lr.refs)
+    print(ui.mark_ok(f"권위출처 재학습: {n_ok}/{len(lresults)} 주제 노트 갱신"))
+    presults = _promote.promote_all(ndir, ndir)
+    changed = sum(int(pr.changed) for pr in presults if not pr.error)
+    print(ui.mark_ok(f"시드 승격: {changed}개 갱신"
+                     + ("  — 'git diff' 검토 후 커밋·PR 하면 모든 사용자에 전파" if changed else "")))
+    print(ui.ok("최신화 완료. (CVE/CWE 참조는 타겟 실행 시 자동 수집·캐시)"))
+    return 0 if not any(pr.error for pr in presults) else 2
+
+
+def _run_stats_share(args, cfg) -> int:
+    """실행 학습 통계 공유(G1): 내보내기/병합. 통계는 binary+fragment→succ/att 뿐이라
+    명령 전체·타겟·출력이 담기지 않아 공유해도 안전하다. 성장이 사용자 사이에 compounding 되게 한다."""
+    import os as _os
+
+    from . import ui
+    from .config import pick
+    from .variant_stats import VariantStats
+    sd = pick(args.state_dir, cfg.state_dir, "state")
+    local_path = _os.path.join(sd, "variant_stats.json")
+    if args.export_stats is not None:
+        vs = VariantStats.load(local_path)
+        vs.save(args.export_stats)
+        print(ui.mark_ok(f"실행 학습 통계 내보내기: {args.export_stats} "
+                         f"({len(vs.stats)}개 변형 · 명령/타겟 미포함)"))
+        return 0
+    # import: 공유 통계를 로컬에 병합
+    incoming = VariantStats.load(args.import_stats)
+    if not incoming.stats:
+        print(ui.mark_err(f"병합할 통계 없음(형식·경로 확인): {args.import_stats}"), file=sys.stderr)
+        return 2
+    local = VariantStats.load(local_path)
+    n = local.merge(incoming)
+    local.save(local_path)
+    print(ui.mark_ok(f"실행 학습 통계 병합: {n}개 변형 반영 → {local_path} "
+                     "(다음 실행부터 성공률 높은 변형 우선)"))
+    return 0
+
+
 def _dispatch_standalone(args, cfg, knowledge_dir):
     """타겟 없이 실행하는 단독 명령(replay·bench·doctor·learn·promote 등)을 처리.
     처리하면 종료코드(int)를, 해당 없으면 None 을 반환해 main() 이 타겟 실행으로 넘어가게 한다."""
@@ -937,6 +1002,14 @@ def _dispatch_standalone(args, cfg, knowledge_dir):
         _print_kb_sync(sres, verbose=True)
         return 0
 
+    # 최신화 원클릭(G3): 공유 시드 동기화 + 권위출처 재학습·승격
+    if args.update:
+        return _run_update(args, cfg, knowledge_dir)
+
+    # 실행 학습 통계 내보내기/병합(G1 성장 공유) — binary+fragment 통계만(안전)
+    if args.export_stats is not None or args.import_stats is not None:
+        return _run_stats_share(args, cfg)
+
     # 학습 노트 → 번들 시드 승격(스캔·네트워크 없음). 커밋·PR 로 모든 사용자에게 공유.
     if args.promote is not None:
         import os as _ospr
@@ -1017,7 +1090,8 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         ("--revshell", args.revshell), ("--cloud", args.cloud),
         ("--privesc", args.privesc), ("--crack", args.crack), ("--ingest", args.ingest),
         ("--kb-sync", args.kb_sync), ("--promote", args.promote), ("--learn", args.learn),
-        ("--list-sessions", args.list_sessions),
+        ("--list-sessions", args.list_sessions), ("--update", args.update),
+        ("--export-stats", args.export_stats), ("--import-stats", args.import_stats),
         ("--bench", args.bench), ("--live-bench", args.live_bench), ("--replay", args.replay))
         if v not in (None, False)]
     if len(standalone) > 1:

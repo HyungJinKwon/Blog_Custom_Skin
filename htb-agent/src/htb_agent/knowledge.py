@@ -32,6 +32,10 @@ import os
 import re
 from dataclasses import dataclass, field
 
+# KB 스키마/콘텐츠 세대 — 공유 시드 동기화 호환 판정·진단 표시용(G4). 규칙 스키마나 시드
+# 포맷이 바뀌면 올린다. kb_sync 는 이 값을 메타에 기록해, 세대가 다른 캐시는 무시(fail-safe).
+KB_VERSION = "1"
+
 
 @dataclass
 class Rule:

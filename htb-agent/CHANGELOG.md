@@ -4,6 +4,16 @@
 
 ## [미출시]
 
+### 추가 (성장형·최신화 — 환경/사용자 편차 완화)
+- **성장 공유(G1)** — `--export-stats`/`--import-stats`: 실행 학습 통계(변형 성공률)를 파일로
+  주고받아 사용자 간 성장을 compounding. 통계는 `binary+fragment→succ/att` 뿐이라 명령 전체·타겟·
+  출력이 담기지 않아 공유해도 안전. `VariantStats.merge()`로 succ/att 합산.
+- **역량 등급(G2)** — `--doctor`에 `full/standard/baseline` 등급 + '한 단계 올리는 법' 표시.
+  환경별 성능 편차(LLM 백엔드·도구·샌드박스)를 가시화(안전·범위 강제는 모든 등급 동일).
+- **통합 최신화(G3)** — `--update`: 공유 시드 동기화 + 권위출처 재학습·승격을 한 명령으로
+  (`--offline`이면 네트워크 생략). CVE/CWE 는 실행 시 자동 수집·캐시.
+- **KB 버전 태깅(G4)** — `knowledge.KB_VERSION` 신설, `--doctor` 푸터에 표시(동기화 호환·진단 가시화).
+
 ### 추가 (역량 보강)
 - **서비스 열거 일반 규칙 신설**(`knowledge/rules/service-enum.json`): NFS(showmount/마운트)·
   SNMP(snmpwalk/onesixtyone)·WordPress(wpscan) — 머신 비의존 정석 기법 규칙. 업로드 라이트업群의
