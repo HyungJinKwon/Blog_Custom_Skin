@@ -4,6 +4,16 @@
 
 ## [미출시]
 
+### 추가 (역량 보강)
+- **서비스 열거 일반 규칙 신설**(`knowledge/rules/service-enum.json`): NFS(showmount/마운트)·
+  SNMP(snmpwalk/onesixtyone)·WordPress(wpscan) — 머신 비의존 정석 기법 규칙. 업로드 라이트업群의
+  **역량 공백 분석**(다루는 서비스·기법 발자국 ↔ 우리 KB/툴 커버리지 대조)으로 식별한 공백만 보강.
+  라이트업의 머신별 정답/플래그는 무결성 가드(provenance)상 적재하지 않음 — '정답 암기'가 아니라
+  '일반 역량' 강화.
+- **샌드박스 툴 커버리지 확대**(`sandbox/Dockerfile`·`scripts/install_tools.sh`): evil-winrm·
+  bloodhound.py·wpscan·hydra·telnet·ftp·nfs-common(showmount)·onesixtyone 추가 — 라이트업群이 자주
+  쓰는 범용 도구(Windows 셸·AD 경로분석·CMS 열거·NFS/SNMP 열거)의 미설치 공백 해소.
+
 ### 최신화
 - **anthropic SDK 플로어 상향**: `anthropic>=0.40` → `anthropic>=1.0`(현행 메이저 1.x 반영;
   `messages.create`·시스템 캐시 블록·tool use 사용은 1.x 호환). requirements 주석도 동반 갱신.

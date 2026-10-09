@@ -68,12 +68,13 @@ if want recon; then
   apt_pkg dnsenum
   apt_pkg snmp                # snmpwalk
   apt_pkg onesixtyone
+  apt_pkg telnet; apt_pkg ftp; apt_pkg rsync   # 기초 클라이언트(telnet/ftp/rsync 열거)
   WARN "rustscan 은 릴리스 바이너리/cargo 로 별도 설치 권장"
 fi
 
 if want web; then
   LOG "[web] 웹 열거"
-  for p in ffuf gobuster feroxbuster nikto whatweb curl sqlmap wfuzz; do apt_pkg "$p"; done
+  for p in ffuf gobuster feroxbuster nikto whatweb curl sqlmap wfuzz wpscan; do apt_pkg "$p"; done
   pipx_pkg git-dumper
   WARN "jwt_tool 은 git clone ticarpi/jwt_tool 로 별도 설치"
 fi
@@ -109,6 +110,7 @@ fi
 if want smb; then
   LOG "[smb] SMB/RPC 열거"
   apt_pkg smbclient; apt_pkg smbmap; pipx_pkg enum4linux-ng
+  apt_pkg nfs-common         # showmount(NFS export 열거)
 fi
 
 if want ad; then
