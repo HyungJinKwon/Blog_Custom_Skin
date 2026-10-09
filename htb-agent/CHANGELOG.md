@@ -2,6 +2,24 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.17] — 2026-10-09
+
+### 추가(Added)
+- **privesc 비대화형(one-shot) 상승 플랜**(`privesc_analyze`, 생성 전용): 각 벡터에 TTY 없는
+  one-shot SSH(`sshpass ssh "<cmd>"`)에서도 동작하는 **비대화형 상승 템플릿**을 추가.
+  `PrivescVector.oneshot(payload)` 가 `{payload}`(root 로 돌릴 한 줄)·`{bin}` 을 치환해
+  '대화형 `/bin/sh` 스폰 없이' payload 를 root 로 실행하는 명령을 생성한다.
+  - `oneshot("id")` → uid=0 검증용, `oneshot("cat /root/root.txt")` → **루트 플래그 직독**.
+  - 커브셋: find/awk/python(3)/perl/ruby/bash/sh/env/vim/vi/tar/node/docker 의 sudo·suid·cap 형태.
+  - 바이너리 **버전 접미 정규화**(`python3.8`→`python3`→`python`)로 sudo/suid 매칭률 개선.
+  - `render_vectors` 가 대화형/비대화형 두 줄을 함께 노출.
+- **테스트**: `test_privesc_analyze.py` one-shot 생성·버전접미 매칭·payload 치환·경계 가드 추가(37).
+
+### 안전(Safety)
+- one-shot 템플릿도 **문자열 생성만** — 실행 없음(RCE/권한상승 표면 없음, 생성 전용 경계).
+  ③ 폐루프 발사(사용자 리포)에서 `v.plan` 대신 `v.oneshot("id")`/`v.oneshot("cat /root/root.txt")`
+  를 쓰면 one-shot SSH 에서 uid=0 검증·루트 플래그 직독이 성립한다(대화형 플랜의 한계 해소).
+
 ## [2.6.16] — 2026-10-09
 
 ### 수정(Fixed)
