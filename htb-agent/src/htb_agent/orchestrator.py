@@ -363,7 +363,7 @@ class Orchestrator:
                 self._version_probe_stage(report, host)
                 # 3단계 기반: 핑거프린트된 웹앱 제품에 맞는 공개 익스 '조회'(searchsploit)를
                 # 게이트로 올린다(제품당 1회). 조회·무해 — 익스 실행 아님. 결과는 다음 분석에 되먹임.
-                self._exploit_lookup_stage(report)
+                self._exploit_lookup_stage(report, host)
                 # 자율 지식 획득: 관측된 기술 중 '모르는 것'을 권위 출처에서 자동 학습해
                 # KB 에 즉시 반영한다(이후 분석가·명령생성이 바로 활용). P1 유지.
                 self._acquire_knowledge(report, host, prof)
@@ -1261,7 +1261,8 @@ class Orchestrator:
         # 프로브 출력에서 버전 즉시 추출(다음 _run_vuln 을 기다리지 않고 이번 스윕에 반영).
         self._run_vuln(report, host, self.world.target)
 
-    def _exploit_lookup_stage(self, report: OrchestrationReport, phase: str = "access") -> None:
+    def _exploit_lookup_stage(self, report: OrchestrationReport,
+                              host: NmapHost | None = None, phase: str = "access") -> None:
         """핑거프린트된 웹앱 제품(world.web_product)에 맞는 공개 익스 '조회' 명령
         (searchsploit)을 게이트로 올린다. 조회·로컬·무해 — 익스 실행이 아니다(생성 경계).
         제품당 1회만(멱등). 조회 결과(버전별 공개 익스 목록)는 enum_findings 에 남아 다음
@@ -1308,8 +1309,24 @@ class Orchestrator:
                 star = (i == 0 and matched)
                 rows.append(f"#   {'⭐ 추천' if star else '      '} - {h}")
             if matched:
-                edb = re.search(r"(\d{4,6})", picks[0].locator)
-                fetch = f"\n#   ↳ 1순위 받아 검토: searchsploit -m {edb.group(1)}" if edb else ""
+                # ⭐ 1순위 PoC 의 '받기 + 실행 계획(제안)'을 구체화한다(생성 전용 — 문자열 생성만,
+                # 실행 아님). locator 로 PocPlan 초안을 만들고 plan_poc_command 로 --poc 초안을 짠다.
+                # 실제 소스 정밀 분석(transport/LHOST)은 받은 뒤 analyze_poc 로(사용자 실행 스테이지).
+                from .exploit_fetch import PocPlan, fetch_command, plan_poc_command, poc_language
+                top = picks[0]
+                edb_id = re.search(r"(\d{4,6})", top.locator)
+                eid = edb_id.group(1) if edb_id else ""
+                fetch = f"\n#   ↳ 1순위 받아 검토: {fetch_command(eid)}" if eid else ""
+                # 웹앱 PoC 는 대개 http(s) — 베이스 스킴을 알면 그 스킴으로, 모르면 http 로 초안.
+                bases = self._web_bases(host) if host is not None else []
+                scheme = "https" if any(b.startswith("https") for b in bases) else "http"
+                draft = plan_poc_command(
+                    PocPlan(edb_id=eid, language=poc_language(top.locator), transport=scheme,
+                            needs_target=True),
+                    self.world.target)
+                if draft:
+                    fetch += (f"\n#   ↳ 실행 계획(제안 — 받은 소스 검토 후 조정): "
+                              f"--exploit-exec --poc \"{draft}\"")
                 head = (f"# {prod} PoC 후보(버전 {version} 대조) — ⭐=자동 선택된 1순위. 받아 검토 후 "
                         f"--exploit-exec --poc \"<실행 명령>\" 로 실행(권한 확인 대상 전용):")
             else:
