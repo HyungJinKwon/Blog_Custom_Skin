@@ -515,7 +515,7 @@ def _run_target(args, cfg, knowledge_dir, runner) -> int:
     def _auto_def(cli, cf, aggressive, base):
         return pick(cli, cf, aggressive if args.autonomous else base)
     max_attempts = pick(args.max_attempts, cfg.max_attempts, 4)
-    max_enum = _auto_def(args.max_enum, cfg.max_enum, 10, 6)
+    max_enum = _auto_def(args.max_enum, cfg.max_enum, 24, 6)
     max_llm = _auto_def(args.max_llm, cfg.max_llm, 8, 5)
     max_rounds = _auto_def(args.max_rounds, cfg.max_rounds, 3, 2)
     max_sweeps = _auto_def(args.max_sweeps, cfg.max_sweeps, 3, 2)

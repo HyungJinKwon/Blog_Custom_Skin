@@ -47,6 +47,54 @@ def extract_vuln_ids(text: str) -> VulnHits:
     return VulnHits(cves, cwes)
 
 
+# 웹앱 핑거프린트 시그니처 — (searchsploit 에 쓸 제품키, 탐지 정규식, 버전 정규식 or None).
+# 제목(<title>)·generator 메타·헤더(Server/X-Powered-By)·본문이 합쳐진 코퍼스에서 식별한다.
+# 버전 정규식은 group(1) 이 버전. 외부 조회 없음(관측 텍스트만) — P1 유지.
+# 버전 조각: 2~4 마디 점표기(예: 6.4.2, 15.0.16.75). 전체 버전을 잡도록 greedy.
+_VER = r"(\d+(?:\.\d+){1,3})"
+_WEBAPP_SIGS: list[tuple[str, "re.Pattern[str]", "re.Pattern[str] | None"]] = [
+    ("freepbx", re.compile(r"FreePBX", re.I),
+     re.compile(r"FreePBX[^0-9<\"]{0,40}?" + _VER, re.I)),
+    ("wordpress", re.compile(r"WordPress", re.I),
+     re.compile(r"WordPress[^0-9<\"]{0,20}?" + _VER, re.I)),
+    ("joomla", re.compile(r"Joomla", re.I),
+     re.compile(r"Joomla!?[^0-9<\"]{0,20}?" + _VER, re.I)),
+    ("drupal", re.compile(r"Drupal", re.I),
+     re.compile(r"Drupal[^0-9<\"]{0,20}?(\d+(?:\.\d+)*)", re.I)),
+    ("tomcat", re.compile(r"Apache\s+Tomcat", re.I),
+     re.compile(r"Tomcat[^0-9<\"]{0,20}?" + _VER, re.I)),
+    ("jenkins", re.compile(r"Jenkins", re.I),
+     re.compile(r"Jenkins[^0-9<\"]{0,20}?" + _VER, re.I)),
+    ("grafana", re.compile(r"Grafana", re.I),
+     re.compile(r"Grafana[^0-9<\"]{0,20}?v?" + _VER, re.I)),
+    ("gitlab", re.compile(r"GitLab", re.I), None),
+    ("gitea", re.compile(r"Gitea", re.I),
+     re.compile(r"Gitea[^0-9<\"]{0,20}?" + _VER, re.I)),
+    ("phpmyadmin", re.compile(r"phpMyAdmin", re.I),
+     re.compile(r"phpMyAdmin[^0-9<\"]{0,20}?" + _VER, re.I)),
+    ("nextcloud", re.compile(r"Nextcloud", re.I), None),
+    ("osticket", re.compile(r"osTicket", re.I), None),
+    ("elastix", re.compile(r"Elastix", re.I), None),
+]
+
+
+def fingerprint_webapp(text: str) -> tuple[str, str]:
+    """관측 코퍼스에서 알려진 웹앱 제품·버전을 식별해 (product, version) 반환.
+    못 찾으면 ('', ''). searchsploit {product} {version} 등 KB 제안의 placeholder
+    를 '관측된 실제 값'으로 채우기 위한 것(외부 조회 없음 — 텍스트 매칭만)."""
+    if not text:
+        return "", ""
+    for product, sig, ver_re in _WEBAPP_SIGS:
+        if sig.search(text):
+            version = ""
+            if ver_re is not None:
+                m = ver_re.search(text)
+                if m:
+                    version = m.group(1)
+            return product, version
+    return "", ""
+
+
 @dataclass
 class VulnRule:
     name: str

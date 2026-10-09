@@ -2,6 +2,28 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.4] — 2026-10-09
+
+실제 머신(FreePBX 박스) 실행 피드백 반영 — 열거가 리드를 충분히 파기 전에 멈추지 않도록
+자율 enum 예산을 올리고, 관측된 웹앱 제품/버전을 식별해 공개 익스 조회를 자동 구체화한다.
+
+### 추가(Added)
+- **웹앱 핑거프린트 → `{product}`/`{version}` 자동 치환**(`vuln.fingerprint_webapp`,
+  `WorldModel.set_web_app`, `Orchestrator._fill_fingerprint`): 관측 코퍼스(제목·generator·
+  Server/X-Powered-By 헤더·enum 출력)에서 알려진 웹앱(FreePBX·WordPress·Joomla·Drupal·
+  Tomcat·Jenkins·Grafana·GitLab·Gitea·phpMyAdmin·Nextcloud·osTicket·Elastix)의 제품키·
+  버전을 식별해 월드에 기록한다. KB 제안의 `searchsploit {product} {version}` 같은
+  placeholder 가 '관측된 실제 값'(`searchsploit freepbx 15.0.16.75`, 버전 미상이면
+  `searchsploit freepbx`)으로 치환돼 **수동 제안이 아닌 자동 실행 후보**가 된다. 미식별이면
+  placeholder 를 그대로 둬(섣부른 치환 금지) 기존처럼 수동 제안으로 남긴다. 웹앱 미식별 시
+  nmap `-sV` 서비스 제품으로 폴백. 외부 조회 없이 관측 텍스트만 매칭(P1 유지).
+
+### 변경(Changed)
+- **자율(`--autonomous`) enum 예산 상향**: `--max-enum` 자율 기본값 10 → **24**. 실제 머신에선
+  10개로는 유효 후속 명령이 큐에 남은 채 조기 종료됐다(연결된 리드를 덜 팜). 2.6.2 의 반복
+  억제 + 명령 중복제거 + 상태 정체 조기종료가 상한을 안전하게 유지하므로 폭을 넓혔다
+  (명시 `--max-enum`/설정값이 있으면 그대로 우선).
+
 ## [2.6.3] — 2026-10-09
 
 ### 추가(Added)

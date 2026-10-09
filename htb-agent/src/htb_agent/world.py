@@ -50,6 +50,8 @@ class WorldModel:
     proven_vulns: list[str] = field(default_factory=list)  # CVE/CWE(+근거)
     evidence: dict = field(default_factory=dict)           # 사실(크리덴셜/수집물/취약점) → 출처(어느 명령에서 나왔나)
     access_level: str = "none"
+    web_product: str = ""   # 관측된 웹앱 제품키(예: freepbx) — searchsploit {product} 치환
+    web_version: str = ""   # 관측된 웹앱 버전(예: 15.0) — searchsploit {version} 치환
 
     # ── 쓰기(갱신) ──
     def set_profile(self, host, prof) -> None:
@@ -65,6 +67,13 @@ class WorldModel:
                 self.add_service(p.port, getattr(p, "proto", "tcp"),
                                  p.service or "", getattr(p, "product", "") or "",
                                  getattr(p, "version", "") or "")
+
+    def set_web_app(self, product: str, version: str = "") -> None:
+        """관측된 웹앱 제품/버전을 기록(한 번 잡히면 유지, 더 구체적 버전으로만 보강)."""
+        if product and not self.web_product:
+            self.web_product = product
+        if product and product == self.web_product and version and not self.web_version:
+            self.web_version = version
 
     def add_service(self, port: int, proto: str = "tcp", name: str = "",
                     product: str = "", version: str = "") -> None:

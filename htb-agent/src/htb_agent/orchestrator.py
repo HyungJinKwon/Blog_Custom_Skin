@@ -774,11 +774,39 @@ class Orchestrator:
                                           source="harvested"))
 
     def _expand(self, tmpl: str, target: str) -> list[tuple[str, bool]]:
-        """볼트가 있으면 자격증명으로 플레이스홀더를 채워 확장, 없으면 {t}만 치환."""
+        """볼트가 있으면 자격증명으로 플레이스홀더를 채워 확장, 없으면 {t}만 치환.
+        그 전에, 관측으로 식별된 웹앱 제품/버전이 있으면 {product}/{version} 을 먼저
+        채운다 → 'searchsploit {product} {version}' 이 'searchsploit freepbx 15.0' 처럼
+        자동 실행 가능한 구체 명령이 된다(미식별이면 placeholder 로 남아 수동 제안)."""
+        tmpl = self._fill_fingerprint(tmpl)
         if self.vault is not None:
             return self.vault.expand(tmpl, target)
         cmd, auto = self.kb.format_suggestion(tmpl, target)
         return [(cmd, auto)]
+
+    def _fill_fingerprint(self, tmpl: str) -> str:
+        """{product}/{version} 을 월드의 웹앱 핑거프린트(없으면 nmap 서비스 제품)로 치환.
+        값이 없으면 placeholder 를 그대로 둬 수동 제안으로 남긴다(섣부른 치환 금지)."""
+        w = self.world
+        if w is None:
+            return tmpl
+        product = w.web_product
+        version = w.web_version
+        if not product:   # 웹앱 미식별 → nmap -sV 서비스 제품으로 폴백
+            for s in w.services:
+                if s.product:
+                    product = s.product.split()[0]
+                    version = version or s.version
+                    break
+        if product and "{product}" in tmpl:
+            tmpl = tmpl.replace("{product}", product)
+        if version and "{version}" in tmpl:
+            tmpl = tmpl.replace("{version}", version)
+        # 버전 미상이면 'searchsploit {product} {version}' → 'searchsploit freepbx' 로 정리
+        # ({version} 만 남아 수동 제안으로 떨어지는 것 방지 — 제품만으로도 유효한 조회).
+        if product and "{version}" in tmpl and not version:
+            tmpl = re.sub(r"\s*\{version\}", "", tmpl)
+        return tmpl
 
     def _prereq_met(self, phase: str) -> tuple[bool, str]:
         """A2: 단계 전제조건 판정. 월드 모델의 권한레벨·크리덴셜로 결정한다.
@@ -1137,11 +1165,20 @@ class Orchestrator:
         for f in report.enum_findings + report.llm_findings:
             if f.output:
                 corpus_parts.append(f.output)
-        hits = extract_vuln_ids("\n".join(corpus_parts))
+        corpus_text = "\n".join(corpus_parts)
+        hits = extract_vuln_ids(corpus_text)
         report.detected_cve = hits.cves
         report.detected_cwe = hits.cwes
         if self.vuln_kb is not None:
             report.vuln_matches = self.vuln_kb.match(banners, target)
+        # 웹앱 핑거프린트: 관측 코퍼스(제목·generator·배너·enum 출력)에서 알려진 제품/버전을
+        # 식별해 월드에 기록 → searchsploit {product} {version} 등 KB placeholder 가 '실제 값'
+        # 으로 치환돼 자동 실행 후보가 된다(식별 전엔 placeholder 로 남아 수동 제안).
+        if self.world is not None:
+            from .vuln import fingerprint_webapp
+            prod, ver = fingerprint_webapp(corpus_text)
+            if prod:
+                self.world.set_web_app(prod, ver)
         # 월드 모델에 확인 취약점 반영(단일 상태원)
         if self.world is not None:
             for cve in report.detected_cve + report.detected_cwe:
