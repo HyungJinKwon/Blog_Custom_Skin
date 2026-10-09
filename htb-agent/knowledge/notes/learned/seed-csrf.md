@@ -35,6 +35,6 @@ CSRF 토큰(동기화/이중제출)·SameSite=Lax/Strict·Origin 검증·민감�
 - 요약: Cross-site request forgery (CSRF) In this section, we'll explain what cross-site request forgery is, describe some examples of common CSRF vulnerabilities, and explain how to prevent CSRF attacks. What is CSRF? Cross-site request forgery (also known as CSRF) is a web security vulnerability that allows an attacker to induce users to perform actions that they do not intend to perform. It allows an attacker to partly circumvent the same origin policy, which is designed to prevent different websites
 
 ### OWASP CSRF
-- 출처: https://owasp.org/www-community/attacks/csrf
+- 출처: https://community.owasp.org/attacks/csrf
 - 승격일: 2026-10-07
 - 요약: Cross Site Request Forgery (CSRF) Overview Cross-Site Request Forgery (CSRF) is an attack that forces an end user to execute unwanted actions on a web application in which they’re currently authenticated. With a little help of social engineering (such as sending a link via email or chat), an attacker may trick the users of a web application into executing actions of the attacker’s choosing. If the victim is a normal user, a successful CSRF attack can force the user to perform state changing requ

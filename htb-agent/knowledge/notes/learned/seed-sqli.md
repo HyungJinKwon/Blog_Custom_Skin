@@ -28,14 +28,14 @@ SIEM: 입력에 UNION/SLEEP/INFORMATION_SCHEMA·단일따옴표 급증. WAF/IDS:
 ## 완화
 파라미터화 질의(Prepared Statement)·ORM·최소권한 DB계정·입력 허용목록·WAF. xp_cmdshell/INTO OUTFILE 비활성.
 
-- 출처(검증): https://owasp.org/www-community/attacks/SQL_Injection
+- 출처(검증): https://community.owasp.org/attacks/SQL_Injection
 
 ## 최신 보강(승격)
 
 > `assassin --promote` 품질 관문을 통과한 권위 출처 발췌. 수정·삭제는 PR 리뷰로. 사람이 다듬은 위 섹션이 우선한다.
 
 ### OWASP SQL Injection
-- 출처: https://owasp.org/www-community/attacks/SQL_Injection
+- 출처: https://community.owasp.org/attacks/SQL_Injection
 - 승격일: 2026-10-07
 - 요약: SQL Injection Overview A SQL injection attack consists of insertion or “injection” of a SQL query via the input data from the client to the application. A successful SQL injection exploit can read sensitive data from the database, modify database data (Insert/Update/Delete), execute administration operations on the database (such as shutdown the DBMS), recover the content of a given file present on the DBMS file system and in some cases issue commands to the operating system. SQL injection attac
 

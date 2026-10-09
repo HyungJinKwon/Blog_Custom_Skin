@@ -4,6 +4,14 @@
 
 ## [미출시]
 
+### 최신화
+- **anthropic SDK 플로어 상향**: `anthropic>=0.40` → `anthropic>=1.0`(현행 메이저 1.x 반영;
+  `messages.create`·시스템 캐시 블록·tool use 사용은 1.x 호환). requirements 주석도 동반 갱신.
+- **OWASP 카탈로그 URL 정규화**: `owasp.org/www-community/*` → `community.owasp.org/*`(OWASP 가
+  308 영구 이전). 사전학습 카탈로그 8건 + 승격된 시드 노트 8건 동시 갱신 → 리다이렉트 1홉 절약,
+  카탈로그↔시드 정합. `.owasp.org` 하위도메인이라 allowlist 그대로 통과.
+- **가격표 출처 스탬프 갱신**(2026-09 → 2026-10; 요율 값은 이미 현행).
+
 ### 정리(품질)
 - **`main()` 갓-함수 분해(591줄 → 65줄)**: CLI 진입부를 얇게 — 단독 명령 디스패치는
   `_dispatch_standalone`, 타겟 실행 경로는 `_run_target` 로 분리(동작 불변). 가독성·기여 용이성↑.

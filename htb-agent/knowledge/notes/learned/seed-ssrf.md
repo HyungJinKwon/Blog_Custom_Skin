@@ -38,6 +38,6 @@ url=gopher://127.0.0.1:6379/_<redis-payload>
 - 요약: Server-side request forgery (SSRF) In this section we explain what server-side request forgery (SSRF) is, and describe some common examples. We also show you how to find and exploit SSRF vulnerabilities. What is SSRF? Server-side request forgery is a web security vulnerability that allows an attacker to cause the server-side application to make requests to an unintended location. In a typical SSRF attack, the attacker might cause the server to make a connection to internal-only services within t
 
 ### OWASP SSRF
-- 출처: https://owasp.org/www-community/attacks/Server_Side_Request_Forgery
+- 출처: https://community.owasp.org/attacks/Server_Side_Request_Forgery
 - 승격일: 2026-10-07
 - 요약: Server Side Request Forgery Overview In a Server-Side Request Forgery (SSRF) attack, the attacker can abuse functionality on the server to read or update internal resources. The attacker can supply or modify a URL which the code running on the server will read or submit data to, and by carefully selecting the URLs, the attacker may be able to read server configuration such as AWS metadata, connect to internal services like http enabled databases or perform post requests towards internal services

