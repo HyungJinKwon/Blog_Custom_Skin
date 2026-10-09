@@ -442,9 +442,14 @@ class Orchestrator:
                 except Exception as e:   # noqa: BLE001 — 수집 실패는 진행 방해 금지
                     self.audit.event("enrich_error", error=str(e))
 
-          def _exploit_exec_stage(self, report, host):
-        """확보한 평문 자격으로 SSH 발판을 잡아 플래그 읽기 + 권한상승 열거를
-        '기존 게이트(_attempt)'로 실행한다. 자격 없음·22 닫힘·sshpass 없음이면 건너뜀."""
+        # PHASE 3.9(리버스쉘 준비) 직전
+        if self.exploit_exec and not interrupted:
+            self._exploit_exec_stage(report, host)
+
+        # ── PHASE 3.9: 리버스쉘 자동 준비 (공격자 IP 확보 시) ──
+        # 초기 침투에 바로 쓰도록 페이로드를 '자동 생성'해 리포트에 포함한다.
+        # 생성만 — 실행(셸 획득)은 사용자가 권한 확인 대상에서 직접(안전 경계 유지).
+            def _exploit_exec_stage(self, report, host):
         if not self.exploit_exec or self.world is None or self.dry_run:
             return
         from .target_shell import FLAG_READS, PRIVESC_ENUM, SSHTargetShell, parse_cred
@@ -465,13 +470,9 @@ class Orchestrator:
             for rc in [*FLAG_READS, *PRIVESC_ENUM]:
                 if self._goal_reached(report) or self._time_up():
                     return
-                # _attempt = 게이트(검증·스코프·승인) + 실행 + 플래그/provenance 캡처
                 self._attempt(report, report.enum_findings, sh.command(rc), phase="privesc")
-
-        # ── PHASE 3.9: 리버스쉘 자동 준비 (공격자 IP 확보 시) ──
-        # 초기 침투에 바로 쓰도록 페이로드를 '자동 생성'해 리포트에 포함한다.
-        # 생성만 — 실행(셸 획득)은 사용자가 권한 확인 대상에서 직접(안전 경계 유지).
-        self._prepare_revshells(report)
+  
+       self._prepare_revshells(report)
 
         # ── PHASE 3.95: AWS/S3 열거 자동 준비 (호스트명/도메인 확보 시) ──
         # 버킷 후보·비인증 점검을 자동 생성. AWS 엔드포인트는 타겟 범위 밖이라
