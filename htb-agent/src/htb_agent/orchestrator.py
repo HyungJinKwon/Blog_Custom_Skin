@@ -197,6 +197,7 @@ class Orchestrator:
                  recon_extra_ports: "list[int] | None" = None,
                  fix_commands: bool = True,
                  dry_run: bool = False,
+                                  exploit_exec: bool = False,
                  workspace=None):
         self.guard = guard
         self.runner = runner
@@ -250,6 +251,7 @@ class Orchestrator:
         self.fix_commands = fix_commands
         # 계획 미리보기: 정찰·분석은 하되 제안된 enum/LLM/파일 명령은 '실행하지 않고' 보여만 준다.
         self.dry_run = dry_run
+                self.exploit_exec = exploit_exec           
 
     def run(self) -> OrchestrationReport:
         # 경과 시간은 정찰부터 포함, 마감 확인은 스윕 루프에서(정찰은 유한 폴백으로 별도 관리)
@@ -439,6 +441,32 @@ class Orchestrator:
                                          cves=[e.id for e in report.enriched])
                 except Exception as e:   # noqa: BLE001 — 수집 실패는 진행 방해 금지
                     self.audit.event("enrich_error", error=str(e))
+
+          def _exploit_exec_stage(self, report, host):
+        """확보한 평문 자격으로 SSH 발판을 잡아 플래그 읽기 + 권한상승 열거를
+        '기존 게이트(_attempt)'로 실행한다. 자격 없음·22 닫힘·sshpass 없음이면 건너뜀."""
+        if not self.exploit_exec or self.world is None or self.dry_run:
+            return
+        from .target_shell import FLAG_READS, PRIVESC_ENUM, SSHTargetShell, parse_cred
+        creds = []
+        for c in self.world.creds:
+            pc = parse_cred(c)
+            if pc and pc not in creds:
+                creds.append(pc)
+        if not creds:
+            self.audit.event("exploit_exec_skip", reason="no_plaintext_cred"); return
+        if host is not None and host.open_ports and 22 not in host.open_ports:
+            self.audit.event("exploit_exec_skip", reason="ssh_closed"); return
+        if not self.is_tool_available("sshpass"):
+            self.audit.event("exploit_exec_skip", reason="sshpass_missing"); return
+        target = str(self.guard.bound_target or self.guard.bound_host)
+        for user, pw in creds[:3]:
+            sh = SSHTargetShell(target, user, pw)
+            for rc in [*FLAG_READS, *PRIVESC_ENUM]:
+                if self._goal_reached(report) or self._time_up():
+                    return
+                # _attempt = 게이트(검증·스코프·승인) + 실행 + 플래그/provenance 캡처
+                self._attempt(report, report.enum_findings, sh.command(rc), phase="privesc")
 
         # ── PHASE 3.9: 리버스쉘 자동 준비 (공격자 IP 확보 시) ──
         # 초기 침투에 바로 쓰도록 페이로드를 '자동 생성'해 리포트에 포함한다.
