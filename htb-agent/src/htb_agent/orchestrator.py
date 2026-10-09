@@ -459,7 +459,28 @@ class Orchestrator:
         if self.exploit_exec and not interrupted:
             self._exploit_run_stage(report, host)     # 3단계: PoC 실행 → 자격
             self._exploit_exec_stage(report, host)    # 1단계: 자격 → 발판 → 플래그
+# orchestrator._exploit_exec_stage 안 (또는 새 _foothold_stage 로 분리) — 사용자 커밋
+from .shell_session import ReverseShellSession, WebRceSession
+from .shell_transport import catch_reverse_shell, web_http_fn   # 1·2 (사용자)
+from . import cred_sources, flag_read
+from .world import ...  # 기존
 
+# (a) 발판 확보: PoC가 역쉘이면 리버스셸, 웹RCE면 WebRceSession
+session = ...  # 상황에 맞게 attach 된 ShellSession
+if session is None or not session.alive:
+    return
+
+# (b) 자격 수확: 설정 cat → 파싱 → world 반영
+for cmd in cred_sources.config_reads(self.world.web_product):
+    out = session.run(cmd)                              # ← 발판에서 실행(표면)
+    for u, p, label in cred_sources.parse_config_creds(out):
+        self.world.add_cred(f"{u}:{p}", source=f"설정({label})")
+
+# (c) 측면이동 후보 발사(선택) + (d) 플래그 수집은 현재 세션으로
+flags = flag_read.read_flags(session, flag_kind=self.flag_kind)
+for kind, val in flags.items():                        # user / root
+    self.world.add_flag(kind, val)
+    # report.user_flag/root_flag 는 world 반영으로 자동 노출
         # ── PHASE 3.9: 리버스쉘 자동 준비 (공격자 IP 확보 시) ──
         self._prepare_revshells(report)
 
