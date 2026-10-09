@@ -1414,7 +1414,8 @@ class Orchestrator:
                     self._attempt(report, report.enum_findings,
                                   sh.command("cat /root/root.txt 2>/dev/null"), phase="privesc")
                     break
-        def _foothold_stage(self, report, host) -> None:
+
+    def _foothold_stage(self, report, host) -> None:
         """발판 세션 확보 → 자격수확 → 플래그 수집. --exploit-exec 전용(RCE 실행 표면)."""
         if not self.exploit_exec or self.world is None or self.dry_run:
             return
@@ -1434,7 +1435,8 @@ class Orchestrator:
     def _acquire_session(self, report, host):
         """발판 세션 획득. PoC 종류에 따라 리버스셸/웹RCE 세션을 attach 해서 반환.
         아직 발판이 없으면 None. (여기가 실제 발판 오케스트레이션 — 단계적으로 구현)"""
-        return None   # TODO: catch_reverse_shell(...) 또는 WebRceSession(...).attach(web_http_fn)              
+        return None   # TODO: catch_reverse_shell(...) 또는 WebRceSession(...).attach(web_http_fn)
+
     def _prepare_revshells(self, report: OrchestrationReport) -> None:
         """공격자 IP(VPN tun0 등)가 확보되면 리버스쉘 페이로드를 자동 생성해
         리포트에 담는다. 생성 전용 — 실행은 하지 않는다(안전 경계 유지).

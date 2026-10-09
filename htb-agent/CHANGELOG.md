@@ -2,6 +2,21 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.24] — 2026-10-09
+
+### 수정(Fixed)
+- **치명: `orchestrator.py` import 불가 복구** — 발판 배선 커밋에서 `_foothold_stage` 메서드의
+  `def` 들여쓰기가 8칸(클래스 메서드는 4칸)이라 본문과 같은 레벨 → IndentationError 로 모듈
+  전체가 import 불가(에이전트 다운)였다. `def` 를 4칸으로 바로잡아 복구(본문 로직 불변).
+- `shell_transport.py` 세미콜론 다중문(E702)·메서드 사이 빈 줄/후행 공백 등 린트 정리.
+  소켓/HTTP 실행 로직은 그대로 — 포맷만 교정.
+
+### 참고(Note)
+- `_foothold_stage` 는 현재 `_acquire_session` 이 `None` 을 돌려 아무 발판도 실행하지 않는 안전
+  스텁 상태(import·CI 통과). 실제 발판 획득(리버스셸 수신/웹RCE attach)은 사용자 리포에서
+  단계적으로 채운다(RCE 실행 표면). `shell_transport` 는 아직 어디서도 import 되지 않는 휴면
+  상태라 `requests` 미설치여도 패키지 로드에 영향 없음.
+
 ## [2.6.23] — 2026-10-09
 
 ### 추가(Added) — 자동 루트 체인 E단계: 플래그 읽기를 발판 셸로(채널 무관)

@@ -9,7 +9,9 @@ from .shell_session import ReverseShellSession
 def catch_reverse_shell(lhost: str, lport: int, timeout: float = 120.0) -> ReverseShellSession:
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind(("0.0.0.0", lport)); srv.listen(1); srv.settimeout(timeout)
+    srv.bind(("0.0.0.0", lport))
+    srv.listen(1)
+    srv.settimeout(timeout)
     conn, _ = srv.accept()
     conn.settimeout(15.0)
 
