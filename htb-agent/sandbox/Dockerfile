@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         default-mysql-client postgresql-client \
         netexec impacket-scripts enum4linux-ng evil-winrm bloodhound.py hydra wpscan sshpass openssh-client \
         gdb radare2 ltrace strace patchelf \
-        binwalk foremost exiftool steghide tshark \
+        binwalk foremost exiftool steghide tshark tcpdump \
         john hashcat \
     && rm -rf /var/lib/apt/lists/*
 

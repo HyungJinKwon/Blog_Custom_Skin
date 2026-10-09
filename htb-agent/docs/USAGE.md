@@ -416,6 +416,16 @@ GitHub Actions **`KB 자동 승격`** (`.github/workflows/kb-auto-promote.yml`)
 | 권한상승 | `assassin --privesc linux` | OS 식별 | sudo·SUID·capabilities·cron·커널·토큰·서비스 점검 + LPE 후보 |
 | 해시 크래킹 | `assassin --crack '$krb5tgs$23$...'` | 출력·자격증명에서 해시 발견 | 해시 종류 식별 + john/hashcat 명령(모드·포맷·워드리스트) |
 
+### 10.1 패킷 분석 · 웹 프록시 도구(Wireshark · Burp 등)
+
+| 하고 싶은 것 | 자율 실행(헤드리스) | 수동(사용자 Kali) |
+|---|---|---|
+| 패킷 캡처 분석 | **`tshark`**(Wireshark CLI, 샌드박스 내장) · `tcpdump` — pcap 에서 HTTP/자격/스트림 추출 | Wireshark GUI 로 열람 |
+| 웹 요청 가로채기·변조 | **`mitmproxy`/`mitmdump`** · **OWASP ZAP**(`-daemon` API) — 데몬/CLI 라 자동화 가능 | **Burp Suite**(GUI — 프록시·Repeater·Intruder); 브라우저 프록시 `127.0.0.1:8080` |
+| 파라미터 퍼징·주입 | `ffuf`·`sqlmap`·`wfuzz`(자율) | Burp Intruder |
+
+> Wireshark·Burp Suite 는 **GUI 라 자율(헤드리스) 실행 대상이 아닙니다** — 자율 파이프라인에선 동등한 CLI/데몬 도구(`tshark`·`tcpdump`·`mitmproxy`·`zaproxy`)를 쓰고, GUI 는 사용자 Kali 에서 직접 사용합니다. 모든 도구는 `assassin --doctor` 로 설치 상태를 확인하고 `--install-missing` 또는 `install_tools.sh` 로 설치합니다(레지스트리 등록 완료).
+
 ---
 
 ## 11. 산출물: 라이트업 · 리포트 · 로그 · 재개

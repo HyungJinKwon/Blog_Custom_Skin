@@ -4,6 +4,16 @@
 
 ## [미출시]
 
+### 추가 (툴·방법론 보강)
+- **틈새 기법 일반 규칙**(`knowledge/rules/niche-techniques.json`): AD CS 취약 템플릿 탐색(certipy
+  ESC)·NoSQL 인젝션·JWT 약점(alg none/키 혼동) — 서비스 키 기반 정석 규칙. 모두 관측 타겟 한정.
+- **패킷 분석·웹 프록시 도구 사용성**: 샌드박스에 `tcpdump` 추가(헤드리스 CLI). Wireshark·Burp Suite 는
+  GUI 라 자율 실행 대상이 아니며, 자동화 등가물(`tshark`·`tcpdump`·`mitmproxy`·`zaproxy`)로 커버됨을
+  `docs/USAGE.md §10.1`에 정리(모든 도구는 레지스트리 등록·`--doctor`/`--install-missing` 연동).
+
+### 수정 (방법론 위생)
+- `knowledge/rules/example.json` 규칙에 `phase` 명시 — KB 전 규칙의 phase 결측 0 보장.
+
 ### 추가 (성장형·최신화 — 환경/사용자 편차 완화)
 - **성장 공유(G1)** — `--export-stats`/`--import-stats`: 실행 학습 통계(변형 성공률)를 파일로
   주고받아 사용자 간 성장을 compounding. 통계는 `binary+fragment→succ/att` 뿐이라 명령 전체·타겟·

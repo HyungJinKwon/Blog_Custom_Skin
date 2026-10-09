@@ -107,6 +107,11 @@ if os.path.isdir("knowledge"):
     check("NFS export 열거 규칙 질의됨", any("showmount" in r.rule_name or "NFS" in r.rule_name for r in nfs))
     check("SNMP 커뮤니티 열거 규칙 질의됨", any("SNMP" in r.rule_name for r in snmp))
     check("WordPress 규칙 존재", any("WordPress" in r.name for r in rkb.rules))
+    # 틈새 기법 규칙(AD CS/NoSQLi/JWT) + 모든 규칙 phase 명시(위생)
+    check("AD CS(certipy) 규칙 존재", any("AD CS" in r.name for r in rkb.rules))
+    check("NoSQLi·JWT 규칙 존재",
+          any("NoSQL" in r.name for r in rkb.rules) and any("JWT" in r.name for r in rkb.rules))
+    check("모든 규칙 phase 명시(결측 0)", all(r.phase for r in rkb.rules))
 else:
     check("knowledge 디렉터리 없음 — 스킵(비레포 실행)", True)
 
