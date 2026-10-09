@@ -1208,6 +1208,7 @@ class Orchestrator:
         if not cmds:
             return
         self._exploit_looked_up.add(prod)
+        before = len(report.enum_findings)
         for cmd in cmds:
             if self._goal_reached(report) or self._time_up():
                 break
@@ -1217,6 +1218,24 @@ class Orchestrator:
             f"# {prod} 공개 익스 후보 — searchsploit 결과에서 '대상 버전'에 맞는 PoC 를 "
             f"골라 3관문(검증·범위·승인)으로 실행하세요(권한 확인 대상 전용)"
             + (f"\n#   ↳ {note}" if note else ""))
+        # searchsploit 출력을 파싱해 '대상 버전에 맞는 PoC'를 추려 제시(생성 전용 — 파싱만).
+        # 버전 미상이면 상위 후보를, 알면 버전 접두 호환분을 앞세워 사람/LLM 의 선택지를 좁힌다.
+        from .searchsploit import parse_searchsploit, shortlist
+        hits: list = []
+        seen_titles: set[str] = set()
+        for f in report.enum_findings[before:]:
+            for h in parse_searchsploit(f.output or ""):
+                if h.title not in seen_titles:
+                    seen_titles.add(h.title)
+                    hits.append(h)
+        picks = shortlist(hits, self.world.web_version, limit=6)
+        if picks:
+            ver = self.world.web_version or "미상(확인 필요)"
+            lines = "\n".join(f"#   - {h}" for h in picks)
+            report.manual_suggestions.append(
+                f"# {prod} PoC 후보(버전 {ver} 대조) — 아래에서 골라 권한 확인 대상에 실행:\n"
+                + lines)
+
     def _exploit_run_stage(self, report, host):
         """3단계: 주입된 공개 PoC(--poc)를 게이트로 실행 → 자격 캡처 → world 반영."""
         if not self.exploit_exec or self.world is None or self.dry_run:
@@ -1230,6 +1249,7 @@ class Orchestrator:
             for f in report.enum_findings[before:]:
                 for u, p in harvest_creds(f.output or ""):
                     self.world.add_cred(f"{u}:{p}", source="PoC 출력")
+
     def _exploit_exec_stage(self, report, host):
         if not self.exploit_exec or self.world is None or self.dry_run:
             return

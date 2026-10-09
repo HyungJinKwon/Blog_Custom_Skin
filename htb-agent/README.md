@@ -363,6 +363,7 @@ cd htb-agent && python3 tests/run_all.py     # 전체 스위트(끝에 '총 N �
 | `--cred-file` `경로` | 자격증명 JSON 파일에서 일괄 로드(인라인 --cred 와 함께 사용 가능). 형식: {"username":..,"password":..,"domain":..,"nt_hash":..} 또는 그 목록 |
 | `--config` | 설정 파일(.json/.yaml). 우선순위: CLI &gt; 설정파일 &gt; 기본값 |
 | `--autonomous`, `--hackathon` | 능동적 완전자동 모드: 범위내 자동승인 + 깊은 재진입 스윕 + 병렬 열거 + 변형학습 + 전 자동준비. 목표(flag/root)까지 스스로 추진(안전 게이트 유지) |
+| `--poc` `CMD` | 옵트인: searchsploit 결과에서 고른 '공개 PoC 한 줄'을 게이트로 실행(반복 가능). 권한 확인 대상 전용. 버전 대조 후 사용 |
 | `--sandbox` | 명령을 '어디서' 실행할지: none=로컬 셸 비경유(기본, 파이프 불가) · shell=로컬 bash(파이프 O, 네트워크 강제 X) · docker=Kali 컨테이너+egress 방화벽 · vm=SSH 로 접속한 가상머신/공격호스트. 스크립트 작성·동적 실행 자동은 egress 강제된 docker 또는 'vm --vm-confine' 에서만 |
 | `--sandbox-image` `IMAGE` | docker 샌드박스 이미지(기본 assassin-sandbox:latest — scripts/build_sandbox.sh) |
 | `--vm-ssh` `USER@HOST` | --sandbox vm: 명령을 실행할 VM 의 SSH 접속 대상(예: kali@192.168.56.10) |
