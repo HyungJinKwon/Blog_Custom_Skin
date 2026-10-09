@@ -457,240 +457,12 @@ def _print_kb_sync(r, verbose: bool = False) -> None:
         print(ui.dim(f"     ✗ {name} — {reason}"))
 
 
-def main(argv: list[str] | None = None, runner=None) -> int:
-    # runner 주입 가능(테스트). 기본은 실제 Kali 용 SubprocessRunner.
-    parser = build_parser()
-    args = parser.parse_args(argv)
+def _run_target(args, cfg, knowledge_dir, runner) -> int:
+    """타겟 1개에 대한 전체 실행 경로(프로파일→가드→오케스트레이터→리포트/내보내기).
+    main() 에서 분리 — 단독 명령 디스패치와 분리해 CLI 진입부를 얇게 유지."""
     from . import ui
-    from .config import Config, ConfigError, load_config, pick
+    from .config import pick
     from .profiles import get_profile
-
-    # 단독 명령은 하나만, 타겟 없이 — 조합 시 조용히 하나만 실행되던 문제 방지
-    standalone = [flag for flag, v in (
-        ("--doctor", args.doctor or args.llm_test), ("--setup-llm", args.setup_llm),
-        ("--install-missing", args.install_missing is not None),
-        ("--revshell", args.revshell), ("--cloud", args.cloud),
-        ("--privesc", args.privesc), ("--crack", args.crack), ("--ingest", args.ingest),
-        ("--kb-sync", args.kb_sync), ("--promote", args.promote), ("--learn", args.learn),
-        ("--list-sessions", args.list_sessions),
-        ("--bench", args.bench), ("--live-bench", args.live_bench), ("--replay", args.replay))
-        if v not in (None, False)]
-    if len(standalone) > 1:
-        parser.error(f"함께 쓸 수 없는 단독 명령: {' '.join(standalone)}")
-    if standalone and args.target:
-        parser.error(f"{standalone[0]} 은(는) 타겟 없이 단독으로 실행합니다")
-
-    # LLM 연결 마법사(대화형) — 설정 파일을 읽기 전에(마법사가 기본 설정을 새로 쓴다)
-    from . import llm_setup
-    if args.setup_llm:
-        llm_setup.apply_credentials()
-        setup_res = llm_setup.run_setup()
-        return 0 if (setup_res.cancelled or setup_res.backend != "none") else 1
-
-    # 저장된 LLM 키를 환경변수로(이미 설정돼 있으면 환경변수 우선). 키는 화면·파일에 남기지 않는다
-    llm_setup.apply_credentials()
-    cred_warn = llm_setup.read_credentials()[1]
-    if cred_warn:
-        print(ui.mark_warn(cred_warn), file=sys.stderr)
-
-    # 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값) — 단독 명령도 같은 설정을 따른다.
-    # --config 가 없으면 마법사가 만든 기본 설정(~/.config/assassin/config.json)을 자동으로 읽는다.
-    import os as _os
-    user_cfg = llm_setup.user_config_path()
-    cfg_path = args.config or (user_cfg if _os.path.isfile(user_cfg) else "")
-    try:
-        cfg = load_config(cfg_path) if cfg_path else Config()
-    except ConfigError as e:
-        print(ui.mark_err(f"설정 오류({cfg_path}): {e}"), file=sys.stderr)
-        return 2
-    if cfg_path and not args.config:
-        print(ui.dim(f"설정: {cfg_path} (자동 — 다른 설정은 --config, LLM 끄기는 --llm none)"),
-              file=sys.stderr)
-    for w in cfg.warnings:
-        print(ui.mark_warn(f"설정 경고: {w}"), file=sys.stderr)
-    knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, None) or _default_knowledge_dir()
-
-    # 실행 기록 재생(감사 로그 → 단계별 HTML)
-    if args.replay:
-        from . import replay
-        try:
-            out, n = replay.replay_file(args.replay)
-        except OSError as e:
-            print(ui.mark_err(f"재생 실패: {e}"), file=sys.stderr)
-            return 2
-        print(ui.mark_ok(f"재생 HTML 생성: {out} ({n}단계) — 브라우저로 열어 ←/→/스페이스로 넘겨 보세요"))
-        return 0
-
-    # 평가 하네스(오프라인 모의 문제) — 성공률·pass@N·명령 수·시간·비용
-    if args.bench:
-        return _run_bench(args, cfg, knowledge_dir)
-
-    # 라이브 평가 하네스(실제 서비스·진짜 도구) — 신뢰할 수 있는 발표용 수치
-    if args.live_bench:
-        return _run_live_bench(args, cfg, knowledge_dir)
-
-    # 빠진 도구 자동 설치(옵트인) — 저장소 공식 스크립트만 실행
-    if args.install_missing is not None:
-        from . import installer
-        cats = (None if args.install_missing == "__all__"
-                else [c for c in args.install_missing.split() if c])
-        rc, msg = installer.install_missing(cats)
-        print(ui.kv("도구 설치", msg, 10))
-        return rc
-
-    # 환경 자가진단(스캔 안 함) — 완전 초보자 권장 첫 실행
-    if args.list_sessions:
-        from .state import StateStore
-        sdir = pick(args.state_dir, cfg.state_dir, "state")
-        targets = StateStore(sdir).list_targets()
-        if targets:
-            print(ui.accent2(f"저장된 세션 {len(targets)}개 ({sdir}):"))
-            for t in targets:
-                print("  " + t)
-        else:
-            print(ui.dim(f"저장된 세션 없음 ({sdir}) — 실행하면 자동 저장됩니다."))
-        return 0
-
-    if args.doctor or args.llm_test:
-        from .doctor import run_doctor
-        text, ok = run_doctor(llm_test=args.llm_test, **_ollama_opts(cfg))
-        print(text)
-        return 0 if ok else 2
-
-    # 리버스쉘 페이로드 생성(스캔·실행 안 함)
-    if args.revshell:
-        from . import revshell
-        default_host = (args.attacker_ips[0] if args.attacker_ips
-                        else next(iter(detect_vpn_ips()), None))
-        try:
-            lhost, lport = revshell.parse_target(args.revshell, default_host)
-        except ValueError as e:
-            print(ui.mark_err(str(e)), file=sys.stderr)
-            return 2
-        print(revshell.render(lhost, lport))
-        return 0
-
-    # AWS/S3 열거 자동 준비(스캔·실행 안 함) — 버킷 후보+점검 생성
-    if args.cloud:
-        from . import cloud
-        print(cloud.render([args.cloud]))
-        return 0
-
-    # 권한상승 플레이북 자동 준비(스캔·실행 안 함) — OS별 체크리스트 생성
-    if args.privesc:
-        from . import privesc
-        default_atk = (args.attacker_ips[0] if args.attacker_ips
-                       else (detect_vpn_ips() or [""])[0])
-        print(privesc.render(args.privesc, default_atk or ""))
-        return 0
-
-    # 해시 크래킹 자동 준비(실행 안 함) — 종류 식별 + john/hashcat 명령 생성
-    if args.crack:
-        from . import crack
-        print(crack.render(args.crack))
-        return 0
-
-    # 사용자 제공 자료 수집(스캔 안 함) — .md/.txt/.pdf 를 지식베이스 노트로 미리 학습
-    if args.ingest is not None:
-        import os as _osing
-
-        from . import learn
-        kdir = knowledge_dir
-        paths = learn.ingest(args.ingest,
-                             dest_dir=_osing.path.join(kdir, "notes", "ingested"))
-        if paths:
-            print(ui.heading(f"자료 수집 완료 — {len(paths)}개 노트", "📥"))
-            for p in paths[:50]:
-                print("  " + ui.dim(p))
-        else:
-            print(ui.mark_err(f"수집할 .md/.txt/.pdf 자료 없음: {args.ingest}"), file=sys.stderr)
-        return 0 if paths else 2
-
-    # 공유 저장소 최신 시드를 지금 동기화(검증 통과분만 로컬 캐시에)
-    if args.kb_sync:
-        if args.offline:
-            print(ui.mark_err("--offline 에서는 공유 시드 동기화를 하지 않습니다"), file=sys.stderr)
-            return 2
-        from . import kb_sync as _kbs
-        sres = _kbs.sync(knowledge_dir)
-        if sres.error:
-            print(ui.mark_err(f"공유 시드 동기화 실패: {sres.error}"), file=sys.stderr)
-            return 2
-        _print_kb_sync(sres, verbose=True)
-        return 0
-
-    # 학습 노트 → 번들 시드 승격(스캔·네트워크 없음). 커밋·PR 로 모든 사용자에게 공유.
-    if args.promote is not None:
-        import os as _ospr
-
-        from . import promote as _promote
-        ndir = _ospr.path.join(knowledge_dir, "notes", "learned")
-        key = args.promote.strip().lower()
-        presults = (_promote.promote_all(ndir, ndir) if key == "all"
-                    else [_promote.promote(key, ndir, ndir)])
-        if not presults:
-            print(ui.mark_warn("승격할 학습 노트 없음 — 먼저 'assassin --learn all' 실행"),
-                  file=sys.stderr)
-            return 2
-        changed = 0
-        for pr in presults:
-            if pr.error:
-                print(ui.mark_err(f"{pr.topic}: {pr.error}"), file=sys.stderr)
-                continue
-            head = f"{pr.topic}: 승격 {len(pr.accepted)}건 · 거부 {len(pr.rejected)}건"
-            print((ui.mark_ok(head) if pr.changed else ui.dim("  " + head + " (변경 없음)")))
-            for title, reason in pr.rejected:
-                print(ui.dim(f"     ✗ {title} — {reason}"))
-            for title, why in pr.pruned:
-                print(ui.dim(f"     − {title} — 시드에서 정리({why})"))
-            changed += int(pr.changed)
-        if changed:
-            print(ui.ok(f"\n시드 {changed}개 갱신 — 'git diff {ndir}/seed-*.md' 로 검토 후 커밋·PR 하면 "
-                        "병합 시 모든 사용자에게 반영됩니다."))
-        return 0 if not any(pr.error for pr in presults) else 2
-
-    # 권위 출처 자가학습(스캔 안 함) — 지식베이스에 노트 저장(P1 유지)
-    if args.learn is not None:
-        from . import learn
-        key = args.learn.strip().lower()
-        if key in ("list", "topics", "?"):
-            print(ui.heading("학습 가능 주제(권위 출처)", "📚"))
-            print("  " + ", ".join(learn.topics()))
-            return 0
-        import os as _oslearn
-        ref_learner = learn.ReferenceLearner(
-            cache_dir=_oslearn.path.join(knowledge_dir, "notes", "learned"),
-            enabled=not args.offline)
-        if key == "all":   # 전체 주제 일괄 사전 학습(미리 학습)
-            lresults = ref_learner.learn_all()
-            n_ok = sum(1 for lr in lresults if lr.refs)
-            print(ui.heading(f"전체 사전 학습 — {n_ok}/{len(lresults)} 주제 노트 생성", "📚"))
-            if not args.offline:
-                print(ui.dim("  (라이브 수집: 허용 도메인에서 요약 수집)"))
-                failed = [(lr.topic, r.title, r.url) for lr in lresults for r in lr.refs
-                          if not r.excerpt]
-                if failed:   # 끊긴 링크·차단 출처를 드러냄(주간 워크플로 로그에서 바로 보이게)
-                    print(ui.mark_warn(f"수집 실패 출처 {len(failed)}개 — 카탈로그 주소 확인 필요"))
-                    for topic, title, url in failed:
-                        print(ui.dim(f"     {topic}: {title} — {url}"))
-                        if _oslearn.environ.get("GITHUB_ACTIONS") == "true":
-                            print(f"::warning title=수집 실패 출처::{topic}: {title} — {url}")
-            else:
-                print(ui.dim("  (오프라인: 출처 포인터 저장 — 번들 시드 노트가 보강)"))
-            return 0 if n_ok else 2
-        res = ref_learner.learn(args.learn)
-        print(res.summary())
-        return 0 if res.refs else 2
-
-    if not args.target:
-        swallowed = [v for v in (args.writeup, args.json_out, args.html_out)
-                     if v not in (None, "__auto__")]
-        if swallowed:   # 'assassin --html 10.129.1.5' 처럼 타겟이 경로로 읽힌 경우
-            parser.error(f"타겟이 없습니다 — '{swallowed[0]}' 가 출력 경로로 읽혔습니다. "
-                         "타겟을 맨 앞에 두세요: assassin <타겟> --html")
-        # 인자 없이 실행 = '어떻게 쓰지?' — 긴 옵션 목록 대신 시작 안내를 보여 준다
-        print(_start_guide(), file=sys.stderr)
-        raise SystemExit(2)
 
     # 플랫폼 프로파일(HTB/Dreamhack/CTF)
     try:
@@ -1048,6 +820,255 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     if report.status == "interrupted":
         return 130   # Ctrl+C 관례(128+SIGINT) — 상태는 저장됨
     return 0 if report.status == "done" else 1
+
+
+def _dispatch_standalone(args, cfg, knowledge_dir):
+    """타겟 없이 실행하는 단독 명령(replay·bench·doctor·learn·promote 등)을 처리.
+    처리하면 종료코드(int)를, 해당 없으면 None 을 반환해 main() 이 타겟 실행으로 넘어가게 한다."""
+    from . import ui
+    from .config import pick
+
+    # 실행 기록 재생(감사 로그 → 단계별 HTML)
+    if args.replay:
+        from . import replay
+        try:
+            out, n = replay.replay_file(args.replay)
+        except OSError as e:
+            print(ui.mark_err(f"재생 실패: {e}"), file=sys.stderr)
+            return 2
+        print(ui.mark_ok(f"재생 HTML 생성: {out} ({n}단계) — 브라우저로 열어 ←/→/스페이스로 넘겨 보세요"))
+        return 0
+
+    # 평가 하네스(오프라인 모의 문제) — 성공률·pass@N·명령 수·시간·비용
+    if args.bench:
+        return _run_bench(args, cfg, knowledge_dir)
+
+    # 라이브 평가 하네스(실제 서비스·진짜 도구) — 신뢰할 수 있는 발표용 수치
+    if args.live_bench:
+        return _run_live_bench(args, cfg, knowledge_dir)
+
+    # 빠진 도구 자동 설치(옵트인) — 저장소 공식 스크립트만 실행
+    if args.install_missing is not None:
+        from . import installer
+        cats = (None if args.install_missing == "__all__"
+                else [c for c in args.install_missing.split() if c])
+        rc, msg = installer.install_missing(cats)
+        print(ui.kv("도구 설치", msg, 10))
+        return rc
+
+    # 환경 자가진단(스캔 안 함) — 완전 초보자 권장 첫 실행
+    if args.list_sessions:
+        from .state import StateStore
+        sdir = pick(args.state_dir, cfg.state_dir, "state")
+        targets = StateStore(sdir).list_targets()
+        if targets:
+            print(ui.accent2(f"저장된 세션 {len(targets)}개 ({sdir}):"))
+            for t in targets:
+                print("  " + t)
+        else:
+            print(ui.dim(f"저장된 세션 없음 ({sdir}) — 실행하면 자동 저장됩니다."))
+        return 0
+
+    if args.doctor or args.llm_test:
+        from .doctor import run_doctor
+        text, ok = run_doctor(llm_test=args.llm_test, **_ollama_opts(cfg))
+        print(text)
+        return 0 if ok else 2
+
+    # 리버스쉘 페이로드 생성(스캔·실행 안 함)
+    if args.revshell:
+        from . import revshell
+        default_host = (args.attacker_ips[0] if args.attacker_ips
+                        else next(iter(detect_vpn_ips()), None))
+        try:
+            lhost, lport = revshell.parse_target(args.revshell, default_host)
+        except ValueError as e:
+            print(ui.mark_err(str(e)), file=sys.stderr)
+            return 2
+        print(revshell.render(lhost, lport))
+        return 0
+
+    # AWS/S3 열거 자동 준비(스캔·실행 안 함) — 버킷 후보+점검 생성
+    if args.cloud:
+        from . import cloud
+        print(cloud.render([args.cloud]))
+        return 0
+
+    # 권한상승 플레이북 자동 준비(스캔·실행 안 함) — OS별 체크리스트 생성
+    if args.privesc:
+        from . import privesc
+        default_atk = (args.attacker_ips[0] if args.attacker_ips
+                       else (detect_vpn_ips() or [""])[0])
+        print(privesc.render(args.privesc, default_atk or ""))
+        return 0
+
+    # 해시 크래킹 자동 준비(실행 안 함) — 종류 식별 + john/hashcat 명령 생성
+    if args.crack:
+        from . import crack
+        print(crack.render(args.crack))
+        return 0
+
+    # 사용자 제공 자료 수집(스캔 안 함) — .md/.txt/.pdf 를 지식베이스 노트로 미리 학습
+    if args.ingest is not None:
+        import os as _osing
+
+        from . import learn
+        kdir = knowledge_dir
+        paths = learn.ingest(args.ingest,
+                             dest_dir=_osing.path.join(kdir, "notes", "ingested"))
+        if paths:
+            print(ui.heading(f"자료 수집 완료 — {len(paths)}개 노트", "📥"))
+            for p in paths[:50]:
+                print("  " + ui.dim(p))
+        else:
+            print(ui.mark_err(f"수집할 .md/.txt/.pdf 자료 없음: {args.ingest}"), file=sys.stderr)
+        return 0 if paths else 2
+
+    # 공유 저장소 최신 시드를 지금 동기화(검증 통과분만 로컬 캐시에)
+    if args.kb_sync:
+        if args.offline:
+            print(ui.mark_err("--offline 에서는 공유 시드 동기화를 하지 않습니다"), file=sys.stderr)
+            return 2
+        from . import kb_sync as _kbs
+        sres = _kbs.sync(knowledge_dir)
+        if sres.error:
+            print(ui.mark_err(f"공유 시드 동기화 실패: {sres.error}"), file=sys.stderr)
+            return 2
+        _print_kb_sync(sres, verbose=True)
+        return 0
+
+    # 학습 노트 → 번들 시드 승격(스캔·네트워크 없음). 커밋·PR 로 모든 사용자에게 공유.
+    if args.promote is not None:
+        import os as _ospr
+
+        from . import promote as _promote
+        ndir = _ospr.path.join(knowledge_dir, "notes", "learned")
+        key = args.promote.strip().lower()
+        presults = (_promote.promote_all(ndir, ndir) if key == "all"
+                    else [_promote.promote(key, ndir, ndir)])
+        if not presults:
+            print(ui.mark_warn("승격할 학습 노트 없음 — 먼저 'assassin --learn all' 실행"),
+                  file=sys.stderr)
+            return 2
+        changed = 0
+        for pr in presults:
+            if pr.error:
+                print(ui.mark_err(f"{pr.topic}: {pr.error}"), file=sys.stderr)
+                continue
+            head = f"{pr.topic}: 승격 {len(pr.accepted)}건 · 거부 {len(pr.rejected)}건"
+            print((ui.mark_ok(head) if pr.changed else ui.dim("  " + head + " (변경 없음)")))
+            for title, reason in pr.rejected:
+                print(ui.dim(f"     ✗ {title} — {reason}"))
+            for title, why in pr.pruned:
+                print(ui.dim(f"     − {title} — 시드에서 정리({why})"))
+            changed += int(pr.changed)
+        if changed:
+            print(ui.ok(f"\n시드 {changed}개 갱신 — 'git diff {ndir}/seed-*.md' 로 검토 후 커밋·PR 하면 "
+                        "병합 시 모든 사용자에게 반영됩니다."))
+        return 0 if not any(pr.error for pr in presults) else 2
+
+    # 권위 출처 자가학습(스캔 안 함) — 지식베이스에 노트 저장(P1 유지)
+    if args.learn is not None:
+        from . import learn
+        key = args.learn.strip().lower()
+        if key in ("list", "topics", "?"):
+            print(ui.heading("학습 가능 주제(권위 출처)", "📚"))
+            print("  " + ", ".join(learn.topics()))
+            return 0
+        import os as _oslearn
+        ref_learner = learn.ReferenceLearner(
+            cache_dir=_oslearn.path.join(knowledge_dir, "notes", "learned"),
+            enabled=not args.offline)
+        if key == "all":   # 전체 주제 일괄 사전 학습(미리 학습)
+            lresults = ref_learner.learn_all()
+            n_ok = sum(1 for lr in lresults if lr.refs)
+            print(ui.heading(f"전체 사전 학습 — {n_ok}/{len(lresults)} 주제 노트 생성", "📚"))
+            if not args.offline:
+                print(ui.dim("  (라이브 수집: 허용 도메인에서 요약 수집)"))
+                failed = [(lr.topic, r.title, r.url) for lr in lresults for r in lr.refs
+                          if not r.excerpt]
+                if failed:   # 끊긴 링크·차단 출처를 드러냄(주간 워크플로 로그에서 바로 보이게)
+                    print(ui.mark_warn(f"수집 실패 출처 {len(failed)}개 — 카탈로그 주소 확인 필요"))
+                    for topic, title, url in failed:
+                        print(ui.dim(f"     {topic}: {title} — {url}"))
+                        if _oslearn.environ.get("GITHUB_ACTIONS") == "true":
+                            print(f"::warning title=수집 실패 출처::{topic}: {title} — {url}")
+            else:
+                print(ui.dim("  (오프라인: 출처 포인터 저장 — 번들 시드 노트가 보강)"))
+            return 0 if n_ok else 2
+        res = ref_learner.learn(args.learn)
+        print(res.summary())
+        return 0 if res.refs else 2
+
+    return None
+
+
+def main(argv: list[str] | None = None, runner=None) -> int:
+    # runner 주입 가능(테스트). 기본은 실제 Kali 용 SubprocessRunner.
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    from . import ui
+    from .config import Config, ConfigError, load_config, pick
+
+    # 단독 명령은 하나만, 타겟 없이 — 조합 시 조용히 하나만 실행되던 문제 방지
+    standalone = [flag for flag, v in (
+        ("--doctor", args.doctor or args.llm_test), ("--setup-llm", args.setup_llm),
+        ("--install-missing", args.install_missing is not None),
+        ("--revshell", args.revshell), ("--cloud", args.cloud),
+        ("--privesc", args.privesc), ("--crack", args.crack), ("--ingest", args.ingest),
+        ("--kb-sync", args.kb_sync), ("--promote", args.promote), ("--learn", args.learn),
+        ("--list-sessions", args.list_sessions),
+        ("--bench", args.bench), ("--live-bench", args.live_bench), ("--replay", args.replay))
+        if v not in (None, False)]
+    if len(standalone) > 1:
+        parser.error(f"함께 쓸 수 없는 단독 명령: {' '.join(standalone)}")
+    if standalone and args.target:
+        parser.error(f"{standalone[0]} 은(는) 타겟 없이 단독으로 실행합니다")
+
+    # LLM 연결 마법사(대화형) — 설정 파일을 읽기 전에(마법사가 기본 설정을 새로 쓴다)
+    from . import llm_setup
+    if args.setup_llm:
+        llm_setup.apply_credentials()
+        setup_res = llm_setup.run_setup()
+        return 0 if (setup_res.cancelled or setup_res.backend != "none") else 1
+
+    # 저장된 LLM 키를 환경변수로(이미 설정돼 있으면 환경변수 우선). 키는 화면·파일에 남기지 않는다
+    llm_setup.apply_credentials()
+    cred_warn = llm_setup.read_credentials()[1]
+    if cred_warn:
+        print(ui.mark_warn(cred_warn), file=sys.stderr)
+
+    # 설정 파일 로드 + 우선순위 해소 (CLI > config > 기본값) — 단독 명령도 같은 설정을 따른다.
+    # --config 가 없으면 마법사가 만든 기본 설정(~/.config/assassin/config.json)을 자동으로 읽는다.
+    import os as _os
+    user_cfg = llm_setup.user_config_path()
+    cfg_path = args.config or (user_cfg if _os.path.isfile(user_cfg) else "")
+    try:
+        cfg = load_config(cfg_path) if cfg_path else Config()
+    except ConfigError as e:
+        print(ui.mark_err(f"설정 오류({cfg_path}): {e}"), file=sys.stderr)
+        return 2
+    if cfg_path and not args.config:
+        print(ui.dim(f"설정: {cfg_path} (자동 — 다른 설정은 --config, LLM 끄기는 --llm none)"),
+              file=sys.stderr)
+    for w in cfg.warnings:
+        print(ui.mark_warn(f"설정 경고: {w}"), file=sys.stderr)
+    knowledge_dir = pick(args.knowledge, cfg.knowledge_dir, None) or _default_knowledge_dir()
+
+    rc = _dispatch_standalone(args, cfg, knowledge_dir)
+    if rc is not None:
+        return rc
+    if not args.target:
+        swallowed = [v for v in (args.writeup, args.json_out, args.html_out)
+                     if v not in (None, "__auto__")]
+        if swallowed:   # 'assassin --html 10.129.1.5' 처럼 타겟이 경로로 읽힌 경우
+            parser.error(f"타겟이 없습니다 — '{swallowed[0]}' 가 출력 경로로 읽혔습니다. "
+                         "타겟을 맨 앞에 두세요: assassin <타겟> --html")
+        # 인자 없이 실행 = '어떻게 쓰지?' — 긴 옵션 목록 대신 시작 안내를 보여 준다
+        print(_start_guide(), file=sys.stderr)
+        raise SystemExit(2)
+
+    return _run_target(args, cfg, knowledge_dir, runner)
 
 
 if __name__ == "__main__":

@@ -70,5 +70,10 @@ class LLMProvider(ABC):
                  tier: Tier = Tier.STANDARD, max_tokens: int = 1024,
                  tools: "list | None" = None) -> LLMResponse:
         """tools 가 주어지면(네이티브 tool use 지원 백엔드) 구조화 호출을 시도하고 결과를
-        LLMResponse.tool_calls 에 담는다. 미지원 백엔드는 tools 를 무시하고 텍스트로 답한다."""
+        LLMResponse.tool_calls 에 담는다. 미지원 백엔드는 tools 를 무시하고 텍스트로 답한다.
+
+        계약: 네트워크·인증·속도제한 오류는 **예외로 전파**한다(여기서 삼키지 않는다).
+        HybridRouter 가 그 예외로 폴백·서킷브레이커를 판단하고, 오케스트레이터가 라운드 단위로
+        격리하기 때문이다. 따라서 LLMRouter/Provider 를 오케스트레이터 밖에서 직접 쓰는 호출자는
+        complete()(및 이를 호출하는 suggest_commands/analyze)를 try/except 로 감싸야 한다."""
         ...

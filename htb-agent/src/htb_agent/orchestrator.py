@@ -62,6 +62,10 @@ PENTEST_PHASES: list[tuple[str, str]] = [
 ]
 _PHASE_LABEL = dict(PENTEST_PHASES)
 
+# finding.output 1건당 보관 상한(바이트 아님 — 문자 길이). 요약기가 이미 줄이지만, 전용 분기가
+# 길어질 수 있어 하드 실링을 둬 '보관 출력 총량 = 시도 수(예산 제한) × 이 값' 으로 명시적 bound.
+_MAX_FINDING_OUTPUT = 4000
+
 
 @dataclass
 class EnumFinding:
@@ -496,6 +500,7 @@ class Orchestrator:
         return sum(1 for f in findings[base:] if not f.skipped)
 
     def _tool_ok(self, cmd: str) -> bool:
+        """명령의 바이너리가 설치돼 실제 실행 가능한지(예산 소비·시도 집계를 '설치된 도구'로 한정)."""
         binary = binary_of(cmd)
         return not binary or self.is_tool_available(binary)
 
@@ -867,37 +872,7 @@ class Orchestrator:
             self.audit.event("llm_round_skipped", phase=phase,
                              reason="all-hypotheses-stuck")
             return 0
-        services = [p.service for p in host.ports if p.state == "open" and p.service]
-        recs = self.kb.query(prof.os_class.value, host.open_ports, services, phase=phase)
-        prior = [f"{f.command} => {f.output}"
-                 for f in (report.enum_findings + report.llm_findings) if f.output]
-        context = {
-            "phase": _PHASE_LABEL.get(phase, phase),
-            "profile": prof.summary(),
-            # 구조화 상태(월드 모델) — 원시 로그 대신 정돈된 사실을 LLM 에 제공
-            "state": self.world.context_lines() if self.world is not None else [],
-            # B3 분석가의 판단 — 명령 생성을 유도(가설·경로·집중)
-            "analysis": report.analysis,
-            # 실행자에게는 분석 전문 대신 '지금 할 일 1개'(가설·확인 방법·기대 신호·이미 한 시도)
-            "focus": report.plan.focus_lines(focus) if focus is not None else [],
-            "open_ports": [str(p) for p in host.ports if p.state == "open"],
-            # 명령 없는 가이드 규칙은 이름만 가면 쓸모가 없으므로 가이드(note) 앞부분을 전달
-            "kb": [f"{r.rule_name}: " + (", ".join(r.suggestions)
-                                          or (r.note[:160] + ("…" if len(r.note) > 160 else "")))
-                   for r in recs[:5]],
-            # B5(경량 RAG): 현재 서비스·OS·단계·취약점에 관련도 높은 노트만 주입
-            "notes": self.kb.relevant_notes(
-                self._note_terms(host, prof, phase, report), 3),
-            "findings": prior[-10:],
-            "failures": self._failure_context(report),
-            # 플랫폼 인식 — LLM 프롬프트가 HTB/Jeopardy·카테고리에 맞게 조립된다
-            "platform": self.platform_name,
-            "jeopardy": self.flag_kind == "single",
-            "category": self.category,
-            "flag_prefixes": ("/".join(f"{p}{{...}}" for p in self.flag_prefixes)
-                              if self.flag_prefixes else ""),
-            **self._exec_context(),
-        }
+        context = self._suggest_context(report, host, prof, phase, focus)
         try:
             from .llm.base import Tier, tier_for_phase
             base_tier = tier_for_phase(phase)
@@ -981,6 +956,42 @@ class Orchestrator:
         if tags:
             f.note = (f.note + " · " if f.note else "") + " · ".join(tags)
 
+    def _suggest_context(self, report: OrchestrationReport, host: NmapHost,
+                         prof: ProfileResult, phase: str, focus) -> dict:
+        """명령 생성(suggest)용 LLM 컨텍스트 조립 — 관측·월드·분석가 판단·focus·KB·플랫폼을
+        정돈해 한 dict 로. (_llm_round 에서 분리: 로직 밀도 완화)"""
+        services = [p.service for p in host.ports if p.state == "open" and p.service]
+        recs = self.kb.query(prof.os_class.value, host.open_ports, services, phase=phase)
+        prior = [f"{f.command} => {f.output}"
+                 for f in (report.enum_findings + report.llm_findings) if f.output]
+        return {
+            "phase": _PHASE_LABEL.get(phase, phase),
+            "profile": prof.summary(),
+            # 구조화 상태(월드 모델) — 원시 로그 대신 정돈된 사실을 LLM 에 제공
+            "state": self.world.context_lines() if self.world is not None else [],
+            # B3 분석가의 판단 — 명령 생성을 유도(가설·경로·집중)
+            "analysis": report.analysis,
+            # 실행자에게는 분석 전문 대신 '지금 할 일 1개'(가설·확인 방법·기대 신호·이미 한 시도)
+            "focus": report.plan.focus_lines(focus) if focus is not None else [],
+            "open_ports": [str(p) for p in host.ports if p.state == "open"],
+            # 명령 없는 가이드 규칙은 이름만 가면 쓸모가 없으므로 가이드(note) 앞부분을 전달
+            "kb": [f"{r.rule_name}: " + (", ".join(r.suggestions)
+                                          or (r.note[:160] + ("…" if len(r.note) > 160 else "")))
+                   for r in recs[:5]],
+            # B5(경량 RAG): 현재 서비스·OS·단계·취약점에 관련도 높은 노트만 주입
+            "notes": self.kb.relevant_notes(
+                self._note_terms(host, prof, phase, report), 3),
+            "findings": prior[-10:],
+            "failures": self._failure_context(report),
+            # 플랫폼 인식 — LLM 프롬프트가 HTB/Jeopardy·카테고리에 맞게 조립된다
+            "platform": self.platform_name,
+            "jeopardy": self.flag_kind == "single",
+            "category": self.category,
+            "flag_prefixes": ("/".join(f"{p}{{...}}" for p in self.flag_prefixes)
+                              if self.flag_prefixes else ""),
+            **self._exec_context(),
+        }
+
     def _exec_context(self) -> dict:
         """LLM 프롬프트용 실행 환경(셸 문법·작업공간 쓰기 가능 여부) + 작업공간 파일 발췌."""
         shell = bool(getattr(self.runner, "shell", False))
@@ -1059,6 +1070,8 @@ class Orchestrator:
         return f"{hid} 신호 일치〔추정〕" if res == "hit" else f"{hid} 신호 불일치"
 
     def _run_vuln(self, report: OrchestrationReport, host: NmapHost, target: str) -> None:
+        """관측 코퍼스(배너·스크립트·enum/LLM 출력)에서 CVE/CWE·버전 매칭을 탐지해 리포트·월드에
+        반영한다. 스윕 중 반복 호출되며(분석·명령 생성이 '확인 취약점'을 보도록) 결과는 누적·멱등."""
         # 관측 코퍼스: 배너 + 스크립트 + enum/LLM 출력
         corpus_parts = list(host.hostscripts.values())
         banners: list[str] = []
@@ -1211,6 +1224,27 @@ class Orchestrator:
                 return f"⟳ 앞서 실패한 같은 종류의 시도와 겹침 {why} — 다른 도구·옵션·경로 권장"
         return ""
 
+    def _apply_command_fix(self, finding: EnumFinding, cmd: str, sres, vrep):
+        """Results Verifier(AutoPentester): 범위 밖으로 거부될 명령의 타겟 자리표시자·오타를
+        바인딩 타겟으로 자동 교정해 복구 시도. 교정본이 검증·범위를 다시 통과하면 그것으로 교체.
+        반환: (cmd, sres, vrep) — 교정 성공 시 교정본, 아니면 원본 그대로. (_gate 에서 분리)"""
+        if not (self.fix_commands and not sres.auto_allowed):
+            return cmd, sres, vrep
+        fixed, why = command_fixer.correct_target(cmd, self.guard)
+        if fixed == cmd:
+            return cmd, sres, vrep
+        try:
+            fres = self.guard.inspect_command(fixed, hosts_map=self.hosts_map)
+            fvrep = validate(fixed)
+        except ScopeViolation:
+            return cmd, sres, vrep
+        if fres.auto_allowed and fvrep.ok and not fvrep.review:
+            self.audit.event("verifier_fixed", original=cmd, fixed=fixed, reason=why)
+            finding.command = fixed
+            finding.note = (finding.note + " · " if finding.note else "") + f"✎ 자동교정({why})"
+            return fixed, fres, fvrep
+        return cmd, sres, vrep
+
     def _gate(self, report: OrchestrationReport, findings: list[EnumFinding],
               cmd: str, phase: str) -> EnumFinding | None:
         """3관문(도구·검증·범위·승인)을 순차 수행(공유상태 변경은 단일 스레드).
@@ -1254,21 +1288,7 @@ class Orchestrator:
             gs["rejected_scope"] += 1
             self.audit.event("rejected", cmd=cmd, stage="scope", reason=str(e))
             return None
-        # Results Verifier(AutoPentester): 범위 밖으로 거부될 명령만, 타겟을 자동 교정해 복구 시도.
-        # 교정본이 '검증 통과 + 범위 안'이면 그 명령으로 바꿔 진행(불완전 명령으로 버리는 낭비 감소).
-        if self.fix_commands and not sres.auto_allowed:
-            fixed, why = command_fixer.correct_target(cmd, self.guard)
-            if fixed != cmd:
-                try:
-                    fres = self.guard.inspect_command(fixed, hosts_map=self.hosts_map)
-                    fvrep = validate(fixed)
-                except ScopeViolation:
-                    fres = None
-                if fres is not None and fres.auto_allowed and fvrep.ok and not fvrep.review:
-                    self.audit.event("verifier_fixed", original=cmd, fixed=fixed, reason=why)
-                    finding.command = fixed
-                    finding.note = (finding.note + " · " if finding.note else "") + f"✎ 자동교정({why})"
-                    cmd, sres, vrep = fixed, fres, fvrep
+        cmd, sres, vrep = self._apply_command_fix(finding, cmd, sres, vrep)
         warn = self._repetition_warning(report, cmd)
         if warn:
             from . import ui
@@ -1326,6 +1346,8 @@ class Orchestrator:
             self._diagnose(report, finding, out)   # 실행 실패도 원인 분류(환경 문제)
             return
         finding.output = summarize_tool_output(cmd, out.stdout, out.stderr)
+        if len(finding.output) > _MAX_FINDING_OUTPUT:   # 마라톤 세션 메모리 상한(명시적)
+            finding.output = finding.output[:_MAX_FINDING_OUTPUT] + "…(출력 상한 초과 — 생략)"
         self.audit.event("executed", cmd=cmd, launched=True,
                          returncode=out.returncode, summary=finding.output)
         # 실패 진단(사람 확인용) — 404/403/타임아웃 등 원인 분류. 자동 재공격 아님.
