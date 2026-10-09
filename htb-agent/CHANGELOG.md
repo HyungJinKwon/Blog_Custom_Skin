@@ -2,6 +2,23 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.22] — 2026-10-09
+
+### 추가(Added) — 자동 루트 체인 D단계: 발판 후 자격 수확
+- **`cred_sources`**(생성 전용): 웹 RCE 로 www-data 를 얻어도 user.txt 는 보통 다른 유저 소유라
+  못 읽는다 — 돌파구인 '설정/DB 자격 → 측면이동'의 재료를 생성.
+  - `config_reads(product)` — 발판 셸에서 읽을 설정/민감파일 `cat … 2>/dev/null` 목록
+    (freepbx→amportal.conf·manager.conf, wordpress→wp-config.php, drupal→settings.php … + 일반 .env/bash_history/id_rsa).
+  - `parse_config_creds(text)` — 일반 harvest + **FreePBX amportal 키**(AMPDBUSER/AMPDBPASS·
+    AMPMGRUSER/AMPMGRPASS 짝) 추출, 출처 라벨 포함.
+  - `lateral_candidates(creds, users, target)` — 자격×유저로 su/ssh **비번 재사용 교차** 후보
+    명령 생성. 셸 인젝션 안전값만 명령에 투입(신뢰불가 출처 방어).
+- **테스트**: `test_cred_sources.py`(22) — 파일 목록·amportal/URL 파싱·측면이동 교차·인젝션 필터·경계.
+
+### 안전(Safety)
+- 명령/자격 **문자열 생성·파싱만** — cat·su·ssh 실행 안 함(발판 셸 실제 실행은 사용자 ShellSession
+  발사=RCE 표면). subprocess/socket/paramiko 미임포트.
+
 ## [2.6.21] — 2026-10-09
 
 ### 추가(Added) — 자동 루트 체인 C단계: 웹 RCE 명령 채널
