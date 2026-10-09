@@ -8,6 +8,28 @@
 레드팀 학습·모의해킹·CTF 연습용. **권한이 확인된 대상에 한정**해 동작하는,
 승인제(Human-in-the-loop) 자동 풀이 보조 에이전트. **명령은 `assassin`** (`htb-agent` 는 하위호환 별칭).
 
+### ⚡ 모드 한눈에 (자주 쓰는 명령)
+
+| 상황 | 명령 |
+|---|---|
+| 처음 써 보기(위험한 것만 확인) | `assassin 10.129.1.5` |
+| 모든 명령 보며 배우기 | `assassin 10.129.1.5 --manual` |
+| 해커톤(최대 자율+시간제한) | `assassin 10.129.1.5 --autonomous --time-budget 45 --writeup --html` |
+| 샌드박스에서 실제 익스까지 | `assassin 10.129.1.5 --autonomous --sandbox docker --llm hybrid` |
+| 🚀 완전 자동 루트 시도(발판·플래그까지) | `assassin 10.129.1.5 --autonomous --llm claude --exploit-exec --auto-poc --html --json` |
+| CTF/Dreamhack 문제 | `assassin chall.host:1337 --platform ctf --category web` |
+
+### 📚 문서 안내
+
+| 문서 | 내용 |
+|---|---|
+| [docs/QUICKSTART.md](docs/QUICKSTART.md) | 1쪽 빠른 시작(설치·상황별 한 줄·화면 읽는 법) — **처음이라면 여기부터** |
+| [docs/USAGE.md](docs/USAGE.md) | 전체 사용법(설치·모드·플랫폼·발판 실행·산출물·트러블슈팅) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 구조·다이어그램·모듈 지도 |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) · [docs/VALIDATION.md](docs/VALIDATION.md) | 운영 / Kali 수용 테스트 |
+
+> 아래는 모드별 상세 설명입니다. 바로 실행하려면 위 표 또는 QUICKSTART 로 충분합니다.
+
 **플랫폼 프로파일** `--platform {htb,dreamhack,ctf}`:
 - `htb` (기본): HTB VPN 대역 강제 · boot2root(user.txt/root.txt, 32-hex/HTB{})
 - `dreamhack` / `ctf`: 챌린지 단일 타겟(host:port/URL) 바인딩 · Jeopardy 단일 플래그
