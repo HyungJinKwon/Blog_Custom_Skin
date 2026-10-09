@@ -1393,7 +1393,9 @@ class Orchestrator:
         # 단계 외(LLM·수동 참고 등)에서 돈 searchsploit 결과도 포함해 증거 결손을 없앤다.
         hits: list = []
         seen_titles: set[str] = set()
-        for f in report.enum_findings:
+        # enum + llm 양쪽 모두 스캔 — searchsploit 가 LLM 제안으로 돌면 llm_findings 에
+        # 저장돼 enum 만 보면 증거를 놓친다(⭐ 매칭 누락의 한 원인).
+        for f in list(report.enum_findings) + list(report.llm_findings):
             if "searchsploit" not in (f.command or ""):
                 continue
             for h in parse_searchsploit(f.output or ""):
@@ -1403,11 +1405,15 @@ class Orchestrator:
         if not hits:
             return
         prod = self.world.web_product
-        version = self.world.web_version
+        version = (self.world.web_version or "").strip()   # 공백 혼입 방어(접두 매칭 오류 방지)
         picks = shortlist(hits, version, limit=6)
         if not picks:
             return
         matched = has_version_match(hits, version)
+        # 진단(감사 로그) — ⭐ 매칭이 왜 성립/불성립했는지 사후 확인용(version·hit 버전·결과).
+        self.audit.event("shortlist_eval", version=version, n_hits=len(hits),
+                         matched=matched,
+                         hit_versions=[h.versions for h in hits[:14]])
         # 이 패스가 이전에 남긴 숏리스트 제안을 먼저 제거(마커로 식별) — 중복 누적 방지, 최신본만.
         marker = "PoC 후보(버전"
         report.manual_suggestions[:] = [
@@ -1459,6 +1465,9 @@ class Orchestrator:
             fetch = (f"\n#   ↳ 확인된 버전 {version} 과 접두 매칭되는 PoC 가 목록에 없음. "
                      f"major 계열(예: 상위 버전대) PoC 를 사람이 직접 대조하거나, "
                      f"'searchsploit {prod} {version.split('.')[0]}' 로 재검색 권장.")
+            # 진단(디버그) — '매칭 없음'이 의외일 때 실제 version·파싱된 hit 버전을 보여준다.
+            fetch += (f"\n#   ↳ [진단] version={version!r} · hits={len(hits)} · "
+                      f"hit_versions={[h.versions for h in hits[:14]]}")
             head = (f"# {prod} PoC 후보(버전 {version} 확인됨 · 단 매칭 PoC 없음) — 아래에서 버전대에 "
                     f"맞는 것을 골라 searchsploit -m <id> 로 받아 --exploit-exec --poc 로 실행(권한 확인 대상 전용):")
         else:
