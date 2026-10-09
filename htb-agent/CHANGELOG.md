@@ -2,6 +2,19 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.26] — 2026-10-09
+
+### 변경(Changed) — 발판 획득에 성립 검증 적용 (순서 2)
+- `_acquire_session`: WebRceSession 을 붙인 뒤 `looks_like_shell(ws.run(verify_probe_command()))`
+  로 **실제 셸 성립을 검증** — id/uname 신호가 없으면(엔드포인트에 RCE 미성립) `None` 으로 폐기해
+  **거짓 '발판 확보'를 방지**. 엔드포인트도 `self.rce_url`(②의 실제 PoC 가 성립시킨 URL) 우선,
+  없으면 기본 config.php 로 유연화.
+- import 정렬(I001) 정리.
+
+### 참고(Note)
+- `ws.run(...)`·`web_http_fn` 의 실제 HTTP 실행은 RCE 실행 표면(사용자 `_acquire_session`·
+  `shell_transport`). 검증기 `session_verify`·세션 추상화는 생성 전용(머지됨).
+
 ## [2.6.25] — 2026-10-09
 
 ### 추가(Added) — 발판 성립 검증 헬퍼 (자동 루트 체인 보강 1)
