@@ -305,6 +305,7 @@ cd htb-agent && python3 tests/run_all.py     # 전체 스위트(끝에 '총 N �
 | `--revshell` `LHOST:LPORT` | 리버스쉘 페이로드 생성(실행 안 함). 'IP:PORT' 또는 'PORT'(공격자 IP 자동/--attacker-ip). 권한 확인 대상 전용 |
 | `--learn` `TOPIC` | 권위 출처 자가학습(도구·공격기법·개념·프로토콜)을 지식베이스에 저장. 예: --learn kerberoasting / burp / http. 전체 일괄: --learn all. 목록: --learn list |
 | `--promote` `TOPIC` | 로컬 학습 노트(learned-&lt;주제&gt;.md) 중 품질 관문을 통과한 항목을 번들 시드의 '최신 보강(승격)' 섹션으로 승격. 결과를 커밋·PR 하면 모든 사용자에게 공유. 예: --promote sqli / 전체: --promote all |
+| `--list-sessions` | 저장된 세션(타겟) 목록 출력 — --resume 대상 확인용(타겟 없이 단독 실행) |
 | `--kb-sync` | 공유 저장소의 최신 번들 시드를 지금 동기화(검증 통과분만 로컬 캐시에 적용). 타겟 실행 시에는 하루 1회 자동 |
 | `--no-kb-sync` | 실행 시 공유 시드 자동 동기화 끄기(환경변수 ASSASSIN_NO_KB_SYNC=1 도 동일) |
 | `--ingest` `PATH` | 사용자 제공 자료(.md/.txt/.pdf 파일 또는 디렉터리)를 지식베이스 노트로 미리 학습. 예: --ingest ./my-writeups/ |
@@ -323,6 +324,7 @@ cd htb-agent && python3 tests/run_all.py     # 전체 스위트(끝에 '총 N �
 | `--files` `PATH` | 챌린지 첨부파일/디렉터리(반복 가능, zip·tar 는 안전하게 풀어 둠). 작업공간 files/ 에 복사되어 LLM 이 소스를 읽고 분석. 포트가 없어도 파일 분석으로 진행 |
 | `--lport` `PORT` | 리버스쉘 리스너 포트(자동 준비 페이로드용, 기본 4444) |
 | `--cred` `USER:PASS` | 자격증명 'user:pass' / 'user:pass:domain' / 'user:pass:domain:nthash' (반복 가능). Pass-the-Hash 는 'user:&lt;32hex&gt;' 또는 'user::domain:&lt;NT\|LM:NT&gt;'. {user}/{pass}/{domain}/{hash} 제안을 실행 후보로 승격 |
+| `--cred-file` `경로` | 자격증명 JSON 파일에서 일괄 로드(인라인 --cred 와 함께 사용 가능). 형식: {"username":..,"password":..,"domain":..,"nt_hash":..} 또는 그 목록 |
 | `--config` | 설정 파일(.json/.yaml). 우선순위: CLI &gt; 설정파일 &gt; 기본값 |
 | `--autonomous`, `--hackathon` | 능동적 완전자동 모드: 범위내 자동승인 + 깊은 재진입 스윕 + 병렬 열거 + 변형학습 + 전 자동준비. 목표(flag/root)까지 스스로 추진(안전 게이트 유지) |
 | `--sandbox` | 명령을 '어디서' 실행할지: none=로컬 셸 비경유(기본, 파이프 불가) · shell=로컬 bash(파이프 O, 네트워크 강제 X) · docker=Kali 컨테이너+egress 방화벽 · vm=SSH 로 접속한 가상머신/공격호스트. 스크립트 작성·동적 실행 자동은 egress 강제된 docker 또는 'vm --vm-confine' 에서만 |

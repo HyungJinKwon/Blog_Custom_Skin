@@ -91,20 +91,9 @@ class CveInfo:
 
 
 def _default_fetcher(timeout: int = 6) -> Callable[[str], str | None]:
-    """urllib 기반 GET(프록시 env 존중, 실패 시 None). 네트워크 분리 지점."""
-    def _get(url: str) -> str | None:
-        from .util import network_blocked
-        if network_blocked():
-            return None
-        import urllib.error
-        import urllib.request
-        req = urllib.request.Request(url, headers={"User-Agent": "assassin-enrich/1.0"})
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:   # noqa: S310 (공식 DB만)
-                return r.read().decode("utf-8", "replace")
-        except (urllib.error.URLError, OSError, ValueError):
-            return None
-    return _get
+    """urllib 기반 GET(프록시 env 존중, 실패 시 None). 네트워크 분리 지점 — 공용 util.http_get_text."""
+    from .util import http_get_text
+    return lambda url: http_get_text(url, timeout=timeout, user_agent="assassin-enrich/1.0")
 
 
 class Enricher:

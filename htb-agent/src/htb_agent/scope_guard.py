@@ -39,7 +39,6 @@ import ipaddress
 import logging
 import re
 import shlex
-import subprocess
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterable
@@ -335,24 +334,8 @@ class ScopeGuard:
         self.attacker_ips.add(addr)
         logger.info("공격자 VPN IP 등록: %s", addr)
 
-    def detect_attacker_ips(self) -> list[str]:
-        """
-        tun/tap 인터페이스에서 공격자 VPN IP 를 best-effort 로 탐지해 등록.
-        (이 클라우드 컨테이너엔 `ip` 명령/인터페이스가 없어 no-op. 실제 Kali 용.)
-        """
-        found: list[str] = []
-        try:
-            out = subprocess.run(["ip", "-4", "-o", "addr", "show"],
-                                 capture_output=True, text=True, timeout=3)
-            for line in out.stdout.splitlines():
-                if re.search(r"\b(?:tun|tap)\d*\b", line):
-                    m = re.search(r"inet (\d+\.\d+\.\d+\.\d+)", line)
-                    if m:
-                        self.add_attacker_ip(m.group(1))
-                        found.append(m.group(1))
-        except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
-            logger.warning("공격자 IP 자동탐지 불가(%s) — 수동 등록 필요.", exc)
-        return found
+    # 공격자 VPN IP 자동탐지는 environment.detect_vpn_ips() 하나로 일원화한다(중복 제거).
+    # (예전 ScopeGuard.detect_attacker_ips() 는 동일 로직 사본·미사용이라 제거)
 
     # ── 분류 ────────────────────────────────────────────────────────
     def classify_ip(self, ip: str) -> IPClass:

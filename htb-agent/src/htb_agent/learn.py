@@ -229,19 +229,9 @@ class LearnResult:
 
 
 def _default_fetcher(timeout: int = 10) -> Callable[[str], str | None]:
-    def _get(url: str) -> str | None:
-        from .util import network_blocked
-        if network_blocked():
-            return None
-        import urllib.error
-        import urllib.request
-        req = urllib.request.Request(url, headers={"User-Agent": "assassin-learn/1.0"})
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:   # noqa: S310 (allowlist)
-                return r.read().decode("utf-8", "replace")
-        except (urllib.error.URLError, OSError, ValueError):
-            return None
-    return _get
+    """공용 util.http_get_text 사용(enrich 와 중복 제거). 호출부가 allowlist 로 URL 을 거른다."""
+    from .util import http_get_text
+    return lambda url: http_get_text(url, timeout=timeout, user_agent="assassin-learn/1.0")
 
 
 def _domain_of(url: str) -> str:

@@ -214,6 +214,11 @@ def _cwe_label(cwe_id: str) -> str:
     return f"{cwe_id} ({name})" if name else cwe_id
 
 
+def _cwe_link(cwe_id: str) -> str:
+    """HTML: CWE 라벨을 MITRE 정의 페이지로 링크(사람이 바로 참조)."""
+    return f"<a href='{_esc(Enricher.cwe_url(cwe_id))}'>{_esc(_cwe_label(cwe_id))}</a>"
+
+
 def _html_ports(host) -> str:
     if not host or not host.open_ports:
         return "<p class='muted'>열린 포트 없음</p>"
@@ -234,7 +239,7 @@ def _html_vulns(report) -> str:
                    ", ".join(f"<code>{_esc(c)}</code>" for c in report.detected_cve) + "</p>")
     if report.detected_cwe:
         out.append("<p><b>탐지 CWE</b>: " +
-                   ", ".join(_esc(_cwe_label(c)) for c in report.detected_cwe) + "</p>")
+                   ", ".join(_cwe_link(c) for c in report.detected_cwe) + "</p>")
     for m in report.vuln_matches:
         ids = " ".join(m.cve + [_cwe_label(c) for c in m.cwe])
         badge = f"<span class='badge {_sev_class(m.severity)}'>{_esc(m.severity or 'info')}</span>"

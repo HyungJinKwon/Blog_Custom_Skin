@@ -97,16 +97,6 @@ def validate_base64(s: str, urlsafe: bool = False) -> tuple[bool, str]:
         return False, f"디코딩 실패: {e}"
 
 
-def validate_hex(s: str) -> tuple[bool, str]:
-    s = s.strip().lower()
-    s = s[2:] if s.startswith("0x") else s
-    if not s:
-        return False, "빈 문자열"
-    if not re.fullmatch(r"[0-9a-f]+", s):
-        return False, "16진수 문자셋 위반"
-    return True, "유효"
-
-
 def validate_decimal(s: str, minimum: int | None = None,
                      maximum: int | None = None) -> tuple[bool, str]:
     s = s.strip()

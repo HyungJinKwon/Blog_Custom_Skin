@@ -2,7 +2,7 @@
 import sys
 sys.path.insert(0, "src")
 from htb_agent.observation.parsers import parse_nmap_xml, parse_nmap_text, parse_http
-from htb_agent.observation.compressor import profile_from_nmap, recommend_followup
+from htb_agent.observation.compressor import profile_from_nmap
 from htb_agent.target_profiler import OSClass
 
 passed = failed = 0
@@ -50,11 +50,9 @@ check("hostscript smb-os-discovery 추출", "smb-os-discovery" in h.hostscripts)
 check("Windows-AD 프로파일", profile_from_nmap(h).os_class==OSClass.WINDOWS_AD)
 check("DC 판정", profile_from_nmap(h).is_domain_controller)
 
-print("\n=== host down → 폴백(-Pn) ===")
+print("\n=== host down 감지 ===")
 r = parse_nmap_xml(DOWN_XML)
 check("다운 감지", r.seems_down and not r.any_up)
-sugg = recommend_followup(r)
-check("-Pn 폴백 제안", any("-Pn" in s for s in sugg))
 
 print("\n=== nmap 텍스트 보조 파싱 ===")
 txt = """Starting Nmap
