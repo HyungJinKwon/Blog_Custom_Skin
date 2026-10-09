@@ -61,6 +61,29 @@ pipx_pkg(){ ensure_pipx; if pipx list 2>/dev/null | grep -q "package $1 "; then
 go_pkg(){ if command -v go >/dev/null 2>&1; then try "go:$1" go install "$1";
           else WARN "go 미설치 — '$1' 건너뜀 (apt install -y golang-go 후 재실행)"; fi; }
 
+# apt 우선 → 실패 시 pipx(git URL) 폴백. PyPI 에 없거나 이름이 다른 도구용(netexec·enum4linux-ng 등).
+apt_or_pipxgit(){   # apt_or_pipxgit <apt-pkg> <pipx-app> <git-url>
+  ensure_pipx
+  if apt-get install -y "$1" >/dev/null 2>&1; then OK "apt:$1"; OK_LIST+=("apt:$1")
+  elif pipx list 2>/dev/null | grep -q "package $2 " \
+       || pipx install "git+$3" >/dev/null 2>&1; then OK "pipx-git:$2"; OK_LIST+=("pipx-git:$2")
+  else ERR "실패(계속 진행): $1/$2 (apt·git 모두)"; FAIL_LIST+=("$1"); fi; }
+
+# apt 우선 → 실패 시 pipx(PyPI) 폴백. 라이브러리성 도구용(pwntools 등).
+apt_or_pipx(){      # apt_or_pipx <apt-pkg> <pipx-name>
+  ensure_pipx
+  if apt-get install -y "$1" >/dev/null 2>&1; then OK "apt:$1"; OK_LIST+=("apt:$1")
+  elif pipx list 2>/dev/null | grep -q "package $2 " \
+       || pipx install "$2" >/dev/null 2>&1; then OK "pipx:$2"; OK_LIST+=("pipx:$2")
+  else ERR "실패(계속 진행): $1/$2"; FAIL_LIST+=("$1"); fi; }
+
+# PyPI 에 없는 git 전용 도구(cloud_enum 등).
+pipx_gitonly(){     # pipx_gitonly <pipx-app> <git-url>
+  ensure_pipx
+  if pipx list 2>/dev/null | grep -q "package $1 "; then OK "pipx-git:$1 (설치됨)"; OK_LIST+=("$1")
+  elif pipx install "git+$2" >/dev/null 2>&1; then OK "pipx-git:$1"; OK_LIST+=("$1")
+  else ERR "실패(계속 진행): $1 ($2)"; FAIL_LIST+=("$1"); fi; }
+
 if want recon; then
   LOG "[recon] 포트/서비스 스캔 + DNS/SNMP 열거"
   apt_pkg nmap; apt_pkg masscan; pipx_pkg autorecon
@@ -96,26 +119,28 @@ fi
 if want pwn; then
   LOG "[pwn] 포너블"
   apt_pkg checksec
-  pipx_pkg pwntools; pipx_pkg ROPgadget
+  apt_or_pipx python3-pwntools pwntools   # pwntools 는 라이브러리 — apt 우선
+  pipx_pkg ROPgadget
 fi
 
 if want forensic; then
   LOG "[forensic] 포렌식/스테가노"
   apt_pkg binwalk; apt_pkg foremost; apt_pkg libimage-exiftool-perl
-  apt_pkg steghide; apt_pkg hashid; apt_pkg oath-toolkit
+  apt_pkg steghide; apt_pkg hashid; apt_pkg oathtool   # Debian/Kali 패키지명은 oathtool
   pipx_pkg volatility3
   WARN "zsteg 는 gem install zsteg 로 설치"
 fi
 
 if want smb; then
   LOG "[smb] SMB/RPC 열거"
-  apt_pkg smbclient; apt_pkg smbmap; pipx_pkg enum4linux-ng
+  apt_pkg smbclient; apt_pkg smbmap
+  apt_or_pipxgit enum4linux-ng enum4linux-ng https://github.com/cddmp/enum4linux-ng
   apt_pkg nfs-common         # showmount(NFS export 열거)
 fi
 
 if want ad; then
   LOG "[ad] Active Directory"
-  pipx_pkg netexec           # crackmapexec 후속
+  apt_or_pipxgit netexec netexec https://github.com/Pennyw0rth/NetExec   # crackmapexec 후속(실행명 nxc)
   pipx_pkg impacket
   pipx_pkg bloodhound        # bloodhound-python (ingestor)
   pipx_pkg certipy-ad
@@ -134,7 +159,7 @@ if want cloud; then
   LOG "[cloud] AWS / S3 열거"
   apt_pkg awscli
   pipx_pkg s3scanner
-  pipx_pkg cloud-enum
+  pipx_gitonly cloud_enum https://github.com/initstring/cloud_enum   # PyPI 미등록 — git 설치
 fi
 
 if want pivot; then
@@ -151,7 +176,22 @@ fi
 
 if want llm; then
   LOG "[llm] LLM 두뇌 (하이브리드 = Claude + Ollama, 선택)"
-  try "pip anthropic" pip install -q anthropic    # Claude: + export ANTHROPIC_API_KEY=sk-...
+  # anthropic 은 Claude 모드에서만 필요한 '선택' 의존성. 최신 Kali 는 PEP 668 로 시스템
+  # pip 설치가 막혀 'pip install anthropic' 이 실패한다 → 여러 경로를 순서대로 시도.
+  if python3 -c 'import anthropic' >/dev/null 2>&1; then
+    OK "anthropic (이미 설치됨)"; OK_LIST+=("anthropic")
+  elif pip install -q anthropic >/dev/null 2>&1; then
+    OK "pip:anthropic"; OK_LIST+=("anthropic")
+  elif pipx list 2>/dev/null | grep -q "package assassin " \
+       && pipx inject assassin anthropic >/dev/null 2>&1; then
+    OK "pipx-inject:anthropic (assassin)"; OK_LIST+=("anthropic")
+  elif pip install -q --break-system-packages anthropic >/dev/null 2>&1; then
+    OK "pip(--break-system-packages):anthropic"; OK_LIST+=("anthropic")
+  else
+    ERR "실패(계속 진행): anthropic"; FAIL_LIST+=("anthropic")
+    WARN "  venv 권장:  python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[claude]'"
+    WARN "  또는 로컬 LLM(ollama)만 써도 됩니다 — anthropic 불필요"
+  fi
   if command -v ollama >/dev/null 2>&1; then
     OK "ollama 설치됨 — 'ollama serve' 후 'ollama pull llama3.1:8b'"
   else
