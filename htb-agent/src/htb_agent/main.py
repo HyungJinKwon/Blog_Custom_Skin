@@ -173,6 +173,9 @@ def build_parser() -> argparse.ArgumentParser:
     g_mode.add_argument("--autonomous", "--hackathon", action="store_true", dest="autonomous",
                    help="능동적 완전자동 모드: 범위내 자동승인 + 깊은 재진입 스윕 + 병렬 열거 + "
                         "변형학습 + 전 자동준비. 목표(flag/root)까지 스스로 추진(안전 게이트 유지)")
+    g_mode.add_argument("--poc", action="append", dest="poc_commands", metavar="CMD",
+                   help="옵트인: searchsploit 결과에서 고른 '공개 PoC 한 줄'을 게이트로 실행"
+                        "(반복 가능). 권한 확인 대상 전용. 버전 대조 후 사용")  
     g_mode.add_argument("--sandbox", choices=["none", "shell", "docker", "vm"], default=None,
                    help="명령을 '어디서' 실행할지: none=로컬 셸 비경유(기본, 파이프 불가) · "
                         "shell=로컬 bash(파이프 O, 네트워크 강제 X) · docker=Kali 컨테이너+egress 방화벽 · "
