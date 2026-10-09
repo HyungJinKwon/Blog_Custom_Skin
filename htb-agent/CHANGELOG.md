@@ -2,6 +2,17 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.8] — 2026-10-09
+
+### 추가(Added)
+- **searchsploit 결과 파싱 + 대상 버전 매칭**(`searchsploit.py`): 레지스트리가 자동 실행한
+  `searchsploit <product>` 출력을 파싱해(제목·exploit-db locator·제목 내 버전), 핑거프린트된
+  `world.web_version` 과 **접두 호환 매칭**으로 '대상 버전에 맞는 PoC'를 앞세워 상위 N개로
+  추린다. access 단계 수동 제안에 `# <product> PoC 후보(버전 … 대조)` 로 표시 → 사람/LLM 이
+  고를 선택지를 좁혀 준다. 버전 미상이면 상위 후보를 그대로 제시(대조는 사람이).
+  · **안전 경계**: 파싱·추림만 — PoC 실행·다운로드·선택을 하지 않는다(생성 전용 유지).
+- **테스트**: `test_searchsploit.py`(파서·버전 매칭 11건) + `test_exploit_lookup.py` 통합(후보 추림).
+
 ## [2.6.7] — 2026-10-09
 
 ### 추가(Added)
