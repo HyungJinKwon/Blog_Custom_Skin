@@ -2,6 +2,30 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.5] — 2026-10-09
+
+실제 머신 실행 중 드러난 LLM 신뢰성 문제(하이브리드 두뇌가 400 에러·거절로 사실상
+멈춤)와 발판 단계 점검을 다룬다. 안전 경계(생성 전용·3관문)는 그대로.
+
+### 수정(Fixed)
+- **LLM 오류 원인 가시화**: HybridRouter 가 백엔드 오류를 80자로 잘라 보관해, API
+  400(invalid_request_error)의 **핵심 message 가 가려져 진단 불가**였다. 이제 `_err_text`
+  가 anthropic `body.error.message` 를 우선 뽑아 넉넉히(300자) 보관하고, **차단되기 전에도**
+  라우팅 요약에 `최근오류: …` 로 1건 노출한다(간헐 400 추적용).
+- **빈 content 요청 가드**(ClaudeProvider): 빈 사용자/시스템 프롬프트는 Anthropic API 가
+  400 으로 거부한다 — 상태 변화 없는 라운드 등에서 빈 프롬프트가 넘어가면 요청 자체가 실패하므로,
+  빈 user 는 최소 지시로 대체하고 빈 system 블록은 생략한다.
+
+### 변경(Changed)
+- **exploit-exec 발판 단계(2단계 읽기 되먹임)**: 발판에서 읽은 privesc 열거·플래그 출력을
+  스테이지 종료 후 `_run_vuln` 으로 재스캔해 새 크리덴셜·CVE·플래그를 월드/분석에 반영한다
+  (다음 분석이 'GTFOBins 다음 수'를 제안하도록). 열거 되먹임만 — 자동 익스 실행이 아니다.
+  목표 달성 시 자격 루프를 즉시 빠져나오도록 정리(return→break).
+
+### 추가(Added)
+- **테스트**: `test_exploit_exec_stage.py`(1단계 점검 — 스킵 조건·게이트 경유 실행·플래그
+  캡처·provenance·sshpass 래핑, 10건), `test_llm_errdiag.py`(오류 진단 노출 회귀 가드, 6건).
+
 ## [2.6.4] — 2026-10-09
 
 실제 머신(FreePBX 박스) 실행 피드백 반영 — 열거가 리드를 충분히 파기 전에 멈추지 않도록

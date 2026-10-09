@@ -31,11 +31,16 @@ class ClaudeProvider(LLMProvider):
         import anthropic
         client = anthropic.Anthropic()
         model = self.model_for(tier)
-        # 큰 시스템 프롬프트는 prefix 캐시 대상(ephemeral) — 반복 호출서 토큰 절감.
-        system_blocks = [{"type": "text", "text": system,
-                          "cache_control": {"type": "ephemeral"}}]
-        kwargs: dict = dict(model=model, max_tokens=max_tokens, system=system_blocks,
+        # 빈 content 는 Anthropic API 가 400(invalid_request_error)로 거부한다 — 호출부가
+        # 빈 사용자 프롬프트를 넘기면(상태 변화 없는 라운드 등) 요청 자체가 실패하므로 가드.
+        user = user if (user and user.strip()) else "(관측 없음 — 다음 열거 명령을 제안하라)"
+        kwargs: dict = dict(model=model, max_tokens=max_tokens,
                             messages=[{"role": "user", "content": user}])
+        # 큰 시스템 프롬프트는 prefix 캐시 대상(ephemeral) — 반복 호출서 토큰 절감.
+        # 시스템이 비어있으면 블록을 넣지 않는다(빈 text 블록도 400 유발).
+        if system and system.strip():
+            kwargs["system"] = [{"type": "text", "text": system,
+                                 "cache_control": {"type": "ephemeral"}}]
         if tools:
             # 네이티브 tool use: 첫 도구를 강제 호출 → 응답이 스키마대로 구조화된 JSON 으로 온다
             # (텍스트 파싱 취약성 제거). 결과는 tool_calls 로, 텍스트 폴백은 라우터가 처리.

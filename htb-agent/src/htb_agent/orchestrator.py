@@ -1210,8 +1210,15 @@ class Orchestrator:
             sh = SSHTargetShell(target, user, pw)
             for rc in [*FLAG_READS, *PRIVESC_ENUM]:
                 if self._goal_reached(report) or self._time_up():
-                    return
+                    break
                 self._attempt(report, report.enum_findings, sh.command(rc), phase="privesc")
+            else:
+                continue
+            break
+        # 2단계 폐루프(읽기 되먹임): 발판에서 읽은 privesc 열거(sudo 규칙·SUID·커널)·플래그
+        # 출력을 다시 스캔해 새 크리덴셜·CVE·플래그를 월드/분석에 반영한다(다음 분석이 'GTFOBins
+        # 다음 수'를 제안하도록). 열거만 되먹임 — 자동 익스 실행이 아니다(생성 경계 유지).
+        self._run_vuln(report, host, target)
     def _prepare_revshells(self, report: OrchestrationReport) -> None:
         """공격자 IP(VPN tun0 등)가 확보되면 리버스쉘 페이로드를 자동 생성해
         리포트에 담는다. 생성 전용 — 실행은 하지 않는다(안전 경계 유지).

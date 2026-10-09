@@ -181,6 +181,18 @@ def build_suggest_tool(max_items: int, with_file: bool) -> dict:
     }
 
 
+def _err_text(e: Exception, limit: int = 300) -> str:
+    """예외에서 사람이 읽을 원인 문자열을 뽑는다. anthropic API 오류는 body 의
+    error.message 가 가장 유용하므로 우선 시도하고, 없으면 str(e) 를 넉넉히 자른다.
+    (기존 80자 절단이 400 invalid_request_error 의 핵심 message 를 가려 진단 불가였음.)"""
+    body = getattr(e, "body", None)
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict) and err.get("message"):
+            return str(err["message"])[:limit]
+    return str(e)[:limit]
+
+
 def _accepts_tools(provider) -> bool:
     """프로바이더 complete() 가 tools 인자를 받는지(구버전·테스트 대역 호환)."""
     import inspect
@@ -456,6 +468,7 @@ class HybridRouter:
                       "error": 0, "empty": 0, "unserved": 0}
         self._errors = {"local": 0, "strong": 0}
         self.disabled: dict[str, str] = {}      # 차단된 백엔드 → 마지막 오류
+        self._last_error: dict[str, str] = {}   # 백엔드 → 가장 최근 오류(차단 전에도 진단용)
 
     @property
     def total_cost(self) -> float:
@@ -496,10 +509,14 @@ class HybridRouter:
             except Exception as e:   # 한 백엔드 실패는 폴백으로 흡수(원인은 집계)
                 self.stats["error"] += 1
                 self._errors[name] += 1
+                # 마지막 오류를 넉넉히 보관(진단용) — API 400 의 message 가 80자 뒤에 있어
+                # 잘리면 원인(모델·파라미터·빈 content 등)을 못 본다.
+                self._last_error[name] = f"{type(e).__name__}: {_err_text(e)}"
                 if self._errors[name] >= self.max_consecutive_errors:
-                    self.disabled[name] = f"{type(e).__name__}: {str(e)[:80]}"
+                    self.disabled[name] = self._last_error[name]
                 continue
             self._errors[name] = 0
+            self._last_error.pop(name, None)   # 성공하면 과거 오류 표시 제거(오해 방지)
             if out:
                 self.stats[name] += 1
                 if tried > 1:
@@ -530,6 +547,10 @@ class HybridRouter:
                 f"거절 {s['refusal']} · 빈응답 {s['empty']} · 오류 {s['error']} · 미응답 {s['unserved']}")
         if self.disabled:
             line += " | 차단: " + ", ".join(f"{k}({v})" for k, v in self.disabled.items())
+        # 차단되지 않았어도(연속 임계 미만) 최근 오류가 있으면 1개 노출 — 간헐 400 진단용.
+        undisabled = {k: v for k, v in self._last_error.items() if k not in self.disabled}
+        if undisabled:
+            line += " | 최근오류: " + ", ".join(f"{k}({v})" for k, v in undisabled.items())
         return line
 
     def cost_summary(self) -> str:
