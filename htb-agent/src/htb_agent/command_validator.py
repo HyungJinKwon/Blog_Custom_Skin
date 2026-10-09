@@ -176,13 +176,50 @@ def validate_hash(s: str, expected: str | None = None) -> tuple[bool, str]:
 
 # ── 파괴적(로컬 공격기 손상) 명령 차단 ──────────────────────────────
 _DESTRUCTIVE = [
-    (re.compile(r"\brm\s+-rf?\s+(/|/\*|~|\$HOME)(\s|$)"), "루트/홈 재귀 삭제"),
+    # rm 재귀+루트/홈은 플래그 철자·순서에 둔감해야 하므로 별도 토큰 검사(_rm_destructive)로 처리.
+    (re.compile(r"--no-preserve-root"), "rm 루트 보호 해제(--no-preserve-root)"),
     (re.compile(r"\bmkfs(\.\w+)?\b"), "파일시스템 포맷"),
-    (re.compile(r"\bdd\b[^|]*\bof=/dev/(sd|nvme|vd)\w*"), "블록디바이스 덮어쓰기"),
-    (re.compile(r">\s*/dev/(sd|nvme|vd)\w*"), "블록디바이스로 리다이렉트"),
+    (re.compile(r"\bdd\b[^|]*\bof=/dev/(sd|nvme|vd|hd|mmcblk|xvd)\w*"), "블록디바이스 덮어쓰기"),
+    # tee/cp 로 원시 블록디바이스 덮어쓰기(리다이렉트 외 경로)
+    (re.compile(r"\b(tee|cp|dd)\b[^|;&]*\s/dev/(sd|nvme|vd|hd|mmcblk|xvd)\w*"), "블록디바이스 덮어쓰기"),
+    (re.compile(r">\s*/dev/(sd|nvme|vd|hd|mmcblk|xvd)\w*"), "블록디바이스로 리다이렉트"),
+    # 포크 폭탄: `:` 전용 + 임의 함수명 일반형(name(){ name|name& };name)
     (re.compile(r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:"), "포크 폭탄"),
+    (re.compile(r"(\w+)\s*\(\s*\)\s*\{[^}]*\|[^}]*&[^}]*\}\s*;\s*\1\b"), "포크 폭탄"),
     (re.compile(r"\bchmod\s+-R\s+0*777\s+/(\s|$)"), "루트 권한 전면 개방"),
 ]
+
+_RM_DANGER_TARGETS = {"/", "/*", "~", "$HOME"}
+
+
+def _rm_destructive(cmd: str) -> bool:
+    """rm 재귀 삭제의 '루트/홈 대상'을 플래그 철자·순서·분리에 둔감하게 탐지한다.
+    (`rm -fr /`·`rm -r -f /`·`rm --recursive --force /`·`rm -rf /*` 등 정규식 철자매칭의 우회를 차단.)
+    상대경로·작업공간 경로의 재귀 삭제는 막지 않는다(오탐 방지)."""
+    for seg in re.split(r"[;&|\n]+", cmd):
+        toks = seg.split()
+        k = 0
+        while k < len(toks) and ("=" in toks[k] or toks[k] in ("sudo", "doas", "env")):
+            k += 1   # 선행 env 할당·sudo/doas 건너뛰기
+        if k >= len(toks) or toks[k].rsplit("/", 1)[-1] != "rm":
+            continue
+        args = toks[k + 1:]
+        recursive = False
+        for t in args:
+            if t == "--recursive":
+                recursive = True
+            elif t.startswith("--"):
+                continue
+            elif t.startswith("-") and "r" in t.lower():
+                recursive = True   # -r / -R / -rf / -fr / -Rf 등 단문자 클러스터
+        if not recursive:
+            continue
+        for t in args:
+            if t.startswith("-"):
+                continue
+            if t in _RM_DANGER_TARGETS or t.rstrip("/") in ("", "~", "$HOME"):
+                return True   # /, //, /*, ~, ~/, $HOME, $HOME/ …
+    return False
 
 
 # ── 동적·원격 코드 실행(사람 검토 필요) ─────────────────────────────
@@ -294,6 +331,9 @@ def validate(command: str, require_known_binary: bool = False) -> ValidationRepo
         if pat.search(cmd):
             report.issues.append(ValidationIssue("error", "DESTRUCTIVE",
                                                  f"파괴적 명령 차단: {desc}"))
+    if _rm_destructive(cmd):
+        report.issues.append(ValidationIssue("error", "DESTRUCTIVE",
+                                             "파괴적 명령 차단: 루트/홈 재귀 삭제"))
 
     # 1-b) 동적·원격 코드 실행 — 검토 필요(자동실행 금지, 차단은 아님)
     for pat, desc in _EXEC_RISK:

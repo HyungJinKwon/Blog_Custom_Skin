@@ -58,6 +58,8 @@ def fake_exec(args, **kw):
     joined = " ".join(args)
     if "iptables-restore" in joined or "ip6tables-restore" in joined:
         return FakeProc(0)
+    if "ip6tables -S OUTPUT" in joined:       # v6 차단 적용 후 상태(기본 DROP)
+        return FakeProc(0, out="-P OUTPUT DROP\n")
     if "iptables -S OUTPUT" in joined:
         return FakeProc(0, out="-P OUTPUT DROP\n-A OUTPUT -d 10.129.1.5/32 -j ACCEPT\n")
     if "-P OUTPUT ACCEPT" in joined:          # agent 사용자 변조 시도 → 거부(권한 없음)
@@ -76,6 +78,7 @@ check("워크스페이스 마운트", any(tmp in a for a in run_args))
 sb.start()
 check("시작 성공(정책 적용·검증)", sb.started)
 check("비root 변조 시도 검증 수행", any("-P OUTPUT ACCEPT" in " ".join(c) for c in calls))
+check("IPv6 egress 차단 검증 수행", any("ip6tables -S OUTPUT" in " ".join(c) for c in calls))
 check("has_tool: 설치된 도구", sb.has_tool("nmap"))
 check("has_tool: 미설치 도구", not sb.has_tool("doesnotexist"))
 out = sb.run("echo hi | grep hi", timeout=10)

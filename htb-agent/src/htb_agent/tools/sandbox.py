@@ -192,8 +192,16 @@ class DockerSandbox:
         if p.returncode != 0:
             raise SandboxError("egress 정책(iptables) 적용 실패: "
                                + _as_text(p.stderr).strip()[:300])
-        # IPv6 는 전면 차단. ip6tables 가 없거나 커널이 IPv6 를 끈 경우엔 v6 경로 자체가 없다.
+        # IPv6 는 전면 차단. ip6tables 가 없거나 커널이 IPv6 를 끈 경우엔 v6 경로 자체가 없어
+        # 적용 실패해도 무해하지만, v6 스택이 살아있는데 차단이 안 걸리면 fail-open 이다.
         self._call(root + ["ip6tables-restore"], input_text=EGRESS_RULES_V6)
+        v6 = self._call([self.docker, "exec", "-u", "0", self.name, "ip6tables", "-S", "OUTPUT"])
+        if v6.returncode == 0 and "-P OUTPUT DROP" not in _as_text(v6.stdout):
+            # ip6tables 는 동작하는데 OUTPUT 기본 DROP 이 아님 → 전역 v6 주소가 있으면 송신 가능
+            g = self._call([self.docker, "exec", "-u", "0", self.name,
+                            "sh", "-c", "ip -6 addr show scope global 2>/dev/null"])
+            if _as_text(g.stdout).strip():
+                raise SandboxError("IPv6 egress 미차단(OUTPUT 기본 DROP 아님) — v6 경로 차단 실패")
         # 검증: 정책이 실제로 걸렸는지(OUTPUT 기본 DROP), 명령 사용자가 정책을 못 바꾸는지
         chk = self._call([self.docker, "exec", "-u", "0", self.name, "iptables", "-S", "OUTPUT"])
         if "-P OUTPUT DROP" not in _as_text(chk.stdout):
@@ -370,9 +378,32 @@ class VMSandbox:
             p = self._remote(self._sudo("sh -c 'iptables-restore'") + " <<'EOF'\n" + rules + "EOF",
                              timeout=60)
         chk = self._remote(self._sudo("iptables -S OUTPUT"), timeout=30)
-        if "-P OUTPUT DROP" not in _as_text(chk.stdout):
+        out_rules = _as_text(chk.stdout)
+        if "-P OUTPUT DROP" not in out_rules:
             raise SandboxError("VM egress 정책 검증 실패(OUTPUT 기본 DROP 아님) — "
                                "--vm-sudo 로 권한을 주거나 --vm-confine 없이 쓰세요")
+        # --noflush 로 적용하므로 기존 규칙이 우리 규칙 '앞'에 남아 있을 수 있다. iptables 는
+        # 순서대로 평가하므로, 앞선 광범위 ACCEPT 하나로 OUTPUT 기본 DROP 이 무력화된다.
+        # OUTPUT 의 모든 ACCEPT 가 안전한 형태(lo·established·허용대역 한정)인지 확인 —
+        # 아니면 정책이 DROP 이어도 송신이 열려 있는 fail-open 이므로 경계 수립을 거부한다.
+        allowed = set(_norm_cidrs(self.allow_cidrs))
+        for raw in out_rules.splitlines():
+            line = raw.strip()
+            if not (line.startswith("-A OUTPUT") and line.endswith("-j ACCEPT")):
+                continue
+            if " -o lo " in f" {line} " or "ESTABLISHED" in line:
+                continue
+            m = re.search(r"-d (\S+)", line)
+            if m:
+                try:
+                    if str(ipaddress.ip_network(m.group(1), strict=False)) in allowed:
+                        continue
+                except ValueError:
+                    pass
+            raise SandboxError(
+                "VM OUTPUT 체인에 허용대역 밖 송신을 여는 기존 ACCEPT 규칙이 있음 — "
+                "egress 경계가 열려 있습니다(--vm-confine 전에 기존 iptables 규칙을 정리하세요): "
+                + line[:120])
         self.contained = True
 
     def stop(self) -> None:
