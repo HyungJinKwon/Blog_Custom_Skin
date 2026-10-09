@@ -2,6 +2,19 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.2] — 2026-10-09
+
+### 변경(Changed)
+- **LLM 폐루프 집중도 — 반복 억제**: 같은 '종류'(repetition.signature: 바이너리+플래그)
+  시도가 이미 3회 이상 '실패'했으면 그 종류의 새 명령을 실행하지 않고 건너뛴다(수동 제안으로
+  보관). 기존엔 경고만 했던 산발 반복(예: `curl -s ×8`)을 예산·시간 관점에서 끊어 "다음
+  한 수"에 집중. 성공/유의미 출력이 있던 종류는 세지 않음(_gate/_repetition_saturated).
+
+### 추가(Added)
+- **FakeFoothold 테스트 하네스**(`tests/test_foothold_harness.py`): exploit-exec 실행
+  엔진을 실 타겟 없이 검증하는 복붙용 템플릿. 발판→플래그 캡처→provenance(공략 유래)→
+  SOLVED 루프를 결정적으로 테스트. user/root 분리 명령 분류 회귀 가드 포함.
+
 ## [2.6.1] — 2026-10-09
 
 ### 추가(Added)

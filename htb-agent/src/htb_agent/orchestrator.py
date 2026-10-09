@@ -1274,6 +1274,18 @@ class Orchestrator:
                 return f"⟳ 앞서 실패한 같은 종류의 시도와 겹침 {why} — 다른 도구·옵션·경로 권장"
         return ""
 
+    def _repetition_saturated(self, report: OrchestrationReport, cmd: str, limit: int = 3) -> bool:
+        """같은 '종류'(repetition.signature: 바이너리+플래그)의 시도가 이미 limit 회 이상
+        '실패'했으면 True — 더 실행하지 말고 건너뛴다(한 경로에 매달리는 산발 반복 억제).
+        _repetition_warning 이 '1회 겹침'을 경고만 한다면, 이건 '누적 실패'를 집중도 관점에서
+        차단한다(예산·시간 절약). 성공/유의미 출력이 있던 종류는 세지 않는다."""
+        from . import repetition
+        sig = repetition.signature(cmd)
+        failed = {c for c, _ in (getattr(report, "blockers", []) or [])}
+        n = sum(1 for f in (report.enum_findings + report.llm_findings)
+                if f.command in failed and repetition.signature(f.command) == sig)
+        return n >= limit
+
     def _apply_command_fix(self, finding: EnumFinding, cmd: str, sres, vrep):
         """Results Verifier(AutoPentester): 범위 밖으로 거부될 명령의 타겟 자리표시자·오타를
         바인딩 타겟으로 자동 교정해 복구 시도. 교정본이 검증·범위를 다시 통과하면 그것으로 교체.
@@ -1339,6 +1351,16 @@ class Orchestrator:
             self.audit.event("rejected", cmd=cmd, stage="scope", reason=str(e))
             return None
         cmd, sres, vrep = self._apply_command_fix(finding, cmd, sres, vrep)
+        # 집중도: 같은 종류 시도가 이미 여러 번 실패했으면 실행 않고 건너뜀(산발 반복 억제).
+        if self._repetition_saturated(report, cmd):
+            finding.note = ((finding.note + " · " if finding.note else "")
+                            + "⟳ 반복 억제: 같은 종류 시도가 여러 번 실패 — 건너뜀(다른 경로 권장)")
+            gs["repetition_skipped"] = gs.get("repetition_skipped", 0) + 1
+            self.audit.event("repetition_skipped", cmd=cmd)
+            entry = cmd + "   # (반복 억제 — 필요 시 수동 검토)"
+            if entry not in report.manual_suggestions:
+                report.manual_suggestions.append(entry)
+            return None
         warn = self._repetition_warning(report, cmd)
         if warn:
             from . import ui
