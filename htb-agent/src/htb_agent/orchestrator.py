@@ -460,10 +460,11 @@ class Orchestrator:
         # 확정(아래 실행 스테이지가 소비). exploit-exec 와 무관하게 제안은 항상 최신화. 생성 전용.
         if not interrupted:
             self._refresh_exploit_shortlist(report, host)
-        # PHASE 3.9 직전: PoC 실행(3단계) → exploit-exec 발판(1단계)
+        # PHASE 3.9 직전: PoC 실행(3단계) → 웹 RCE 발판 → exploit-exec 발판(1단계)
         if self.exploit_exec and not interrupted:
             self._exploit_run_stage(report, host)     # 3단계: PoC 실행 → 자격
-            self._exploit_exec_stage(report, host)    # 1단계: 자격 → 발판 → 플래그
+            self._foothold_stage(report, host)        # 웹 RCE 발판 → 자격수확 → 플래그
+            self._exploit_exec_stage(report, host)    # 1단계: SSH 자격 → 플래그 → privesc
 
         # ── PHASE 3.9: 리버스쉘 자동 준비 (공격자 IP 확보 시) ──
         self._prepare_revshells(report)
