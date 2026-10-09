@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
-claude = ["anthropic>=0.40"]
+claude = ["anthropic>=1.0"]
 config = ["pyyaml>=6.0"]
 
 [project.scripts]

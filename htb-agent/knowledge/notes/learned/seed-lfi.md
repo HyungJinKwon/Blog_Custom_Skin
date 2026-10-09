@@ -26,7 +26,7 @@ ffuf -u '<url>?page=FUZZ' -w lfi-wordlist.txt
 ## 완화
 basename()·허용목록·open_basedir·래퍼 비활성·입력 정규화후 기준경로 검증.
 
-- 출처(검증): https://owasp.org/www-community/attacks/Path_Traversal
+- 출처(검증): https://community.owasp.org/attacks/Path_Traversal
 
 ## 최신 보강(승격)
 
@@ -38,6 +38,6 @@ basename()·허용목록·open_basedir·래퍼 비활성·입력 정규화후 �
 - 요약: CWE-98: Improper Control of Filename for Include/Require Statement in PHP Program ('PHP Remote File Inclusion') — The PHP application receives input from an upstream component, but it does not restrict or incorrectly restricts the input before its usage in "require," "include," or similar functions. Extended Description In certain versions and configurations of PHP, this can allow an attacker to specify a URL to a remote location from which the product will obtain the code to execute. In other c
 
 ### OWASP Path Traversal
-- 출처: https://owasp.org/www-community/attacks/Path_Traversal
+- 출처: https://community.owasp.org/attacks/Path_Traversal
 - 승격일: 2026-10-07
 - 요약: Path Traversal Overview A path traversal attack (also known as directory traversal) aims to access files and directories that are stored outside the web root folder. By manipulating variables that reference files with “dot-dot-slash (../)” sequences and its variations or by using absolute file paths, it may be possible to access arbitrary files and directories stored on file system including application source code or configuration and critical system files. It should be noted that access to fil

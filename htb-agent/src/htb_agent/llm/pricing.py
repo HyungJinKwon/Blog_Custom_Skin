@@ -2,7 +2,7 @@
 LLM 가격·비용 추정 (per 1M 토큰, USD)
 ======================================
 
-Anthropic 1st-party API 요율(claude-api 스킬 기준, 2026-09 캐시). 로컬(Ollama)은
+Anthropic 1st-party API 요율(claude-api 스킬 기준, 2026-10 캐시). 로컬(Ollama)은
 무과금(0). 가격은 변할 수 있으므로 참고용 추정이며, 정확한 청구는 콘솔을 확인.
 """
 

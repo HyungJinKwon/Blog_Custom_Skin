@@ -38,6 +38,6 @@ exiftool -Comment='<?php system($_GET[c]);?>' img.jpg
 - 요약: File upload vulnerabilities In this section, you'll learn how simple file upload functions can be used as a powerful vector for a number of high-severity attacks. We'll show you how to bypass common defense mechanisms in order to upload a web shell, enabling you to take full control of a vulnerable web server. Given how common file upload functions are, knowing how to test them properly is essential knowledge. Labs If you're already familiar with the basic concepts behind file upload vulnerabili
 
 ### OWASP Unrestricted File Upload
-- 출처: https://owasp.org/www-community/vulnerabilities/Unrestricted_File_Upload
+- 출처: https://community.owasp.org/vulnerabilities/Unrestricted_File_Upload
 - 승격일: 2026-10-07
 - 요약: Unrestricted File Upload Description Uploaded files represent a significant risk to applications. The first step in many attacks is to get some code to the system to be attacked. Then the attack only needs to find a way to get the code executed. Using a file upload helps the attacker accomplish the first step. The consequences of unrestricted file upload can vary, including complete system takeover, an overloaded file system or database, forwarding attacks to back-end systems, client-side attack
