@@ -198,7 +198,7 @@ class Orchestrator:
                  fix_commands: bool = True,
                  dry_run: bool = False,
                                   exploit_exec: bool = False,
-                 poc_commands: "list[str] | None" = None,                 
+                 poc_commands: "list[str] | None" = None,
                  workspace=None):
         self.guard = guard
         self.runner = runner
@@ -254,7 +254,7 @@ class Orchestrator:
         self.dry_run = dry_run
         self.exploit_exec = exploit_exec
         self._exploit_looked_up: set[str] = set()   # 제품별 공개 익스 조회 1회 가드
-        self.poc_commands = poc_commands or []                  
+        self.poc_commands = poc_commands or []
 
     def run(self) -> OrchestrationReport:
         # 경과 시간은 정찰부터 포함, 마감 확인은 스윕 루프에서(정찰은 유한 폴백으로 별도 관리)
@@ -447,7 +447,6 @@ class Orchestrator:
                                          cves=[e.id for e in report.enriched])
                 except Exception as e:   # noqa: BLE001 — 수집 실패는 진행 방해 금지
                     self.audit.event("enrich_error", error=str(e))
-    
         # PHASE 3.9 직전: PoC 실행(3단계) → exploit-exec 발판(1단계)
         if self.exploit_exec and not interrupted:
             self._exploit_run_stage(report, host)     # 3단계: PoC 실행 → 자격
