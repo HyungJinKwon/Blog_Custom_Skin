@@ -5,6 +5,9 @@
 ## [미출시]
 
 ### 변경
+- **사전학습 수집 타임아웃 상향(6초 → 10초)**: `learn.py` fetcher·`ReferenceLearner` 기본 타임아웃을
+  상향해 `--learn all` 배치 중 콜드캐시 대용량 페이지(예: OWASP www-community 42KB+)가 전환적으로
+  누락되던 문제를 줄인다. allowlist·라이트업 가드·오프라인 폴백은 불변.
 - **로컬(Ollama) 기본 모델 현행화**: 티어 기본값을 `llama3.1:8b/70b` → `qwen2.5:7b`(cheap/standard)·
   `llama3.3:70b`(strong)로 교체. 도구 사용·지시이행이 개선된 세대로 정렬하고 setup 추천표·doctor 안내·
   문서도 동반 갱신. 설치돼 있지 않으면 기존대로 설치된 모델로 자동 대체(`model_for`)하고 `OLLAMA_MODEL`
