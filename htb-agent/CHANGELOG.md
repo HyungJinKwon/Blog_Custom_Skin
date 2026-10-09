@@ -2,6 +2,17 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.7] — 2026-10-09
+
+### 추가(Added)
+- **Exploit 레지스트리 제품별 공략 안내(`note`)**: 레지스트리를 `ExploitEntry(lookup, note)` 로
+  확장해, 각 제품(FreePBX·Elastix·WordPress·Joomla·Drupal·Tomcat·Jenkins·Grafana·GitLab·
+  Gitea·phpMyAdmin·Nextcloud·osTicket)에 '어디를(패널·경로) 어떤 취약 유형으로 볼지'의 일반
+  가이드를 달았다. access 단계의 공개 익스 후보 수동 제안에 이 note 가 함께 표시된다
+  (예: FreePBX → admin 패널·recordings/ajax·버전 대조·약한 관리자 자격). `note_for()` 추가.
+  · **안전 경계**: note 는 '공략 각도' 설명일 뿐 PoC·익스·실행 명령이 아니다. lookup 은 여전히
+    searchsploit 조회만(생성 전용·RCE 표면 금지 유지).
+
 ## [2.6.6] — 2026-10-09
 
 ### 추가(Added)
