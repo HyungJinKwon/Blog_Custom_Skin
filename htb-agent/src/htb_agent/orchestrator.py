@@ -251,7 +251,7 @@ class Orchestrator:
         self.fix_commands = fix_commands
         # 계획 미리보기: 정찰·분석은 하되 제안된 enum/LLM/파일 명령은 '실행하지 않고' 보여만 준다.
         self.dry_run = dry_run
-        self.exploit_exec = exploit_exec           
+        self.exploit_exec = exploit_exec
 
     def run(self) -> OrchestrationReport:
         # 경과 시간은 정찰부터 포함, 마감 확인은 스윕 루프에서(정찰은 유한 폴백으로 별도 관리)
@@ -1160,11 +1160,14 @@ class Orchestrator:
             if pc and pc not in creds:
                 creds.append(pc)
         if not creds:
-            self.audit.event("exploit_exec_skip", reason="no_plaintext_cred"); return
+            self.audit.event("exploit_exec_skip", reason="no_plaintext_cred")
+            return
         if host is not None and host.open_ports and 22 not in host.open_ports:
-            self.audit.event("exploit_exec_skip", reason="ssh_closed"); return
+            self.audit.event("exploit_exec_skip", reason="ssh_closed")
+            return
         if not self.is_tool_available("sshpass"):
-            self.audit.event("exploit_exec_skip", reason="sshpass_missing"); return
+            self.audit.event("exploit_exec_skip", reason="sshpass_missing")
+            return
         target = str(self.guard.bound_target or self.guard.bound_host)
         for user, pw in creds[:3]:
             sh = SSHTargetShell(target, user, pw)

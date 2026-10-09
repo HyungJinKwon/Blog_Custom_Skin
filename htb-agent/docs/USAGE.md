@@ -111,10 +111,14 @@ assassin 10.129.1.5 --writeup --html      # ③ 라이트업 + HTML 대시보드
 
 취약점(CVE/CWE)은 마지막 한 번이 아니라 **단계마다 반영**되어 다음 단계·분석가가 바로 쓴다.
 
-**결과 화면 읽는 순서(초보자)**: 출력 맨 끝의 **`한눈에 보기`** 박스부터 본다 — 결과(플래그), 열린 서비스,
-찾은 것(자격증명·수집물·취약점), 실행 현황(실행·도구 없음·미승인·못 돌림), **다음에 할 일**(최대 3개, 그대로 입력할
-명령)이 한곳에 있다. 그 위의 `다음 선택지(NEXT OPTIONS)`·`수동 제안`은 종류별로 묶여 있고, 수동 제안은 묶음마다
-앞의 6개만 보여 준다(옵션만 덧붙인 변형은 숨김 — 전체 목록은 `--html`/`--json` 리포트).
+**결과 화면 읽는 순서(초보자)**: 목표(Jeopardy=플래그 1개, HTB=user+root)를 달성하면 출력 맨 끝에
+**`🏁 다 풀었다(SOLVED)`** 패널이 떠 플래그 **값**(user.txt/root.txt 또는 단일 플래그)을 크게 보여 주고,
+**출처**(전부 대상 상호작용 출력에서 나왔으면 `공략 유래(검증)`, 일부라도 사람 관찰이면 `사람 확인 필요`)를
+함께 표시한다 — 결과를 복사해 어디에 붙이지 않아도 값이 바로 보인다. 그 바로 위의 **`한눈에 보기`** 박스부터
+읽으면 된다 — 결과(플래그), 열린 서비스, 찾은 것(자격증명·수집물·취약점), 실행 현황(실행·도구 없음·미승인·못 돌림),
+**다음에 할 일**(최대 3개, 그대로 입력할 명령)이 한곳에 있다. 그 위의 `다음 선택지(NEXT OPTIONS)`·`수동 제안`은
+종류별로 묶여 있고, 수동 제안은 묶음마다 앞의 6개만 보여 준다(옵션만 덧붙인 변형은 숨김 — 전체 목록은
+`--html`/`--json` 리포트).
 
 **시작 전 막힘 안내**: 인자 없이 `assassin` 을 치면 시작 3단계가, 타겟이 거부되면 바로 고칠 힌트(`→ …`)가,
 nmap 이 없으면 정찰을 4번 헛돌리지 않고 설치 명령이 바로 나온다(정찰이 한 번도 실행되지 못하면 '호스트 응답 없음'
@@ -426,6 +430,30 @@ GitHub Actions **`KB 자동 승격`** (`.github/workflows/kb-auto-promote.yml`)
 
 > Wireshark·Burp Suite 는 **GUI 라 자율(헤드리스) 실행 대상이 아닙니다** — 자율 파이프라인에선 동등한 CLI/데몬 도구(`tshark`·`tcpdump`·`mitmproxy`·`zaproxy`)를 쓰고, GUI 는 사용자 Kali 에서 직접 사용합니다. 모든 도구는 `assassin --doctor` 로 설치 상태를 확인하고 `--install-missing` 또는 `install_tools.sh` 로 설치합니다(레지스트리 등록 완료).
 
+### 10.2 발판 자동 실행(`--exploit-exec`) — 생성 전용의 유일한 예외(옵트인)
+
+§10 의 도구들이 **생성만** 하는 것과 달리, `--exploit-exec`(기본 OFF)는 **확보한 평문 자격으로 실제 발판을
+잡아** 플래그 읽기·권한상승 열거를 **실행**한다. 단, 새로 늘어나는 권한은 없다 — 모든 명령은 그대로 ① 검증 →
+② 범위 → ③ 승인 3관문을 통과하고, 범위 밖·파괴 명령은 여전히 막힌다. "자격만 있으면 플래그까지 자동"이
+목적이며(자격이 이미 있는 Easy 머신), **침입(익스플로잇) 자체는 아직 자동화하지 않는다.**
+
+| 항목 | 내용 |
+|---|---|
+| 켜는 법 | `assassin <t> --cred user:pass --exploit-exec` (자격은 열거로 확보돼도 됨) |
+| 하는 일 | 평문 자격으로 SSH 접속 → `user.txt`/`root.txt` 자동 읽기 → 권한상승 **열거**(`id`·`whoami`·`sudo -l`·SUID·capabilities — 파괴 없음) |
+| 쓰는 자격 | **평문만**(`user:pass`). 해시(`<…>`)·빈 값은 건너뜀. 앞의 3개 자격까지 시도 |
+| 건너뛰는 경우 | 자격 없음 · 22번 포트 닫힘 · `sshpass` 미설치 → 조용히 스킵(감사 로그에 사유 기록) |
+| 승인 | `--autonomous` 와 함께면 무프롬프트, 없으면 각 명령 y/n |
+| 결과 | 플래그 확보 시 **`🏁 다 풀었다(SOLVED)`** 패널에 값·출처 표시(§4). 출처는 `공략 유래(검증)` |
+| OFF 일 때 | 동작은 지금과 100% 동일(아무 변화 없음) |
+
+```bash
+# 자격을 확보한 Easy 머신 → 접속·플래그 읽기·권한상승 열거까지 한 번에, SOLVED 화면에 값 출력
+assassin 10.129.1.5 --cred svc:Summer2024 --exploit-exec --autonomous
+```
+
+> ⚠️ 권한이 확인된 대상(HTB·인가된 진단)에서만. 자격·대상 모두 범위 가드의 통제를 받는다.
+
 ---
 
 ## 11. 산출물: 라이트업 · 리포트 · 로그 · 재개
@@ -470,10 +498,20 @@ assassin 10.129.1.5 --config config/config.example.json
   "max_parallel": 1,
   "max_variants": 2,
   "knowledge_dir": "knowledge",
-  "state_dir": "state"
+  "state_dir": "state",
+
+  "sandbox": "vm",
+  "vm_ssh": "kali@192.168.56.10",
+  "vm_ssh_key": "~/.ssh/id_ed25519",
+  "vm_ssh_port": 22,
+  "vm_sudo": true,
+  "vm_confine": true
 }
 ```
 
+- **기본 실행 환경을 VM 으로**: `sandbox`·`vm_ssh`(+ 선택 `vm_ssh_key`/`vm_ssh_port`/`vm_sudo`/`vm_confine`)를
+  설정 파일에 적어 두면 매번 `--sandbox vm --vm-ssh …` 를 붙이지 않아도 그 VM 을 기본으로 쓴다. `sandbox` 값은
+  `none`(기본)·`shell`·`docker`·`vm` 중 하나다. CLI 플래그를 주면 설정값보다 우선한다.
 - YAML(`config/config.example.yaml`)도 지원한다(`pip install pyyaml` 필요).
 - 알 수 없는 키는 경고와 함께 무시된다.
 - 개인 설정은 `config/config.yaml` 에 두면 git 에 올라가지 않는다.
@@ -561,11 +599,21 @@ python3 scripts/demo.py --write out/       # 라이트업·JSON·HTML 파일 저
 assassin --doctor
 assassin 10.129.1.5 --autonomous --llm hybrid --time-budget 45 --writeup --html
 assassin 10.129.1.5 --autonomous --llm hybrid --time-budget 30 --resume   # 남은 시간으로 이어서
+
+# 자격을 확보(또는 --cred 로 직접 제공)한 Easy 머신이면 → 발판·플래그 읽기까지 한 번에
+assassin 10.129.1.5 --autonomous --llm hybrid --cred svc:Summer2024 --exploit-exec --writeup --html
 ```
 
 `--time-budget <분>` 이 지나면 진행 중이던 단계를 마치고 남은 단계를 `생략(시간 예산 소진)` 으로
 표시한 뒤 상태를 저장합니다(`status=interrupted`, 종료코드 130). 대회 시간 안에 결과물(라이트업·HTML)이
 반드시 남도록 하는 장치입니다. 경과 시간은 정찰부터 셉니다.
+
+- **`--exploit-exec`**(옵트인): 평문 자격이 있으면 SSH 발판을 잡아 플래그 읽기·권한상승 열거까지 자동
+  실행하고, 끝에 **`🏁 SOLVED`** 패널로 user.txt/root.txt 값을 보여 줍니다(§10.2). 사람은 각 명령에 `y/n`
+  (또는 `--autonomous` 면 무프롬프트)만 하면 됩니다.
+- **전용 풀이 VM 에서 완전 자율**: `--sandbox vm --vm-ssh kali@<VM> --vm-confine` 으로 접속한 VM 안에서
+  egress 를 타겟 대역으로 묶어 docker 처럼 동적 실행을 자동 허용합니다(`--vm-ssh-key`/`--vm-ssh-port`/`--vm-sudo`).
+  설정 파일(§12)에 `sandbox`·`vm_ssh` 를 적어 두면 매번 플래그를 붙이지 않아도 기본으로 그 VM 을 씁니다.
 
 ### 16.2 교육·수업(모든 명령을 보며 설명)
 
