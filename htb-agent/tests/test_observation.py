@@ -111,5 +111,14 @@ simple = parse_http("HTTP/1.1 404 Not Found\r\nServer: nginx\r\n\r\n<h1>nope</h1
 check("단순 응답: 쿠키/폼 없음", not simple.cookies and not simple.forms and not simple.has_login_form)
 check("단순 응답: 모든 보안헤더 누락 표기", len(simple.missing_security_headers) == 6)
 
+# 앱 버전 능동 추출: 본문에 '앱이름 버전'이 있으면 뽑고, 라이브러리 버전은 오탐 안 함
+hv = parse_http("HTTP/1.1 200 OK\r\n\r\n<title>FreePBX Administration</title>"
+                "<div class=footer>FreePBX 16.0.40 licensed</div>")
+check("앱 버전 추출(FreePBX 16.0.40)", hv.app_version == "FreePBX 16.0.40")
+check("summary 에 appver 노출", "appver=FreePBX 16.0.40" in hv.summary())
+hn = parse_http("HTTP/1.1 200 OK\r\n\r\n<title>FreePBX Administration</title>"
+                "<link href='assets/css/bootstrap-3.3.7.min.css'>")
+check("라이브러리 버전은 오탐 안 함(app_version 빈값)", hn.app_version == "")
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

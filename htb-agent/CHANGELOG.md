@@ -2,6 +2,17 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.12] — 2026-10-09
+
+### 추가(Added)
+- **웹앱 버전 능동 추출**(`parse_http` app_version): HTTP 응답 본문에서 **'알려진 앱 이름 + 인접
+  버전'**(FreePBX·WordPress·Joomla·Drupal·Tomcat·Jenkins·Grafana·GitLab·Gitea·phpMyAdmin·Nextcloud·
+  osTicket, 2마디 이상 점표기)을 추출해 `summary()` 에 `appver=…` 로 노출 → 핑거프린트가 타겟의
+  **실제 버전**을 잡는다. 앱 이름에 인접한 버전만 매칭하므로 라이브러리 버전(bootstrap-3.3.7 등)은
+  오탐하지 않는다. 버전이 잡히면 ⭐ PoC 자동 선택이 작동. (버전을 노출하지 않는 설치는 여전히
+  '미상' — 그땐 사람이 확인, 과장 없음.)
+- **테스트**: `test_observation.py` 앱 버전 추출(노출 시 추출·라이브러리 오탐 없음) 가드.
+
 ## [2.6.11] — 2026-10-09
 
 ### 수정(Fixed)
