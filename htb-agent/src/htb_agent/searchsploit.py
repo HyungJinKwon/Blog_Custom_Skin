@@ -13,6 +13,10 @@ import re
 from dataclasses import dataclass, field
 
 _VER_RE = re.compile(r"\d+(?:\.\d+){1,3}")
+# 제품명(대문자로 시작하는 단어) 바로 뒤의 '단독 major'(점표기 아님) — 예: 'FreePBX 16',
+# 'Drupal 7'. 점표기 버전이 없는 제목도 major 단위로 대략 대조하기 위한 것(뒤에 ./숫자가
+# 오면 점표기이므로 제외). CVE 연도·'(2)' 같은 괄호 숫자는 앞이 글자가 아니라 걸리지 않는다.
+_MAJOR_RE = re.compile(r"[A-Za-z]{2,}\s+(\d{1,3})(?![\d.])")
 # 헤더·구분선·섹션 제목은 데이터 행이 아니다.
 _SKIP = ("exploit title", "shellcode title", "paper title")
 
@@ -54,7 +58,14 @@ def parse_searchsploit(text: str) -> list[SploitHit]:
         if title in seen:
             continue
         seen.add(title)
-        hits.append(SploitHit(title, locator, _VER_RE.findall(title)))
+        vers = _VER_RE.findall(title)
+        # 제품명 뒤 단독 major(예: 'FreePBX 16')를 보강 — 이미 같은 major 의 점표기 버전이
+        # 있으면 추가하지 않는다(중복·노이즈 억제). 대상 '16.0.40.7' ↔ 제목 '16' 대조용.
+        for mm in _MAJOR_RE.finditer(title):
+            maj = mm.group(1)
+            if not any(v.split(".")[0] == maj for v in vers):
+                vers.append(maj)
+        hits.append(SploitHit(title, locator, vers))
     return hits
 
 

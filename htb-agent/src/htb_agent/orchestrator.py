@@ -1335,6 +1335,14 @@ class Orchestrator:
                         self.poc_commands.append(draft)
                 head = (f"# {prod} PoC 후보(버전 {version} 대조) — ⭐=자동 선택된 1순위. 받아 검토 후 "
                         f"--exploit-exec --poc \"<실행 명령>\" 로 실행(권한 확인 대상 전용):")
+            elif version:
+                # 버전은 '확인'됐으나 searchsploit 결과 중 이 버전과 접두 매칭되는 PoC 가 없음.
+                # '버전 미상'이 아니다(①이 버전을 잡았음) — 정직하게 구분해 안내한다.
+                fetch = (f"\n#   ↳ 확인된 버전 {version} 과 접두 매칭되는 PoC 가 목록에 없음. "
+                         f"major 계열(예: 상위 버전대) PoC 를 사람이 직접 대조하거나, "
+                         f"'searchsploit {prod} {version.split('.')[0]}' 로 재검색 권장.")
+                head = (f"# {prod} PoC 후보(버전 {version} 확인됨 · 단 매칭 PoC 없음) — 아래에서 버전대에 "
+                        f"맞는 것을 골라 searchsploit -m <id> 로 받아 --exploit-exec --poc 로 실행(권한 확인 대상 전용):")
             else:
                 fetch = ("\n#   ↳ 버전 확인 먼저: curl -sk https://<타겟>/admin/config.php | "
                          "grep -oiE 'freepbx[^0-9]*[0-9][0-9.]*'  (확인 후 맞는 PoC 를 searchsploit -m <id> 로)")
