@@ -93,16 +93,35 @@
 
 ## 설치 (Kali / Ubuntu)
 
+최신 Kali·Ubuntu 는 시스템 파이썬이 **PEP 668(externally-managed)** 로 잠겨 있어 `pip install` 이
+거부됩니다. **venv(가상환경)** 에 설치한 뒤, 명령을 `~/.local/bin` 에 **심링크**해 어느 디렉터리에서나
+`assassin` 이 바로 먹히게 하는 것이 가장 깔끔합니다(venv 를 매번 activate 하지 않아도 됨).
+
 ```bash
-cd htb-agent
-sudo ./scripts/install_tools.sh          # 보안 도구 전체(BloodHound·S3 등) / 또는: ... recon web smb ad
-pip install -e .                         # 에이전트 설치 → 'assassin' 명령 생성
-sudo openvpn your-htb.ovpn               # tun0 → 공격자 IP 자동탐지
+cd ~/HTB_AUTO_AGENT/htb-agent
+sudo ./scripts/install_tools.sh            # 보안 도구 전체(BloodHound·S3 등) / 또는: ... recon web smb ad
+
+python3 -m venv .venv                      # 가상환경 생성(PEP 668 우회)
+source .venv/bin/activate
+pip install -e ".[claude]"                 # 에이전트 + Claude(anthropic) 설치 → 'assassin' 생성
+
+# 어디서나 쓰도록 ~/.local/bin 에 심링크(venv 를 매번 켜지 않아도 됨)
+mkdir -p ~/.local/bin
+ln -sf ~/HTB_AUTO_AGENT/htb-agent/.venv/bin/assassin  ~/.local/bin/assassin
+ln -sf ~/HTB_AUTO_AGENT/htb-agent/.venv/bin/htb-agent ~/.local/bin/htb-agent
+grep -q 'local/bin' ~/.zshrc || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc; hash -r
+assassin --version                         # 어디서든 동작하면 성공
+
+sudo openvpn your-htb.ovpn                 # (HTB) tun0 → 공격자 IP 자동탐지
 ```
 
-Python 3.10+ (코어는 표준 라이브러리만, 외부 의존성 없음). LLM 사용 시 `pip install anthropic`(Claude) 또는 Ollama.
+Python 3.10+ (코어는 표준 라이브러리만, 외부 의존성 없음). `[claude]` 는 Claude API(anthropic)를 함께 설치합니다 —
+규칙 기반만 쓰거나 로컬 Ollama 만 쓸 거면 `pip install -e .` 로 충분합니다.
 
-> 설치 없이 쓰려면 `cd htb-agent` 에서 `PYTHONPATH=src python3 -m htb_agent ...` 로 실행.
+> **bash 사용자**는 `~/.zshrc` 대신 `~/.bashrc` 로 바꾸세요(Kali 기본 셸은 zsh). `[claude]` 의 대괄호는
+> zsh 에서 glob 으로 해석되므로 반드시 따옴표로 감쌉니다(`".[claude]"`).
+> **설치 없이** 한 번만 돌려 보려면 `cd htb-agent` 에서 `PYTHONPATH=src python3 -m htb_agent ...` 로 실행.
 
 ## 실행
 

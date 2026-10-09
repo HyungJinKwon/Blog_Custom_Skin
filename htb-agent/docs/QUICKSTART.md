@@ -4,13 +4,28 @@
 
 ## 1. 설치·점검 (처음 한 번)
 
+최신 Kali·Ubuntu 는 PEP 668 로 시스템 `pip install` 이 막히므로 **venv + 심링크**로 설치합니다.
+
 ```bash
-cd htb-agent
-pip install -e .                    # 'assassin' 명령 생성
+cd ~/HTB_AUTO_AGENT/htb-agent
 sudo ./scripts/install_tools.sh     # 보안 도구 일괄 설치(Kali/Ubuntu)
+
+python3 -m venv .venv               # 가상환경(PEP 668 우회)
+source .venv/bin/activate
+pip install -e ".[claude]"          # 에이전트 + Claude 설치 → 'assassin' 생성
+
+mkdir -p ~/.local/bin               # 어디서나 쓰도록 심링크(venv activate 불필요)
+ln -sf ~/HTB_AUTO_AGENT/htb-agent/.venv/bin/assassin  ~/.local/bin/assassin
+ln -sf ~/HTB_AUTO_AGENT/htb-agent/.venv/bin/htb-agent ~/.local/bin/htb-agent
+grep -q 'local/bin' ~/.zshrc || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc; hash -r
+assassin --version                  # 어디서든 동작하면 성공
+
 assassin --doctor                   # 도구·VPN·LLM 준비 상태 점검 — 빨간 항목만 채우면 됨
 assassin --setup-llm                # (선택) Claude·로컬 LLM 연결 마법사 — 질문에 답하면 연결·확인·저장까지
 ```
+
+> bash 면 `~/.zshrc` → `~/.bashrc`. 규칙 기반·Ollama 만 쓰면 `pip install -e .` 로도 됩니다.
 
 ## 2. 상황별 한 줄
 
