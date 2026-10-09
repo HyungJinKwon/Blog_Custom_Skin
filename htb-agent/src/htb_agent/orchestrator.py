@@ -259,6 +259,7 @@ class Orchestrator:
         self._exploit_looked_up: set[str] = set()   # 제품별 공개 익스 조회 1회 가드
         self._version_probed: set[str] = set()       # 제품별 버전 노출 프로브 1회 가드
         self._web_secret_probed: set[str] = set()     # 웹 노출 비밀/백업 열거 1회 가드(베이스별)
+        self._web_fp_probed: set[str] = set()          # vhost 결정적 핑거프린트 1회 가드
         self.poc_commands = poc_commands or []
 
     def run(self) -> OrchestrationReport:
@@ -368,6 +369,9 @@ class Orchestrator:
                 # 3단계 기반: 핑거프린트된 웹앱 제품에 맞는 공개 익스 '조회'(searchsploit)를
                 # 게이트로 올린다(제품당 1회). 조회·무해 — 익스 실행 아님. 결과는 다음 분석에 되먹임.
                 self._exploit_lookup_stage(report, host)
+                # 결정적 핑거프린트: vhost 로 리다이렉트를 따라가 제품/버전을 확실히 식별(제품 미상 &
+                # vhost 등록 시). LLM 편차로 FreePBX 미식별되던 문제 교정 → 아래 단계가 제품을 활용.
+                self._web_fingerprint_stage(report, host)
                 # 발판 전 자격 수확: 웹 노출 비밀/백업 파일을 읽기전용 GET 으로 열거(호스트당 1회).
                 # 무해 — 본문에서 자격이 나오면 _harvest_creds 가 world 에 반영 → ①(b) 인증 PoC 폐루프.
                 self._web_secret_stage(report, host)
@@ -1280,6 +1284,38 @@ class Orchestrator:
         # 프로브 출력에서 버전 즉시 추출(다음 _run_vuln 을 기다리지 않고 이번 스윕에 반영).
         self._run_vuln(report, host, self.world.target)
 
+    def _web_fingerprint_stage(self, report: OrchestrationReport,
+                               host: NmapHost | None = None, phase: str = "access") -> None:
+        """vhost 로 리다이렉트를 따라가(-L) 웹앱 제품/버전을 '결정적으로' 핑거프린트한다.
+        LLM 명령 편차로 admin 페이지(200 본문의 'appver=FreePBX …')에 도달 못 해 제품이
+        미식별되던 문제 교정 — 302 리다이렉트에서 멈추면 FreePBX 가 코퍼스에 안 들어온다.
+        무해 GET(-L). opt-in(--exploit-exec/--auto-poc)·vhost 당 1회. 제품 미상일 때만."""
+        if self.world is None or self.world.web_product:
+            return                      # 이미 식별됐으면 불필요
+        if host is None or not (self.exploit_exec or self.auto_poc):
+            return
+        bases = self._web_bases(host)
+        tgt = self.world.target
+        vhosts = [h for h, ip in (self.hosts_map or {}).items() if ip == tgt]
+        if not bases or not vhosts:
+            return                      # vhost 미등록이면(아직 리다이렉트 관측 전) 다음 스윕에
+        from .web_secrets import _HOST_SAFE
+        key = ",".join(sorted(bases)) + "|" + ",".join(sorted(vhosts))
+        if key in self._web_fp_probed:
+            return
+        self._web_fp_probed.add(key)
+        # https 베이스 1개 × vhost × 대표 경로(루트·admin·config.php) — -L 로 200 본문까지.
+        for vh in vhosts:
+            if not _HOST_SAFE.match(vh):
+                continue
+            for p in ("", "admin/", "admin/config.php"):
+                if self._goal_reached(report) or self._time_up():
+                    break
+                cmd = f'curl -s -L -k --max-time 10 -H "Host: {vh}" {bases[0]}/{p}'
+                self._attempt(report, report.enum_findings, cmd, phase=phase)
+        # 새 관측을 즉시 반영 → 이번 스윕의 뒤 단계(web_secret·lookup)가 제품을 바로 활용.
+        self._run_vuln(report, host, tgt)
+
     def _web_secret_stage(self, report: OrchestrationReport,
                           host: NmapHost | None = None, phase: str = "access") -> None:
         """웹 노출 비밀/백업 파일을 '읽기 전용 GET'으로 열거 → 발판 전에 HTTP 로 자격 수확.
@@ -1296,12 +1332,16 @@ class Orchestrator:
         bases = self._web_bases(host)
         if not bases:
             return
-        key = ",".join(sorted(bases))
+        # vhost 기반 앱(connected.htb 등)은 IP 기본 vhost 로는 못 본다 → 등록된 vhost 로 때린다.
+        tgt = self.world.target
+        vhosts = [h for h, ip in (self.hosts_map or {}).items() if ip == tgt]
+        key = (",".join(sorted(bases)) + "|" + ",".join(sorted(vhosts))
+               + "|" + (self.world.web_product or ""))
         if key in self._web_secret_probed:
             return
         self._web_secret_probed.add(key)
         from .web_secrets import secret_read_commands
-        for cmd in secret_read_commands(bases, self.world.web_product or ""):
+        for cmd in secret_read_commands(bases, self.world.web_product or "", vhosts=vhosts):
             if self._goal_reached(report) or self._time_up():
                 break
             self._attempt(report, report.enum_findings, cmd, phase=phase)

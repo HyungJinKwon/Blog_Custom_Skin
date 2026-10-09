@@ -37,6 +37,13 @@ check("베이스 없으면 빈 목록", secret_read_commands([], "freepbx") == [
 # 여러 베이스면 번갈아 배치(한 베이스 쏠림 방지) — 상위 2개가 서로 다른 베이스
 multi = secret_read_commands([f"https://{TARGET}", f"http://{TARGET}"], "freepbx", limit=4)
 check("여러 베이스 공평 분배", "https://" in multi[0] and "http://" in multi[1])
+# vhost 기반 앱: Host 헤더로 실제 앱을 때린다(IP 기본 vhost 404 회피)
+vh = secret_read_commands([f"https://{TARGET}"], "freepbx", vhosts=["connected.htb"])
+check("vhost 지정 시 Host 헤더 부착", all('-H "Host: connected.htb"' in c for c in vh))
+check("vhost 없으면 Host 헤더 없음", all("Host:" not in c for c in cmds))
+# 인젝션 방지: 안전하지 않은 호스트명은 무시(Host 헤더 안 붙음)
+bad = secret_read_commands([f"https://{TARGET}"], "freepbx", vhosts=["evil.htb; rm -rf /"])
+check("안전하지 않은 vhost 무시", all("Host:" not in c for c in bad))
 
 print("\n=== _web_secret_stage (게이트 경유 + 자격 수확 폐루프) ===")
 def guard():
@@ -105,6 +112,40 @@ orcC.world = WorldModel(target=TARGET); orcC.world.set_web_app("freepbx", "16.0.
 repC = OrchestrationReport(target=TARGET, flag_kind="boot2root")
 orcC._web_secret_stage(repC, mk_host())
 check("옵트인 없으면 열거 생략(기본 모드 명령폭 불변)", not repC.enum_findings)
+
+print("\n=== _web_fingerprint_stage (vhost 결정적 핑거프린트) ===")
+# vhost 로 -L 따라가 FreePBX admin 200 본문을 받으면 web_product 가 결정적으로 잡혀야 한다.
+FP_PAGE = ('HTTP/1.1 200 OK\r\n\r\n<html><head><title>FreePBX Administration</title></head>'
+           '<body>appver=FreePBX 16.0.40.7</body></html>')
+def fp_runner(c):
+    if "config.php" in c or 'Host: connected.htb' in c:
+        return RunOutput(c, stdout=FP_PAGE)
+    return RunOutput(c, stdout="302 Found")
+
+orcF = Orchestrator(guard(), FakeRunner(fp_runner), KnowledgeBase.load(), auto_approve_in_scope,
+                    flag_kind="boot2root", is_tool_available=lambda b: True,
+                    exploit_exec=True, auto_poc=True)
+orcF._start = orcF._clock(); orcF._deadline = None
+orcF.world = WorldModel(target=TARGET)          # 제품 미상으로 시작
+orcF.hosts_map = {"connected.htb": TARGET}      # vhost 등록됨(리다이렉트 관측 가정)
+repF = OrchestrationReport(target=TARGET, flag_kind="boot2root")
+orcF._web_fingerprint_stage(repF, mk_host())
+check("vhost 로 Host 헤더 + -L 핑거프린트 요청", any('-L' in f.command and 'Host: connected.htb' in f.command for f in repF.enum_findings))
+check("admin 페이지 본문에서 제품 결정적 식별", (orcF.world.web_product or "").lower() == "freepbx")
+check("버전도 식별(16.0.40.7)", orcF.world.web_version == "16.0.40.7")
+# 이미 식별됐으면 재핑거프린트 안 함
+n = len(repF.enum_findings)
+orcF._web_fingerprint_stage(repF, mk_host())
+check("제품 식별 후엔 핑거프린트 생략", len(repF.enum_findings) == n)
+# vhost 미등록이면 생략(리다이렉트 관측 전)
+orcG = Orchestrator(guard(), FakeRunner(fp_runner), KnowledgeBase.load(), auto_approve_in_scope,
+                    flag_kind="boot2root", is_tool_available=lambda b: True,
+                    exploit_exec=True, auto_poc=True)
+orcG._start = orcG._clock(); orcG._deadline = None
+orcG.world = WorldModel(target=TARGET)
+repG = OrchestrationReport(target=TARGET, flag_kind="boot2root")
+orcG._web_fingerprint_stage(repG, mk_host())
+check("vhost 미등록이면 핑거프린트 생략", not repG.enum_findings)
 
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

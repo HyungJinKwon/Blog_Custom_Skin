@@ -2,6 +2,24 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.33] — 2026-10-09
+
+### 수정(Fixed) — vhost 미대응으로 자격 수확·핑거프린트가 헛돌던 문제 (connected.htb 재실행)
+connected.htb 재실행에서 드러남: 웹앱이 **`connected.htb` vhost 에서만** 응답하는데, 열거가 IP
+기본 vhost 를 때려 전부 404/301 로 끝나고 FreePBX 도 식별 못 하던 두 결함을 교정.
+- **(A) 웹 비밀 열거 vhost 인식**: `_web_secret_stage` 가 등록된 vhost 로 `-H "Host: <vhost>"` 를
+  붙여 **실제 앱**을 때린다(IP-만 프로브는 못 보므로 생략). 호스트명은 인젝션 방지 안전문자만 허용.
+- **(B) 결정적 vhost 핑거프린트**: `_web_fingerprint_stage` 신설 — 제품 미상 & vhost 등록 시,
+  vhost 로 리다이렉트를 따라가(`-L`) admin 200 본문의 `appver=FreePBX …` 를 코퍼스에 넣어 **LLM
+  명령 편차와 무관하게** 제품/버전을 확정한다(302 에서 멈춰 FreePBX 미식별되던 문제 해소). 식별 후
+  `_run_vuln` 즉시 반영 → 같은 스윕의 `searchsploit`·웹비밀(amportal.conf)·⭐PoC 로 이어짐.
+
+### 안전(Safety)
+- 둘 다 **읽기 전용 GET**(`-s`/`-L`, 쓰기·주입·실행 없음), 3관문 통과, **opt-in**
+  (`--exploit-exec`/`--auto-poc`) 전용 → 기본 모드 명령 폭 불변. vhost·제품별 1회(멱등).
+- 회귀 테스트 `test_web_secrets.py` 확장(24건): vhost Host 헤더·인젝션 방지·결정적 핑거프린트·
+  식별 후 생략·vhost 미등록 생략.
+
 ## [2.6.32] — 2026-10-09
 
 ### 수정(Fixed) — 발판 채널 의존성 크래시 안전 degrade
