@@ -2,6 +2,23 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.18] — 2026-10-09
+
+### 수정(Fixed) — connected.htb 실전 피드백
+- **단독 major 버전 매칭 실패**: 실전에서 `FreePBX 16.0.40.7` 을 탐지하고도 searchsploit 결과
+  `FreePBX 16 - Remote Code Execution` 와 **매칭이 안 돼** ⭐ 자동선택을 놓쳤다. 매칭이 **점표기
+  버전만** 인식(16.0.x)하고 제목의 **단독 major('16')** 를 못 뽑던 문제. `parse_searchsploit` 가
+  제품명 뒤 단독 major(`_MAJOR_RE`, 예 'FreePBX 16'·'Drupal 7')를 버전으로 보강 → `16.0.40.7`
+  ↔ `FreePBX 16 RCE`(52031) 가 ⭐ 1순위로 선택된다. (CVE 연도·괄호 숫자·'< 7.7' 등 글자 뒤가
+  아닌 숫자는 오탐 억제.)
+- **'버전 미상' 오표기**: 버전을 **확인했는데도**(①이 잡음) 매칭 PoC 가 없으면 "버전 미상 — 확인
+  후 대조 필요" 로 떠서 ①의 성과를 가렸다. 이제 **버전 확인됨 · 단 매칭 PoC 없음** 으로 정직하게
+  구분하고, major 계열 재검색(`searchsploit {prod} {major}`)을 안내한다.
+
+### 추가(Added)
+- **테스트**: `test_searchsploit.py` 단독 major 추출·매칭·오탐 억제(connected.htb 회귀), 24건.
+  `test_exploit_lookup.py` '버전 확인+매칭 없음' 정직 표기 가드.
+
 ## [2.6.17] — 2026-10-09
 
 ### 추가(Added)

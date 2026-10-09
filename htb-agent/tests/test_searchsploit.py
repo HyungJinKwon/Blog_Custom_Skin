@@ -4,7 +4,8 @@
 # 대상 버전에 맞는 PoC 를 앞세워 '선택지를 좁혀' 제시하는지 확인.
 import sys
 sys.path.insert(0, "src")
-from htb_agent.searchsploit import parse_searchsploit, shortlist, SploitHit  # noqa: E402
+from htb_agent.searchsploit import (  # noqa: E402
+    SploitHit, has_version_match, parse_searchsploit, shortlist)
 
 passed = failed = 0
 def check(name, cond):
@@ -60,6 +61,28 @@ summ = summarize_tool_output("searchsploit freepbx", raw)
 check("searchsploit 요약이 '제목|경로' 쌍 보존", "40434.rb" in summ and "48523.txt" in summ)
 check("요약이 200자 트렁케이트 아님(폴백 회피)", "searchsploit:" in summ)
 check("요약을 재파싱하면 후보 복원", len(parse_searchsploit(summ)) >= 4)
+
+print("\n=== 단독 major 버전 매칭(connected.htb 회귀: 16.0.40.7 ↔ 'FreePBX 16') ===")
+# 실전에서 FreePBX 16.0.40.7 을 탐지했는데 'FreePBX 16 - RCE'(점표기 아님)와 매칭 안 돼
+# ⭐ 자동선택을 놓쳤다. 제목의 제품명 뒤 단독 major 를 보강해 대조한다.
+real = ("searchsploit: 22건 — FreePBX 17.0.2 - Remote Code Execution (RCE) | multiple/webapps/52681.py; "
+        "FreePBX 13 - Remote Command Execution / Privi | php/webapps/40614.py; "
+        "FreePBX 16 - Remote Code Execution (RCE) (Au | php/webapps/52031.php; "
+        "FreePBX 13.0.35 - Remote Command Execution | php/webapps/40296.txt")
+rhits = parse_searchsploit(real)
+by_loc = {h.locator: h for h in rhits}
+check("'FreePBX 16' 단독 major 추출", "16" in by_loc["php/webapps/52031.php"].versions)
+check("'FreePBX 17.0.2' 는 점표기 유지(17 중복추가 안 함)",
+      by_loc["multiple/webapps/52681.py"].versions == ["17.0.2"])
+check("16.0.40.7 ↔ 'FreePBX 16' 매칭 성립", has_version_match(rhits, "16.0.40.7"))
+check("shortlist 1순위가 FreePBX 16 RCE(52031)",
+      shortlist(rhits, "16.0.40.7", limit=4)[0].locator == "php/webapps/52031.php")
+check("엉뚱한 major(16) ↔ 13 계열은 매칭 안 함",
+      not has_version_match([SploitHit("FreePBX 13 - RCE", "p", ["13"])], "16.0.40.7"))
+# 오탐 억제: 괄호 숫자 '(2)'·'< 7.7' 처럼 글자 바로 뒤가 아닌 숫자는 단독 major 로 안 잡는다
+# (점표기 2.3·7.7 만 버전으로 — 바이너리 뒤가 아닌 숫자가 major 로 끼지 않아야).
+no_fp = parse_searchsploit("searchsploit: 1건 — OpenSSH 2.3 < 7.7 - Username Enumeration (2) | linux/remote/45233.py")
+check("점표기만 버전(2.3·7.7), 단독 major 오탐 없음", no_fp[0].versions == ["2.3", "7.7"])
 
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
