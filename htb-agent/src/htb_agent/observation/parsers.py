@@ -230,6 +230,7 @@ class HttpResult:
     cookies: list[Cookie] = field(default_factory=list)
     forms: list[HttpForm] = field(default_factory=list)
     generator: str = ""                       # <meta name=generator> (CMS 식별)
+    app_version: str = ""                     # 본문에서 '앱이름 버전'(예: FreePBX 16.0.40) — 핑거프린트용
     clues: list[str] = field(default_factory=list)   # 본문 단서(경로·링크·주석) — 다음 요청의 실마리
 
     @property
@@ -262,6 +263,8 @@ class HttpResult:
             bits.append(f'title="{self.title}"')
         if self.generator:
             bits.append(f"generator={self.generator}")
+        if self.app_version:
+            bits.append(f"appver={self.app_version}")
         for k in ("x-powered-by", "www-authenticate"):
             if k in self.headers:
                 bits.append(f"{k}={self.headers[k]}")
@@ -280,6 +283,11 @@ _STATUS_RE = re.compile(r"^HTTP/\d(?:\.\d)?\s+(\d{3})\s*(.*)$", re.I)
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
 _GENERATOR_RE = re.compile(
     r"""<meta[^>]+name=["']?generator["']?[^>]+content=["']([^"'>]+)""", re.I)
+# 본문에서 '알려진 웹앱 이름 + 인접 버전'(2마디 이상 점표기)만 추출 → 라이브러리 버전
+# (bootstrap-3.3.7 등) 오탐 회피. 앱 이름 뒤 숫자/'<' 아닌 문자 20자 이내에 버전이 와야 매칭.
+_APPVER_RE = re.compile(
+    r"(?i)(freepbx|elastix|wordpress|joomla|drupal|tomcat|jenkins|grafana|gitlab|gitea|"
+    r"phpmyadmin|nextcloud|osticket)[^0-9<\n]{0,20}?(\d+\.\d+(?:\.\d+){0,2})")
 _FORM_RE = re.compile(r"<form\b([^>]*)>(.*?)</form>", re.I | re.S)
 _ATTR_RE = re.compile(r"""(\w+)\s*=\s*["']?([^"'\s>]+)""")
 
@@ -387,6 +395,9 @@ def parse_http(raw: str) -> HttpResult:
     gm = _GENERATOR_RE.search(body)
     if gm:
         res.generator = gm.group(1).strip()
+    am = _APPVER_RE.search(body)
+    if am:
+        res.app_version = f"{am.group(1)} {am.group(2)}"   # 예: 'FreePBX 16.0.40'
     res.cookies = [_parse_cookie(c) for c in cookies_raw]
     res.forms = _parse_forms(body)
     res.clues = _body_clues(body)
