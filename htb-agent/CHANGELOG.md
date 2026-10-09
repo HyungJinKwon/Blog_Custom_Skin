@@ -2,6 +2,20 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.3] — 2026-10-09
+
+### 추가(Added)
+- **발판 자동 실행(`--exploit-exec`, 옵트인·기본 OFF)**: 확보한 **평문 자격**(열거 또는
+  `--cred user:pass`)으로 SSH 발판을 잡아 `user.txt`/`root.txt` 를 자동으로 읽고, 권한상승
+  **열거**(`id`·`sudo -l`·SUID·capabilities — 파괴 없음)까지 기존 3관문(검증·범위·승인)을 거쳐
+  실행한다. 해시·빈 자격은 건너뛰고, 22번 닫힘·`sshpass` 미설치면 조용히 스킵(감사 로그에 사유).
+  침입(익스플로잇) 자체는 아직 자동화하지 않으며(자격이 이미 있는 Easy 머신용), 플래그 확보 시
+  🏁 SOLVED 패널에 값·출처(공략 유래=검증)를 표시. OFF 일 때 동작은 이전과 100% 동일.
+
+### 문서(Docs)
+- **README·docs/USAGE 최신화**: `--exploit-exec`(§10.2)·🏁 SOLVED 결과화면(§4)·vhost 자동
+  이름해석·VM 기본 실행환경 설정(§12)을 반영하고, 전체 CLI 옵션 표를 재생성.
+
 ## [2.6.2] — 2026-10-09
 
 ### 변경(Changed)

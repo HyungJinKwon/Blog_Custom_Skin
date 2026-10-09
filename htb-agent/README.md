@@ -50,6 +50,20 @@
 > 가져오면 LLM 이 먼저 읽고 취약 지점을 찾습니다. zip·tar 는 안전하게 풀고, 열린 포트가
 > 없는 문제(rev/crypto/forensic)도 파일 분석으로 진행합니다.
 
+> **발판 자동 실행(`--exploit-exec`, 옵트인·기본 OFF)**: 확보한 **평문 자격**(열거로 나오거나
+> `--cred user:pass` 로 직접 준 것)으로 **SSH 발판을 잡아 `user.txt`/`root.txt` 를 자동으로 읽고**,
+> 권한 상승 **열거**(`id`·`sudo -l`·SUID·capabilities — 파괴 없음)까지 기존 3관문(검증·범위·승인)을
+> 거쳐 실행합니다. 침입(익스플로잇)은 아직 자동화하지 않으며(자격이 이미 있는 Easy 머신용),
+> 해시·빈 값은 건너뜁니다. `--autonomous` 와 함께면 무프롬프트, 없으면 각 명령 y/n.
+> **플래그를 확보하면** 결과 맨 끝에 **`🏁 다 풀었다(SOLVED)`** 패널이 떠 user.txt/root.txt(또는
+> 단일 플래그) **값을 크게 보여 주고 출처(공략 유래=검증)를 함께 표시**합니다. 22 번 닫힘·자격 없음·
+> `sshpass` 미설치면 조용히 건너뜁니다. `--exploit-exec` 없으면 동작은 지금과 100% 동일합니다.
+>
+> ```bash
+> # 자격을 확보한 Easy 머신 → 접속·플래그 읽기·권한상승 열거까지 자동, SOLVED 화면에 값 출력
+> assassin 10.129.1.5 --cred svc:Summer2024 --exploit-exec --autonomous
+> ```
+
 ---
 
 ## 진행 흐름 (모의해킹 단계 순서)
@@ -244,11 +258,11 @@ assassin 10.129.1.5 --config config/config.example.json
 | 분류 | 내용 |
 |---|---|
 | 안전 | Target-Binding 범위강제 · 명령 검증(문법·base64·해시·포트·파괴명령) · 승인 게이트(스마트/auto/manual) · **능동적 완전자동(`--autonomous`)** · 신뢰불가 출처 인젝션 차단 |
-| 관측 | nmap·HTTP(쿠키·보안헤더·로그인폼·CMS)·gobuster/ffuf/feroxbuster/nikto/whatweb·smb·ldap·dns/snmp 파싱 |
+| 관측 | nmap·HTTP(쿠키·보안헤더·로그인폼·CMS)·gobuster/ffuf/feroxbuster/nikto/whatweb·smb·ldap·dns/snmp 파싱 · **vhost/도메인 자동 이름해석**(리다이렉트에서 호스트명 발견 시 범위 자동 등록 + 권한 있으면 `/etc/hosts` 자동 기입 → 프롬프트·중단 없이 진행) |
 | 식별 | Linux vs Windows-AD 증거기반 판정(확신도) · 플랫폼 프로파일(HTB/Dreamhack/CTF) |
 | 지능 | 지식베이스(사용자 학습·자가학습으로 성장, 관련도 기반 노트 주입=경량 RAG) · 단계 순서 오케스트레이터 · **월드 모델(구조화 상태 단일 상태원, LLM 컨텍스트 주입)** · **반복·재진입 스윕(유한)** · **단계 게이팅(권한레벨 전제조건)** · 옵션 조합 변형 + **실행결과 기반 변형 학습** · **병렬 열거(I/O)** · LLM(Claude/Ollama/**하이브리드**(서킷 브레이커·라우팅 집계)·플랫폼/카테고리 인식·**다관점 분석가(병렬 가설·계획)**·**JSON 출력 계약**·**적응형 tier 승격**) · **목표 달성 조기 종료** · **권위출처 자가학습(`--learn`/일괄 `--learn all`)·자료 수집(`--ingest`)** |
-| 목표 | CVE/CWE 탐지·매핑 + **자동 수집(NVD)** · user.txt/root.txt·CTF 단일 플래그 · **리버스쉘 생성(`--revshell`) + 자동 준비(공격자 IP 확보 시)** · **AWS/S3 열거 자동 준비(`--cloud`, 호스트명 확보 시 버킷후보+점검 생성)** |
-| 공격 | **리버스쉘·AWS/S3·권한상승·해시크래킹 자동 준비(생성 전용)** — 공격자 IP/호스트명/OS/해시 확보 시 페이로드·열거·LPE 체크리스트·john/hashcat 명령 자동 생성(`--revshell`/`--cloud`/`--privesc`/`--crack`) |
+| 목표 | CVE/CWE 탐지·매핑 + **자동 수집(NVD)** · user.txt/root.txt·CTF 단일 플래그 · **🏁 SOLVED 결과 패널(목표 달성 시 플래그 값·출처 표시)** · **리버스쉘 생성(`--revshell`) + 자동 준비(공격자 IP 확보 시)** · **AWS/S3 열거 자동 준비(`--cloud`, 호스트명 확보 시 버킷후보+점검 생성)** |
+| 공격 | **리버스쉘·AWS/S3·권한상승·해시크래킹 자동 준비(생성 전용)** — 공격자 IP/호스트명/OS/해시 확보 시 페이로드·열거·LPE 체크리스트·john/hashcat 명령 자동 생성(`--revshell`/`--cloud`/`--privesc`/`--crack`) · **발판 자동 실행(`--exploit-exec`, 옵트인)** — 확보한 평문 자격으로 SSH 접속해 플래그 읽기·권한상승 열거를 3관문 거쳐 실행 |
 | 운영 | 중단/재개(실행된 명령 복원·Ctrl+C 저장) · **시간 예산(`--time-budget`)·비용 상한(`--max-cost`)** · 크리덴셜 볼트(해시 PtH) · 감사 로그 · 설정 파일 · 도구 설치 스크립트 · **환경 자가진단(`--doctor`)** |
 | 산출 | 라이트업 자동 생성(htb-ctf-writeup-v5 / Tistory 13섹션) · **결과 내보내기(JSON·HTML 대시보드)** · **실행 재생 뷰어(`--replay`)** |
 | 평가 | **성능 측정(`--bench`)** — 오프라인 모의 문제로 성공률·pass@N·명령 수·시간·비용. 개선 효과를 숫자로 확인(해커톤 발표) |
@@ -340,6 +354,7 @@ cd htb-agent && python3 tests/run_all.py     # 전체 스위트(끝에 '총 N �
 | `--auto` | 완전 자동: 범위내+검증통과만 실행, 범위 밖은 조용히 건너뜀(무프롬프트) |
 | `--manual` | 완전 수동: 모든 명령을 실행 전 확인(승인제 최대) |
 | `--dry-run` | 계획 미리보기: 정찰·분석은 하되 제안된 명령은 '실행하지 않고' 보여만 준다(무해 점검) |
+| `--exploit-exec` | 옵트인(기본 OFF): 확보한 평문 자격으로 SSH 접속해 플래그 읽기·권한상승 열거를 게이트를 거쳐 자동 실행(권한 확인 대상 전용) |
 | `--no-enrich` | CVE/CWE 자동 수집(NVD/GitHub) 비활성 |
 | `--learn-gaps` | 자율 지식 획득: 풀이 중 모르는 기술을 권위 출처에서 자동 학습해 KB 에 즉시 반영(allowlist·P1 유지). autonomous 모드에선 기본 활성 |
 | `--no-learn-gaps` | 자율 지식 획득 비활성(autonomous 모드에서도 끔) |
