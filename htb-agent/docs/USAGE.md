@@ -686,6 +686,7 @@ assassin 10.129.1.5 --auto --json out/result.json
 | `hybrid 사용 불가` | LLM 백엔드 미준비 | `assassin --setup-llm` 으로 한 번에 연결(§8). LLM 없이도 동작 |
 | `API 키가 올바르지 않습니다` | 키 복사 누락·만료 | 콘솔에서 키 재발급 후 `assassin --setup-llm` → "다른 키로 바꿀까요? y" |
 | `연결 실패 — 'ollama serve' …` | Ollama 서버 꺼짐·주소 다름 | 다른 터미널에서 `ollama serve`, 원격이면 `OLLAMA_HOST=http://<IP>:11434` |
+| 라우팅에 `차단: strong(...)` / `최근오류: ...` | LLM 백엔드가 반복 오류로 차단됨(간헐 400 등) | 괄호 안 메시지가 원인(모델·파라미터·빈 content 등). 전체 메시지를 확인해 대응. Ollama 를 함께 띄우면 폴백으로 세션은 계속 진행 |
 | `키 파일 권한이 넓습니다` | credentials 파일을 다른 사용자가 읽을 수 있음 | `chmod 600 ~/.config/assassin/credentials` |
 | 매번 원치 않는 LLM 이 붙음 | 마법사가 저장한 기본 설정 | 한 번만 끄기 `--llm none`, 영구는 `~/.config/assassin/config.json` 의 `llm.backend` 를 `none` 으로 |
 | CVE 정보가 비어 있음 | 오프라인·`--no-enrich`·캐시 없음 | 온라인에서 1회 실행해 캐시 생성 |
