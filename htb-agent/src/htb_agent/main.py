@@ -775,6 +775,7 @@ def _run_target(args, cfg, knowledge_dir, runner) -> int:
         approver = auto_approve_contained
     orchestrator = Orchestrator(guard, runner or SubprocessRunner(), kb, approver,
                                 workspace=workspace,
+                                                                exploit_exec=args.exploit_exec,
                                 dry_run=args.dry_run,
                                 observer=observer,
                                 max_enum=max_enum,
