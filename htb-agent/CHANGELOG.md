@@ -2,6 +2,28 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.15] — 2026-10-09
+
+### 추가(Added)
+- **권한상승 벡터 자동 분석**(③ 폐루프 '후보 선정', 생성 전용 `privesc_analyze`): 획득한 셸에서
+  이미 실행된 privesc 열거 출력(`sudo -l`·SUID `find`·`getcap`)을 **파싱**해 구체적 상승 벡터를
+  **확신도순 랭킹**하고, GTFOBins 식 상승 **제안 명령(문자열)**을 만든다.
+  - `analyze_sudo` — NOPASSWD/허용 바이너리·`(ALL) ALL` 전체 sudo 탐지
+  - `analyze_suid` — 비표준 SUID 바이너리(표준/무해 목록 제외) 탐지
+  - `analyze_capabilities` — `cap_setuid+ep` 인터프리터 탐지
+  - `analyze_enum`/`render_vectors` — 통합·중복 제거·랭킹·사람용 요약
+  - GTFOBins 커브셋(find/vim/awk/python/perl/tar/… sudo·suid·cap 템플릿) — 공개 문서 기반.
+- `orchestrator._privesc_analyze_stage` — Linux 에서 findings 열거 출력을 분석해 랭킹 벡터를
+  수동 제안으로 surface(`report.privesc_vectors`).
+- **테스트**: `test_privesc_analyze.py`(28) — sudo/suid/capability 파싱·랭킹·중복 제거·경계
+  자기점검(실행/네트워크 모듈 미임포트).
+
+### 안전(Safety)
+- `privesc_analyze` 는 **파싱·랭킹·제안 문자열 생성만** 한다 — 명령을 **실행하지 않는다**
+  (RCE/권한상승 표면 없음, 생성 전용 경계). 제안은 사람이 **획득한 셸에서** 실행한다.
+- 폐루프의 '실제 실행 → root 확인 → world 권한레벨 전이 → 재열거'(발사) 연결은 사용자 리포의
+  실행 스테이지(`target_shell`) 몫으로 남긴다.
+
 ## [2.6.14] — 2026-10-09
 
 ### 추가(Added)
