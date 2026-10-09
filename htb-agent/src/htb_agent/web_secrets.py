@@ -11,6 +11,8 @@
 """
 from __future__ import annotations
 
+import re
+
 # 제품 무관하게 흔히 자격·비밀이 새는 경로(오설정·편집기 백업·VCS 노출). 상대경로.
 _GENERIC_PATHS: list[str] = [
     ".env", ".env.bak", ".env.save", ".env.old", ".env.local",
@@ -54,24 +56,36 @@ def exposed_paths(product: str = "") -> list[str]:
     return out
 
 
+# 셸/헤더 인젝션 방지 — 호스트명으로 허용할 문자(영숫자·점·하이픈)만.
+_HOST_SAFE = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
+
+
 def secret_read_commands(bases: list[str], product: str = "",
+                         vhosts: list[str] | None = None,
                          limit: int = 24) -> list[str]:
     """베이스 URL × 노출 후보 경로로 무해한 GET 명령(curl -s)을 만든다(생성 전용 — 실행 아님).
     `-s`(조용히) · `--max-time`(지연 방지) · `-k`(https 자가서명 대비). 상위 `limit` 개로 제한.
-    베이스가 여러 개면 경로를 번갈아 배치해 한 베이스에 쏠리지 않게 한다(증거 폭 확보)."""
+
+    vhost 기반 앱(예: connected.htb)은 IP 기본 vhost 로는 404/301 만 떨어진다 → 등록된
+    vhost 가 있으면 `-H "Host: <vhost>"` 를 붙여 **실제 앱**을 때린다(그 경우 IP-만 프로브는
+    생략 — 어차피 못 본다). 호스트명은 인젝션 방지로 안전 문자만 허용."""
     bases = [b.rstrip("/") for b in (bases or []) if b]
     if not bases:
         return []
+    safe_vhosts = [v for v in (vhosts or []) if v and _HOST_SAFE.match(v)]
+    # vhost 가 있으면 Host 헤더로만(앱이 거기 있음), 없으면 헤더 없이 IP 직타.
+    hosts: list[str] = safe_vhosts if safe_vhosts else [""]
     paths = exposed_paths(product)
     cmds: list[str] = []
     seen: set[str] = set()
-    for path in paths:                       # 경로 바깥 루프 → 베이스 간 공평 분배
+    for path in paths:                       # 경로 바깥 루프 → 베이스/vhost 간 공평 분배
         for base in bases:
-            url = f"{base}/{path}"
-            cmd = f"curl -s -k --max-time 10 {url}"
-            if cmd not in seen:
-                seen.add(cmd)
-                cmds.append(cmd)
-            if len(cmds) >= limit:
-                return cmds
+            for host in hosts:
+                hdr = f' -H "Host: {host}"' if host else ""
+                cmd = f"curl -s -k --max-time 10{hdr} {base}/{path}"
+                if cmd not in seen:
+                    seen.add(cmd)
+                    cmds.append(cmd)
+                if len(cmds) >= limit:
+                    return cmds
     return cmds
