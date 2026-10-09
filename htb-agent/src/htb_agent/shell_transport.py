@@ -23,3 +23,14 @@ def catch_reverse_shell(lport: int, timeout: float = 120.0) -> ReverseShellSessi
     return transport  # 또는 session 만들어 attach
 
 # 사용: rs = ReverseShellSession(lhost, lport); rs.attach(catch_reverse_shell(lport))
+# shell_transport.py 에 함께
+import requests   # ← 실제 HTTP = RCE 실행 표면
+def web_http_fn(spec: dict) -> str:
+    r = requests.request(spec["method"], spec["url"],
+                         params=spec["params"] or None,
+                         data=spec["data"] or None,
+                         headers=spec["headers"] or None,
+                         verify=False, timeout=15)
+    return r.text
+
+# 사용: ws = WebRceSession(url, "cmd", method="POST", inject="body"); ws.attach(web_http_fn)
