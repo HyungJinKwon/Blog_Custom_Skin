@@ -2,6 +2,23 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.20] — 2026-10-09
+
+### 추가(Added) — 자동 루트 체인 B단계: 발판 셸 세션 추상화
+- **`shell_session.ShellSession`**(생성 전용): 획득한 셸을 채널 종류(SSH one-shot·리버스셸·
+  웹RCE)와 무관하게 '한 줄 명령 실행→출력'으로 다루는 공통 인터페이스. 자동 루트 실패의 근본
+  원인(발판 채널 부재)을 메우는 **백본**.
+  - `CommandRunnerSession` — one-shot 러너(SSH 등) 어댑터. `wrap(cmd)`+`run_fn(wrapped)` 조합만.
+  - `ReverseShellSession` — 리버스셸 수신 세션: 리스너 명령·페이로드 생성(revshell 재사용),
+    상태관리(INIT/LISTENING/CONNECTED/CLOSED), 명령 프레이밍(완료 마커+종료코드)·마커 파싱.
+  - `frame_command`/`strip_marker` — 경계 없는 셸 출력에서 본문·종료코드 분리(ANSI 제거 포함).
+- **테스트**: `test_shell_session.py`(28) — ABC·어댑터·프레이밍/파싱·상태전이·경계 자기점검.
+
+### 안전(Safety)
+- 이 모듈은 **소켓 I/O·원격 실행을 직접 하지 않는다.** 실제 accept/recv/send 는 사용자가
+  `attach(transport)`/`run_fn` 로 주입하는 콜러블의 몫(= RCE 실행 표면). transport 미주입 세션은
+  `alive=False` 이며 `run()` 을 명확한 오류로 거부한다(섣부른 실행 방지). 소켓/subprocess 미임포트.
+
 ## [2.6.19] — 2026-10-09
 
 ### 추가(Added) — 자동 루트 체인 보강 A단계
