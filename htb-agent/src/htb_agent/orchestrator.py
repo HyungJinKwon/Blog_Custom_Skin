@@ -198,6 +198,7 @@ class Orchestrator:
                  fix_commands: bool = True,
                  dry_run: bool = False,
                                   exploit_exec: bool = False,
+                 poc_commands: "list[str] | None" = None,                 
                  workspace=None):
         self.guard = guard
         self.runner = runner
@@ -253,6 +254,7 @@ class Orchestrator:
         self.dry_run = dry_run
         self.exploit_exec = exploit_exec
         self._exploit_looked_up: set[str] = set()   # 제품별 공개 익스 조회 1회 가드
+        self.poc_commands = poc_commands or []                  
 
     def run(self) -> OrchestrationReport:
         # 경과 시간은 정찰부터 포함, 마감 확인은 스윕 루프에서(정찰은 유한 폴백으로 별도 관리)
@@ -267,9 +269,6 @@ class Orchestrator:
         self.world = WorldModel(target=target,
                                 hostname=(self.hosts_map or {}).get(target, ""))
         report.world = self.world
-              if self.exploit_exec and not interrupted:
-            self._exploit_run_stage(report, host)     # 3단계: PoC 실행 → 자격
-            self._exploit_exec_stage(report, host)    # 1단계: 자격 → 발판 → 플래그
         if self.vault is not None:
             for c in self.vault.creds:
                 sec = c.password or c.nt_hash or ""
@@ -448,26 +447,11 @@ class Orchestrator:
                                          cves=[e.id for e in report.enriched])
                 except Exception as e:   # noqa: BLE001 — 수집 실패는 진행 방해 금지
                     self.audit.event("enrich_error", error=str(e))
-    def _exploit_run_stage(self, report, host):
-        """3단계: 레지스트리가 특정한 공개 PoC(파라미터)를 게이트로 실행 → 자격 캡처 →
-        world 에 반영(다음 _exploit_exec_stage 가 발판·플래그로 이어받음). 옵트인 전용."""
-        if not self.exploit_exec or self.world is None or self.dry_run:
-            return
-        # PoC 후보는 '명시적으로 주입된 것'만 실행한다(자동 임의 익스 금지).
-        # 예: self.poc_commands = ["<operator가 searchsploit 결과에서 고른 한 줄>"]
-        for poc in getattr(self, "poc_commands", []) or []:
-            if self._goal_reached(report) or self._time_up():
-                return
-            # 게이트(검증·범위·승인) 통과해야 실행 — 범위 밖/파괴면 자동 거부
-            before = len(report.enum_findings)
-            self._attempt(report, report.enum_findings, poc, phase="access")
-            from .exploit_run import harvest_creds
-            for f in report.enum_findings[before:]:
-                for u, p in harvest_creds(f.output or ""):
-                    self.world.add_cred(f"{u}:{p}", source="PoC 출력")
-        # PHASE 3.9(리버스쉘 준비) 직전: exploit-exec 발판 시도
+    
+        # PHASE 3.9 직전: PoC 실행(3단계) → exploit-exec 발판(1단계)
         if self.exploit_exec and not interrupted:
-            self._exploit_exec_stage(report, host)
+            self._exploit_run_stage(report, host)     # 3단계: PoC 실행 → 자격
+            self._exploit_exec_stage(report, host)    # 1단계: 자격 → 발판 → 플래그
 
         # ── PHASE 3.9: 리버스쉘 자동 준비 (공격자 IP 확보 시) ──
         self._prepare_revshells(report)
@@ -1234,7 +1218,19 @@ class Orchestrator:
             f"# {prod} 공개 익스 후보 — searchsploit 결과에서 '대상 버전'에 맞는 PoC 를 "
             f"골라 3관문(검증·범위·승인)으로 실행하세요(권한 확인 대상 전용)"
             + (f"\n#   ↳ {note}" if note else ""))
-
+    def _exploit_run_stage(self, report, host):
+        """3단계: 주입된 공개 PoC(--poc)를 게이트로 실행 → 자격 캡처 → world 반영."""
+        if not self.exploit_exec or self.world is None or self.dry_run:
+            return
+        for poc in getattr(self, "poc_commands", []) or []:
+            if self._goal_reached(report) or self._time_up():
+                return
+            before = len(report.enum_findings)
+            self._attempt(report, report.enum_findings, poc, phase="access")
+            from .exploit_run import harvest_creds
+            for f in report.enum_findings[before:]:
+                for u, p in harvest_creds(f.output or ""):
+                    self.world.add_cred(f"{u}:{p}", source="PoC 출력")
     def _exploit_exec_stage(self, report, host):
         if not self.exploit_exec or self.world is None or self.dry_run:
             return
