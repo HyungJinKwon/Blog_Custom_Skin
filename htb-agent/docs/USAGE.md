@@ -49,21 +49,46 @@
 
 ## 2. 설치
 
-### 2.1 Kali / Ubuntu
+### 2.1 Kali / Ubuntu (venv + 심링크 — 권장)
+
+최신 Kali·Ubuntu 는 시스템 파이썬이 **PEP 668(externally-managed)** 로 잠겨 있어, 그냥 `pip install -e .` 하면
+`error: externally-managed-environment` 로 거부된다. **venv(가상환경)** 에 설치한 뒤 명령을 `~/.local/bin` 에
+**심링크**하면, venv 를 매번 activate 하지 않아도 어느 디렉터리에서나 `assassin` 이 바로 동작한다.
 
 ```bash
 git clone https://github.com/HyungJinKwon/HTB_AUTO_AGENT.git
-cd HTB_AUTO_AGENT/htb-agent
-sudo ./scripts/install_tools.sh          # 보안 도구 일괄 설치
-pip install -e .                         # 'assassin' 명령 생성
-sudo openvpn your-htb.ovpn               # (HTB) tun0 → 공격자 IP 자동탐지
+cd ~/HTB_AUTO_AGENT/htb-agent
+sudo ./scripts/install_tools.sh            # 보안 도구 일괄 설치
+
+python3 -m venv .venv                       # ① 가상환경 생성(PEP 668 우회)
+source .venv/bin/activate                   # ② 활성화
+pip install -e ".[claude]"                  # ③ 에이전트 + Claude(anthropic) 설치 → 'assassin'·'htb-agent' 생성
+
+mkdir -p ~/.local/bin                        # ④ 어디서나 쓰도록 심링크
+ln -sf ~/HTB_AUTO_AGENT/htb-agent/.venv/bin/assassin  ~/.local/bin/assassin
+ln -sf ~/HTB_AUTO_AGENT/htb-agent/.venv/bin/htb-agent ~/.local/bin/htb-agent
+grep -q 'local/bin' ~/.zshrc || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # ⑤ PATH 보장
+source ~/.zshrc; hash -r
+assassin --version                          # ⑥ 어디서든 동작하면 성공
+
+sudo openvpn your-htb.ovpn                   # (HTB) tun0 → 공격자 IP 자동탐지
 ```
 
 | 명령 | 바이너리 | 옵션 | 파라미터 |
 |---|---|---|---|
 | `sudo ./scripts/install_tools.sh recon web` | `install_tools.sh` | (없음) | 설치할 카테고리. 생략 시 전체 |
-| `pip install -e .` | `pip` | `-e`: 편집 가능 설치(소스 수정이 바로 반영) | `.`: 현재 디렉토리 패키지 |
+| `python3 -m venv .venv` | `python3` | `-m venv`: 표준 가상환경 모듈 | `.venv`: 생성할 환경 디렉터리(프로젝트 안) |
+| `source .venv/bin/activate` | `source` | (없음) | venv 활성화 스크립트 — 이 셸에서만 적용 |
+| `pip install -e ".[claude]"` | `pip` | `-e`: 편집 가능 설치(소스 수정이 바로 반영) | `".[claude]"`: 현재 패키지 + claude extra(anthropic). 따옴표 필수(zsh glob 방지) |
+| `ln -sf <venv>/bin/assassin ~/.local/bin/` | `ln` | `-s`: 심볼릭 링크 · `-f`: 기존 링크 덮어쓰기 | venv 의 실행 스크립트(절대 shebang) → PATH 상의 위치 |
 | `sudo openvpn your-htb.ovpn` | `openvpn` | (없음) | 플랫폼에서 받은 VPN 설정 파일 |
+
+- **왜 심링크?** venv 의 `bin/assassin` 은 **절대경로 shebang**(`#!…/.venv/bin/python3`)을 가지므로, 링크만
+  PATH 에 두면 venv 를 켜지 않아도 올바른 파이썬으로 실행된다. 재설치해도 링크는 그대로다.
+- **bash 사용자**는 `~/.zshrc` → `~/.bashrc`(Kali 기본 셸은 zsh). `hash -r` 은 셸의 명령 경로 캐시를 비워
+  방금 만든 링크를 즉시 인식시킨다.
+- **Claude 를 안 쓰면** `pip install -e .`(extra 생략)로 충분하다. 규칙 기반·로컬 Ollama 는 추가 의존성이 없다.
+- venv 를 **삭제**하려면 `rm -rf .venv ~/.local/bin/assassin ~/.local/bin/htb-agent` 면 된다.
 
 설치 카테고리: `recon` `web` `smb` `ad` `creds` `cloud` `pivot` `wordlist` `traffic` `re` `pwn` `forensic` `llm`
 
@@ -655,6 +680,8 @@ assassin 10.129.1.5 --auto --json out/result.json
 |---|---|---|
 | `VPN IP 미탐지` · 공격자IP `(없음)` | VPN 미연결 | `ip a` 확인 후 `--attacker-ip <VPN IP>`(리버스쉘 자동 준비 생략) |
 | ScopeViolation(범위 위반) | 타겟/대역 밖 주소 포함(설계상 차단) | HTB 는 `--range` 확인, CTF/Dreamhack 은 `--platform` 지정 |
+| `error: externally-managed-environment` | 최신 Kali·Ubuntu 의 PEP 668 잠금(시스템 pip 거부) | venv 로 설치(§2.1). `--break-system-packages` 로 전역 설치하지 말 것 |
+| `assassin: command not found`(설치했는데) | venv 의 bin 이 PATH 에 없음 | `~/.local/bin` 심링크 + PATH 설정(§2.1), `hash -r` 로 캐시 비우기. 또는 `source .venv/bin/activate` |
 | `'<도구>' 미설치` | 도구 없음 | `sudo ./scripts/install_tools.sh <카테고리>` |
 | `hybrid 사용 불가` | LLM 백엔드 미준비 | `assassin --setup-llm` 으로 한 번에 연결(§8). LLM 없이도 동작 |
 | `API 키가 올바르지 않습니다` | 키 복사 누락·만료 | 콘솔에서 키 재발급 후 `assassin --setup-llm` → "다른 키로 바꿀까요? y" |
