@@ -148,3 +148,71 @@ class ReverseShellSession(ShellSession):
 
     def close(self) -> None:
         self.state = ShellState.CLOSED
+
+
+class WebRceSession(ShellSession):
+    """웹 RCE 명령 채널 세션 (C단계) — PoC 가 노출한 'cmd= 엔드포인트'로 임의 명령을 실행하는
+    발판. 웹 RCE 는 SSH user:pass 가 아니라 www-data 코드실행을 주는, 머신형 공략의 흔한 경로다.
+
+    실제 HTTP 요청은 **주입된 `http_fn(spec) -> raw_response`** 가 수행한다(= RCE 실행 표면,
+    사용자 구현). 이 클래스는 요청 사양(method·url·cmd 주입 위치)과 명령 프레이밍·출력 파싱만
+    만든다(생성 전용 — HTTP 라이브러리 미임포트). http_fn 미주입이면 run() 을 거부한다."""
+
+    kind = "web-rce"
+
+    def __init__(self, url: str, cmd_param: str, method: str = "GET",
+                 inject: str = "query",
+                 http_fn: Callable[[dict], str] | None = None,
+                 extra_params: dict | None = None) -> None:
+        if inject not in ("query", "body", "header"):
+            raise ValueError("inject 는 query/body/header 중 하나")
+        self.url = url
+        self.cmd_param = cmd_param
+        self.method = method.upper()
+        self.inject = inject
+        self._http_fn = http_fn
+        self._extra = dict(extra_params or {})
+        self._marker = "__HTBWEB_" + uuid.uuid4().hex[:8] + "_"
+        self.state = ShellState.CONNECTED if http_fn else ShellState.INIT
+        self.last_rc: int | None = None
+
+    @property
+    def alive(self) -> bool:
+        return self.state == ShellState.CONNECTED and self._http_fn is not None
+
+    def build_request(self, cmd: str) -> dict:
+        """명령을 지정 위치(query/body/header)에 넣은 HTTP 요청 사양을 만든다(생성 전용).
+        http_fn 이 이 dict 를 받아 실제 요청을 보낸다. 명령 자체는 호출측(run)에서 프레이밍됨."""
+        spec: dict = {"method": self.method, "url": self.url,
+                      "params": {}, "data": {}, "headers": {}}
+        if self.inject == "query":
+            spec["params"][self.cmd_param] = cmd
+            spec["params"].update(self._extra)
+        elif self.inject == "body":
+            spec["data"][self.cmd_param] = cmd
+            spec["data"].update(self._extra)
+        else:  # header
+            spec["headers"][self.cmd_param] = cmd
+            spec["params"].update(self._extra)
+        return spec
+
+    def attach(self, http_fn: Callable[[dict], str]) -> None:
+        """실제 HTTP 수행 콜러블을 주입해 CONNECTED 로 전이(사용자가 호출 — RCE 실행 표면)."""
+        self._http_fn = http_fn
+        self.state = ShellState.CONNECTED
+
+    def run(self, cmd: str) -> str:
+        if self._http_fn is None:
+            raise RuntimeError(
+                "웹 RCE http_fn 미주입 — 실제 HTTP 요청은 사용자 구현을 attach() 로 주입해야 함"
+                "(RCE 실행 표면). build_request() 로 요청 사양만 생성 가능.")
+        if self.state == ShellState.CLOSED:
+            raise RuntimeError("세션이 이미 종료됨")
+        spec = self.build_request(frame_command(cmd, self._marker))
+        raw = self._http_fn(spec)
+        body, rc = strip_marker(raw, self._marker)
+        self.last_rc = rc
+        return body
+
+    def close(self) -> None:
+        self.state = ShellState.CLOSED

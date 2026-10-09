@@ -2,6 +2,20 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.21] — 2026-10-09
+
+### 추가(Added) — 자동 루트 체인 C단계: 웹 RCE 명령 채널
+- **`shell_session.WebRceSession`**(생성 전용): PoC 가 노출한 'cmd= 엔드포인트'로 임의 명령을
+  실행하는 `ShellSession` 구현. 웹 RCE 는 SSH user:pass 가 아니라 **www-data 코드실행**을 주는
+  머신형 공략의 흔한 발판 — B의 리버스셸과 함께 '발판 채널'의 두 축.
+  - `build_request(cmd)` — 명령을 query/body/header 중 지정 위치에 넣은 HTTP 요청 사양 생성.
+  - 명령 프레이밍(완료 마커)·출력 파싱으로 HTML 에 섞인 출력에서도 본문·종료코드 추출.
+- **테스트**: `test_shell_session.py` WebRceSession(주입 위치·extra_params·미주입 거부·프레이밍) — 총 42.
+
+### 안전(Safety)
+- 실제 HTTP 요청은 **주입된 `http_fn(spec)` 가 수행**(= RCE 실행 표면, 사용자 구현). 이 클래스는
+  요청 사양·프레이밍·파싱만 만든다 — requests/urllib/http 미임포트. http_fn 미주입이면 run() 거부.
+
 ## [2.6.20] — 2026-10-09
 
 ### 추가(Added) — 자동 루트 체인 B단계: 발판 셸 세션 추상화
