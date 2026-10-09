@@ -2,6 +2,22 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.25] — 2026-10-09
+
+### 추가(Added) — 발판 성립 검증 헬퍼 (자동 루트 체인 보강 1)
+- **`session_verify.looks_like_shell(output)`**(생성 전용): `session.run("id")` 출력으로 **진짜
+  셸인지 헛발판인지** 판정하는 순수 predicate. WebRceSession 을 붙여도 해당 엔드포인트에 실제
+  RCE 가 성립 안 했으면 `run` 이 로그인 페이지 HTML·빈 응답을 돌려주는데(헛발판), 이를 걸러낸다.
+  - 생존 신호(`uid=…(…)`·`gid=…`·whoami 한 줄·`uname` Linux)만 True, HTML/form/빈 응답은 False,
+    애매하면 보수적으로 False(섣부른 '발판 확보' 금지).
+  - `verify_probe_command()` — 무해한 검증 프로브(`id; uname -a`) 문자열 생성.
+- **테스트**: `test_session_verify.py`(15) — 진짜 셸·헛발판·혼합·경계 자기점검.
+
+### 안전(Safety)
+- 파싱·판정만 — 실행 없음(subprocess/socket/requests 미임포트). 실제 `run("id")` 호출은
+  호출측(사용자 `_acquire_session`)의 몫(RCE 실행 표면). 헛발판이면 세션을 `None` 으로 폐기하는
+  데 쓴다: `if not looks_like_shell(ws.run(verify_probe_command())): return None`.
+
 ## [2.6.24] — 2026-10-09
 
 ### 수정(Fixed)
