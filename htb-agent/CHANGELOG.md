@@ -2,6 +2,19 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.32] — 2026-10-09
+
+### 수정(Fixed) — 발판 채널 의존성 크래시 안전 degrade
+- **`ModuleNotFoundError: requests` 로 실행 전체가 죽던 문제 수정**. ② `_foothold_stage` 배선
+  이후, 웹 RCE 전송부(`shell_transport.web_http_fn`, `requests` 의존)가 미설치 환경에서
+  import 되며 `--exploit-exec --auto-poc` 실행이 통째로 중단됐다(connected.htb 재실행에서 발현).
+- `_acquire_session` 이 `shell_transport` import 를 **try/except(ImportError)** 로 감싸, 미설치
+  시 크래시 대신 **'발판 미확보'로 안전하게 건너뛰고** 활성화 안내(`pip install requests` /
+  `pip install -e ".[exploit]"`)를 수동 제안에 남긴다. requests 가 있을 때의 동작은 불변.
+- `pyproject` 에 선택 의존성 그룹 **`exploit = ["requests>=2.25"]`** 추가(웹 RCE 채널용).
+- 회귀 테스트 `test_foothold_degrade.py`(5건): import 실패 시 크래시 없음·None 반환·안내 노출·
+  foothold_stage 조용한 종료.
+
 ## [2.6.31] — 2026-10-09
 
 ### 추가(Added) — ③ 발판 전 자격 수확(웹 노출 비밀/백업) + 폐루프
