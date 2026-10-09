@@ -446,33 +446,12 @@ class Orchestrator:
         if self.exploit_exec and not interrupted:
             self._exploit_exec_stage(report, host)
 
+        # PHASE 3.9(리버스쉘 준비) 직전: exploit-exec 발판 시도
+        if self.exploit_exec and not interrupted:
+            self._exploit_exec_stage(report, host)
+
         # ── PHASE 3.9: 리버스쉘 자동 준비 (공격자 IP 확보 시) ──
-        # 초기 침투에 바로 쓰도록 페이로드를 '자동 생성'해 리포트에 포함한다.
-        # 생성만 — 실행(셸 획득)은 사용자가 권한 확인 대상에서 직접(안전 경계 유지).
-            def _exploit_exec_stage(self, report, host):
-        if not self.exploit_exec or self.world is None or self.dry_run:
-            return
-        from .target_shell import FLAG_READS, PRIVESC_ENUM, SSHTargetShell, parse_cred
-        creds = []
-        for c in self.world.creds:
-            pc = parse_cred(c)
-            if pc and pc not in creds:
-                creds.append(pc)
-        if not creds:
-            self.audit.event("exploit_exec_skip", reason="no_plaintext_cred"); return
-        if host is not None and host.open_ports and 22 not in host.open_ports:
-            self.audit.event("exploit_exec_skip", reason="ssh_closed"); return
-        if not self.is_tool_available("sshpass"):
-            self.audit.event("exploit_exec_skip", reason="sshpass_missing"); return
-        target = str(self.guard.bound_target or self.guard.bound_host)
-        for user, pw in creds[:3]:
-            sh = SSHTargetShell(target, user, pw)
-            for rc in [*FLAG_READS, *PRIVESC_ENUM]:
-                if self._goal_reached(report) or self._time_up():
-                    return
-                self._attempt(report, report.enum_findings, sh.command(rc), phase="privesc")
-  
-       self._prepare_revshells(report)
+        self._prepare_revshells(report)
 
         # ── PHASE 3.95: AWS/S3 열거 자동 준비 (호스트명/도메인 확보 시) ──
         # 버킷 후보·비인증 점검을 자동 생성. AWS 엔드포인트는 타겟 범위 밖이라
@@ -1175,7 +1154,28 @@ class Orchestrator:
                 ids = " ".join(m.cve + m.cwe)
                 self.world.add_vuln(f"{m.name}" + (f" ({ids})" if ids else ""),
                                     source="버전 매칭(VulnKB)")
-
+    def _exploit_exec_stage(self, report, host):
+        if not self.exploit_exec or self.world is None or self.dry_run:
+            return
+        from .target_shell import FLAG_READS, PRIVESC_ENUM, SSHTargetShell, parse_cred
+        creds = []
+        for c in self.world.creds:
+            pc = parse_cred(c)
+            if pc and pc not in creds:
+                creds.append(pc)
+        if not creds:
+            self.audit.event("exploit_exec_skip", reason="no_plaintext_cred"); return
+        if host is not None and host.open_ports and 22 not in host.open_ports:
+            self.audit.event("exploit_exec_skip", reason="ssh_closed"); return
+        if not self.is_tool_available("sshpass"):
+            self.audit.event("exploit_exec_skip", reason="sshpass_missing"); return
+        target = str(self.guard.bound_target or self.guard.bound_host)
+        for user, pw in creds[:3]:
+            sh = SSHTargetShell(target, user, pw)
+            for rc in [*FLAG_READS, *PRIVESC_ENUM]:
+                if self._goal_reached(report) or self._time_up():
+                    return
+                self._attempt(report, report.enum_findings, sh.command(rc), phase="privesc")
     def _prepare_revshells(self, report: OrchestrationReport) -> None:
         """공격자 IP(VPN tun0 등)가 확보되면 리버스쉘 페이로드를 자동 생성해
         리포트에 담는다. 생성 전용 — 실행은 하지 않는다(안전 경계 유지).
