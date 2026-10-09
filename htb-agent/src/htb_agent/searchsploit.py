@@ -44,9 +44,10 @@ def parse_searchsploit(text: str) -> list[SploitHit]:
     seen: set[str] = set()
     for m in _ROW_RE.finditer(text):
         title = re.sub(r"\s+", " ", m.group(1)).strip()
-        # collapsed/raw 출력에서 우측 컬럼 헤더('Path'/'URL')·구분선 대시가 제목 앞에 붙을 수
-        # 있어 제거(제목 중간의 ' - ' 는 보존 — 선행만 정리).
-        title = re.sub(r"^(?:Exploit Title|Path|URL)\b\s*", "", title).lstrip("- ").strip()
+        # 요약 접두('searchsploit: N건 —')·항목 구분자(';')·컬럼 헤더('Path'/'URL')·구분선
+        # 대시가 제목 앞에 붙을 수 있어 제거(제목 중간의 ' - ' 는 보존 — 선행만 정리).
+        title = re.sub(r"^\s*searchsploit:\s*\d+\S*\s*—\s*", "", title)
+        title = re.sub(r"^(?:Exploit Title|Path|URL)\b\s*", "", title).lstrip(";- ").strip()
         locator = m.group(2).strip()
         if not title or title.lower() in _SKIP:
             continue
@@ -68,6 +69,12 @@ def _version_matches(hit_versions: list[str], target: str) -> bool:
         if n and tparts[:n] == hparts[:n]:
             return True
     return False
+
+
+def has_version_match(hits: list[SploitHit], version: str) -> bool:
+    """후보 중 '대상 버전'과 접두 호환되는 익스가 하나라도 있으면 True(⭐ 자동 선택 신뢰 조건).
+    버전 미상이면 False — 이때는 1순위를 함부로 '자동 선택'으로 표시하지 않는다."""
+    return bool(version) and any(_version_matches(h.versions, version) for h in hits)
 
 
 def shortlist(hits: list[SploitHit], version: str = "", limit: int = 6) -> list[SploitHit]:
