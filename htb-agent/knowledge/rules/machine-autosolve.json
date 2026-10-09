@@ -1,0 +1,59 @@
+[
+  {
+    "name": "서비스 버전 → 공개 익스 자동 식별(searchsploit)",
+    "when": { "ports": [21, 22, 25, 80, 139, 443, 445, 3306, 5985, 8080] },
+    "suggest": [
+      "searchsploit {product} {version}",
+      "searchsploit -w {product}"
+    ],
+    "note": "자율 풀이의 핵심 1단계 — 식별된 제품/버전({product} {version}, 배너·whatweb·nmap -sV 에서)을 searchsploit 로 조회해 '실행 가능한 공개 익스/PoC'를 특정한다. 결과 중 대상 버전에 맞는 것을 초기 침투 후보로 승격(실행은 게이트 통과). 버전 미상이면 whatweb -a3 / nmap -sV 로 먼저 확정. 일반 기법 — 관측된 서비스에만.",
+    "tags": ["enum", "exploit-id", "searchsploit", "autosolve"],
+    "phase": "enum"
+  },
+  {
+    "name": "확인된 CVE → 공개 PoC 매핑",
+    "when": { "ports": [80, 443, 8080, 445, 22] },
+    "suggest": [
+      "searchsploit --cve {cve}",
+      "curl -s 'https://api.github.com/search/repositories?q={cve}' | grep -o '\"full_name\":\"[^\"]*\"' | head"
+    ],
+    "note": "탐지된 CVE({cve}, VULN 단계 산출)에 대응하는 공개 PoC(exploit-db·GitHub)를 특정해 초기 침투 후보로 만든다. PoC 를 로컬에서 호출해 대상 서비스로 보내는 형태(원격 임의코드 아님). 버전·전제(인증 필요 여부)를 PoC README 로 확인 후 실행. 일반 기법.",
+    "tags": ["access", "exploit-id", "cve", "autosolve"],
+    "phase": "access"
+  },
+  {
+    "name": "FreePBX 관리패널 식별 → 버전·공개익스·기본자격",
+    "when": { "ports": [80, 443, 8080], "services": ["http", "https"] },
+    "suggest": [
+      "curl -sk -i https://{t}/admin/config.php",
+      "searchsploit freepbx",
+      "curl -sk 'https://{t}/admin/config.php' | grep -oiE 'freepbx[^<\"]*[0-9][0-9.]*'"
+    ],
+    "note": "FreePBX Administration 패널(/admin, 302→config.php)이 보이면 이 머신의 입구다. (1) 버전 문자열을 뽑아 searchsploit freepbx 로 알려진 RCE/인증우회(예: 구버전 framework RCE, recordings/ajax 류)를 대조, (2) 기본·약한 관리자 자격 점검. 버전 특정이 선행. 익스 확정 후 게이트 통과 실행. 일반 기법 — 관측된 패널에만.",
+    "tags": ["access", "freepbx", "web", "exploit-id", "autosolve"],
+    "phase": "access"
+  },
+  {
+    "name": "SSH 평문자격 발판 → user/root 플래그 읽기",
+    "when": { "ports": [22], "os": ["linux"] },
+    "suggest": [
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} 'cat /home/*/user.txt 2>/dev/null; cat ~/user.txt 2>/dev/null'",
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} 'cat /root/root.txt 2>/dev/null'"
+    ],
+    "note": "자격({user}/{pass}, 열거·크랙·수확으로 확보) + 22 개방이면 SSH 로 발판을 잡고 플래그를 직접 읽는다. user.txt / root.txt 를 '분리된 명령'으로 읽어 provenance 가 user/root 를 정확히 분류하게 한다(한 명령에 섞으면 둘 다 root 로 오분류). 자율 실행 엔진의 1순위 경로. 실행은 스코프·검증·승인 게이트 통과. 평문 자격 전용(해시 제외).",
+    "tags": ["access", "ssh", "flag", "foothold", "autosolve"],
+    "phase": "access"
+  },
+  {
+    "name": "SSH 발판 → 권한상승 자동 열거",
+    "when": { "ports": [22], "os": ["linux"] },
+    "suggest": [
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} 'id; sudo -n -l 2>/dev/null; sudo -l 2>/dev/null'",
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} 'find / -perm -4000 -type f 2>/dev/null; getcap -r / 2>/dev/null'",
+      "sshpass -p {pass} ssh -o StrictHostKeyChecking=no {user}@{t} 'uname -a; cat /etc/crontab 2>/dev/null'"
+    ],
+    "note": "발판 확보 후 권한상승 '열거'를 SSH 채널로 실행해, 결과(sudo 규칙·SUID·capabilities·cron·커널)를 LLM 루프에 넘겨 다음 수를 정한다. 열거만(파괴적 행위 없음) — GTFOBins 대조는 결과 기반. 실행은 게이트 통과. 자격({user}/{pass}) 확보 후.",
+    "tags": ["privesc", "ssh", "enum", "autosolve"],
+    "phase": "privesc"
+  }
+]

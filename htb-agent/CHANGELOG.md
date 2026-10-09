@@ -2,6 +2,15 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.1] — 2026-10-09
+
+### 추가(Added)
+- **머신형 자율 풀이 KB 경로**(`knowledge/rules/machine-autosolve.json`, 5규칙): 서비스
+  버전→공개 익스 자동 식별(searchsploit), 확인 CVE→공개 PoC 매핑, FreePBX 관리패널
+  식별(버전·익스·기본자격), SSH 평문자격 발판→user/root 플래그 읽기(분리 명령으로 kind
+  정확 분류), SSH 발판→권한상승 자동 열거. 자율 실행 루프가 '다음 익스/발판/플래그' 를
+  규칙으로 인지하게 해 산발적 시도를 줄인다. 모두 suggest(생성) — 실행은 게이트 통과.
+
 ## [2.6.0] — 2026-10-09
 
 완전 자동 흐름의 마찰 제거 — vhost 이름해석 자동화, VM 을 기본 실행환경으로 지정 가능,
