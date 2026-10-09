@@ -477,6 +477,35 @@ GitHub Actions **`KB 자동 승격`** (`.github/workflows/kb-auto-promote.yml`)
 assassin 10.129.1.5 --cred svc:Summer2024 --exploit-exec --autonomous
 ```
 
+### 10.3 PoC 자동 선택·발사(`--auto-poc`) — 발판까지 한 흐름(옵트인)
+
+`--exploit-exec` 와 **함께** 켜는 상위 옵션. 자격을 미리 주지 않아도, 핑거프린트된 웹앱 **버전에 맞는
+공개 PoC(⭐ 1순위)를 자동 선택**해 실행 큐에 올린다(①~③단계). 생성 전용 경계는 유지되며, 실제
+네트워크 발사는 전부 3관문을 거친다.
+
+> ⚠️ **현재 구현 범위(정직한 상태)** — 여기까지(⭐ PoC 자동 선택·발사 → 자격이 나오면 SSH 발판)가
+> 실제로 도는 흐름이다. 그 다음 단계인 **웹 RCE 발판 세션 → 설정/DB 자격 수확 → 플래그 읽기**(아래
+> `_foothold_stage`)는 코드에 **구현돼 있으나 아직 실행 루프에 배선되지 않았다**(정의만 됨, 호출 안 됨).
+> **측면 이동 후보(`lateral_candidates`)** 역시 생성 함수만 있고 자동 흐름에는 아직 연결되지 않았다.
+> 이 배선은 소켓/HTTP 를 직접 구동하는 **RCE 실행 표면**이라 운영 리포에서 사람이 연결한다(§10.3 비고).
+
+| 항목 | 내용 |
+|---|---|
+| 켜는 법 | `assassin <t> --exploit-exec --auto-poc` (보통 `--autonomous --llm claude` 와 함께) |
+| 지금 도는 것 | ⭐ 버전매칭 PoC 자동 선택·발사 → (PoC 가 자격을 뱉으면) SSH 발판 → 플래그 읽기 |
+| 아직 안 도는 것 | 웹 RCE 발판 세션(`_foothold_stage`) · 설정/DB 자격 수확 · 측면 이동 후보 — **정의만, 미배선** |
+| 발판 성립 검증 | 발판에서 `id`/`uname` 신호가 나와야 **진짜 셸**로 인정. 로그인 페이지 HTML·빈 응답 등 **헛발판은 버림** → 성립 안 하면 조용히 발판 미확보(섣부른 단정 없음) |
+| 채널(설계) | 웹 RCE(`cmd=` 엔드포인트) — `_acquire_session` 에 웹 RCE 분기만 활성(역쉘 수신 경로는 실제 경로 확인 후 재추가 예정), 모두 같은 `ShellSession` 인터페이스 |
+| 승인 | `--autonomous` 와 함께면 무프롬프트, 없으면 각 명령 y/n. 권한 확인 대상 전용 |
+| 비고 | 발판 채널의 실제 네트워크 실행부(소켓/HTTP)는 **RCE 실행 표면**이라 운영 리포에서 연결한다(`shell_transport`/`_acquire_session`, 그리고 `_foothold_stage` 호출 배선). 미연결이면 발판 미확보로 안전하게 끝남 |
+
+```bash
+# 🚀 완전 자동 루트 시도(초보자용 한 줄): 정찰→버전→⭐PoC 자동선택→발판→플래그 + 결과물 저장
+assassin 10.129.1.5 --autonomous --llm claude --exploit-exec --auto-poc --html --json
+```
+플래그 뜻 — `--autonomous`(무프롬프트 완전자동) · `--llm claude`(Claude 두뇌) · `--exploit-exec`(발판
+실제 실행 켜기) · `--auto-poc`(⭐ PoC 자동 선택·발사) · `--html`/`--json`(대시보드·기계판독 결과 저장).
+
 > ⚠️ 권한이 확인된 대상(HTB·인가된 진단)에서만. 자격·대상 모두 범위 가드의 통제를 받는다.
 
 ---

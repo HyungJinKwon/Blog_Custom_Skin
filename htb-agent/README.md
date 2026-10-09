@@ -8,6 +8,28 @@
 레드팀 학습·모의해킹·CTF 연습용. **권한이 확인된 대상에 한정**해 동작하는,
 승인제(Human-in-the-loop) 자동 풀이 보조 에이전트. **명령은 `assassin`** (`htb-agent` 는 하위호환 별칭).
 
+### ⚡ 모드 한눈에 (자주 쓰는 명령)
+
+| 상황 | 명령 |
+|---|---|
+| 처음 써 보기(위험한 것만 확인) | `assassin 10.129.1.5` |
+| 모든 명령 보며 배우기 | `assassin 10.129.1.5 --manual` |
+| 해커톤(최대 자율+시간제한) | `assassin 10.129.1.5 --autonomous --time-budget 45 --writeup --html` |
+| 샌드박스에서 실제 익스까지 | `assassin 10.129.1.5 --autonomous --sandbox docker --llm hybrid` |
+| 🚀 완전 자동 루트 시도(발판·플래그까지) | `assassin 10.129.1.5 --autonomous --llm claude --exploit-exec --auto-poc --html --json` |
+| CTF/Dreamhack 문제 | `assassin chall.host:1337 --platform ctf --category web` |
+
+### 📚 문서 안내
+
+| 문서 | 내용 |
+|---|---|
+| [docs/QUICKSTART.md](docs/QUICKSTART.md) | 1쪽 빠른 시작(설치·상황별 한 줄·화면 읽는 법) — **처음이라면 여기부터** |
+| [docs/USAGE.md](docs/USAGE.md) | 전체 사용법(설치·모드·플랫폼·발판 실행·산출물·트러블슈팅) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 구조·다이어그램·모듈 지도 |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) · [docs/VALIDATION.md](docs/VALIDATION.md) | 운영 / Kali 수용 테스트 |
+
+> 아래는 모드별 상세 설명입니다. 바로 실행하려면 위 표 또는 QUICKSTART 로 충분합니다.
+
 **플랫폼 프로파일** `--platform {htb,dreamhack,ctf}`:
 - `htb` (기본): HTB VPN 대역 강제 · boot2root(user.txt/root.txt, 32-hex/HTB{})
 - `dreamhack` / `ctf`: 챌린지 단일 타겟(host:port/URL) 바인딩 · Jeopardy 단일 플래그
@@ -53,16 +75,31 @@
 > **발판 자동 실행(`--exploit-exec`, 옵트인·기본 OFF)**: 확보한 **평문 자격**(열거로 나오거나
 > `--cred user:pass` 로 직접 준 것)으로 **SSH 발판을 잡아 `user.txt`/`root.txt` 를 자동으로 읽고**,
 > 권한 상승 **열거**(`id`·`sudo -l`·SUID·capabilities — 파괴 없음)까지 기존 3관문(검증·범위·승인)을
-> 거쳐 실행합니다. 침입(익스플로잇)은 아직 자동화하지 않으며(자격이 이미 있는 Easy 머신용),
-> 해시·빈 값은 건너뜁니다. `--autonomous` 와 함께면 무프롬프트, 없으면 각 명령 y/n.
+> 거쳐 실행합니다. 해시·빈 값은 건너뜁니다. `--autonomous` 와 함께면 무프롬프트, 없으면 각 명령 y/n.
 > **플래그를 확보하면** 결과 맨 끝에 **`🏁 다 풀었다(SOLVED)`** 패널이 떠 user.txt/root.txt(또는
 > 단일 플래그) **값을 크게 보여 주고 출처(공략 유래=검증)를 함께 표시**합니다. 22 번 닫힘·자격 없음·
 > `sshpass` 미설치면 조용히 건너뜁니다. `--exploit-exec` 없으면 동작은 지금과 100% 동일합니다.
 >
+> **PoC 자동 선택·발사(`--auto-poc`, `--exploit-exec` 와 함께·옵트인)**: 핑거프린트된 웹앱 버전에
+> **맞는 공개 PoC(⭐ 1순위)를 자동 선택**해 실행 큐에 올리고, PoC 가 자격을 뱉으면 **SSH 발판**으로
+> 접속해 플래그 읽기까지 잇습니다. 발판이 **실제로 성립했는지 검증**(`id`/`uname` 신호)해 헛발판은
+> 버리므로, 성립 안 하면 조용히 발판 미확보로 끝납니다(섣부른 단정 없음). 권한 확인 대상 전용.
+> ⚠️ 그 다음 단계인 **웹 RCE 발판 → 설정/DB 자격 수확 → 측면 이동**은 코드에 **정의돼 있으나 아직
+> 실행 루프에 배선되지 않았습니다**(`_foothold_stage`·`lateral_candidates`). 이 배선과 발판 채널의
+> 실제 네트워크 실행부(소켓/HTTP)는 **RCE 실행 표면**이라 사용자 리포에서 연결합니다 — 자세히는
+> [docs/USAGE.md §10.3](docs/USAGE.md).
+>
 > ```bash
 > # 자격을 확보한 Easy 머신 → 접속·플래그 읽기·권한상승 열거까지 자동, SOLVED 화면에 값 출력
 > assassin 10.129.1.5 --cred svc:Summer2024 --exploit-exec --autonomous
+>
+> # 🚀 완전 자동 루트 시도(초보자용 한 줄): 정찰→버전→⭐PoC 자동선택→발판→플래그까지 + 결과물 저장
+> assassin 10.129.1.5 --autonomous --llm claude --exploit-exec --auto-poc --html --json
 > ```
+>
+> 위 한 줄의 플래그 뜻 — `--autonomous`(무프롬프트 완전자동) · `--llm claude`(Claude 두뇌) ·
+> `--exploit-exec`(발판 실제 실행 켜기) · `--auto-poc`(⭐ PoC 자동 선택·발사) ·
+> `--html`/`--json`(대시보드·기계판독 결과 저장).
 
 ---
 
