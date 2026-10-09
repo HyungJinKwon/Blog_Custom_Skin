@@ -252,6 +252,7 @@ class Orchestrator:
         # 계획 미리보기: 정찰·분석은 하되 제안된 enum/LLM/파일 명령은 '실행하지 않고' 보여만 준다.
         self.dry_run = dry_run
         self.exploit_exec = exploit_exec
+        self._exploit_looked_up: set[str] = set()   # 제품별 공개 익스 조회 1회 가드
 
     def run(self) -> OrchestrationReport:
         # 경과 시간은 정찰부터 포함, 마감 확인은 스윕 루프에서(정찰은 유한 폴백으로 별도 관리)
@@ -353,6 +354,9 @@ class Orchestrator:
                 # 지금까지의 출력에서 취약점(CVE/CWE·버전 매칭)을 먼저 반영 — 학습·분석·
                 # 명령 생성이 '확인 취약점'을 보고 판단하도록(이전엔 루프가 끝난 뒤에야 계산)
                 self._run_vuln(report, host, target)
+                # 3단계 기반: 핑거프린트된 웹앱 제품에 맞는 공개 익스 '조회'(searchsploit)를
+                # 게이트로 올린다(제품당 1회). 조회·무해 — 익스 실행 아님. 결과는 다음 분석에 되먹임.
+                self._exploit_lookup_stage(report)
                 # 자율 지식 획득: 관측된 기술 중 '모르는 것'을 권위 출처에서 자동 학습해
                 # KB 에 즉시 반영한다(이후 분석가·명령생성이 바로 활용). P1 유지.
                 self._acquire_knowledge(report, host, prof)
@@ -1187,6 +1191,29 @@ class Orchestrator:
                 ids = " ".join(m.cve + m.cwe)
                 self.world.add_vuln(f"{m.name}" + (f" ({ids})" if ids else ""),
                                     source="버전 매칭(VulnKB)")
+    def _exploit_lookup_stage(self, report: OrchestrationReport, phase: str = "access") -> None:
+        """핑거프린트된 웹앱 제품(world.web_product)에 맞는 공개 익스 '조회' 명령
+        (searchsploit)을 게이트로 올린다. 조회·로컬·무해 — 익스 실행이 아니다(생성 경계).
+        제품당 1회만(멱등). 조회 결과(버전별 공개 익스 목록)는 enum_findings 에 남아 다음
+        분석·명령 생성에 되먹여진다. 특정된 PoC 는 대상 버전 대조 후 사람/LLM 이 골라 실행."""
+        if self.world is None:
+            return
+        prod = self.world.web_product
+        if not prod or prod in self._exploit_looked_up:
+            return
+        from .exploits import lookups_for
+        cmds = lookups_for(prod)
+        if not cmds:
+            return
+        self._exploit_looked_up.add(prod)
+        for cmd in cmds:
+            if self._goal_reached(report) or self._time_up():
+                break
+            self._attempt(report, report.enum_findings, cmd, phase=phase)
+        report.manual_suggestions.append(
+            f"# {prod} 공개 익스 후보 — searchsploit 결과에서 '대상 버전'에 맞는 PoC 를 "
+            f"골라 3관문(검증·범위·승인)으로 실행하세요(권한 확인 대상 전용)")
+
     def _exploit_exec_stage(self, report, host):
         if not self.exploit_exec or self.world is None or self.dry_run:
             return
