@@ -43,8 +43,26 @@ _HELP_EPILOG = """\
 """
 
 
+class _SuggestingParser(argparse.ArgumentParser):
+    """알 수 없는 옵션에 '가장 가까운 실제 옵션'을 제안(초보자 오타 바로잡기). 예:
+    'assassin 10.129.1.5 --prt' → "'--prt' → 혹시 '--port'?" """
+    def error(self, message):   # noqa: A003 (argparse 시그니처)
+        if message.startswith("unrecognized arguments:"):
+            import difflib
+            opts = [o for a in self._actions for o in a.option_strings]
+            hints = []
+            for tok in message.split(":", 1)[1].split():
+                if tok.startswith("-"):
+                    near = difflib.get_close_matches(tok, opts, n=1, cutoff=0.6)
+                    if near:
+                        hints.append(f"'{tok}' → 혹시 '{near[0]}'?")
+            if hints:
+                message += "\n  " + " · ".join(hints) + "   (전체 옵션: assassin --help)"
+        super().error(message)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
+    p = _SuggestingParser(
         prog="assassin",
         usage="assassin <타겟> [옵션]      (처음이면: assassin --doctor)",
         description="ASSASSIN — HTB·CTF 승인제 자동 풀이 에이전트 (Kali). 권한이 확인된 대상에서만 사용하세요.",

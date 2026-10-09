@@ -4,6 +4,10 @@
 
 ## [미출시]
 
+### 추가 (초보자 친화)
+- **오타 옵션 제안**: 알 수 없는 CLI 옵션에 `difflib`로 가장 가까운 실제 옵션을 제안
+  (예: `--prt` → "혹시 `--lport`?"). 거리가 먼 오타엔 제안하지 않음. `argparse` 기본 오류를 보강.
+
 ### 추가 (툴·방법론 보강)
 - **틈새 기법 일반 규칙**(`knowledge/rules/niche-techniques.json`): AD CS 취약 템플릿 탐색(certipy
   ESC)·NoSQL 인젝션·JWT 약점(alg none/키 혼동) — 서비스 키 기반 정석 규칙. 모두 관측 타겟 한정.
