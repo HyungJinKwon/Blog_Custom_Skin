@@ -2,6 +2,16 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.10] — 2026-10-09
+
+### 수정(Fixed)
+- **searchsploit 결과가 200자 트렁케이트로 날아가 PoC 후보가 안 뽑히던 문제**: 실전에서
+  `🎯 익스플로잇 후보` 묶음에 note 만 뜨고 ⭐ PoC 후보 목록이 비었다. 원인은 요약기 폴백이
+  모든 출력을 200자로 자르는데, searchsploit 표는 헤더 뒤 익스 행('제목 | 경로')이 그 뒤에
+  있어 통째로 잘렸던 것. `summarize_tool_output` 에 **searchsploit 전용 요약**을 추가해
+  `제목 | 경로` 쌍을 보존(상위 12건) → 하류 `_exploit_lookup_stage` 가 재파싱해 ⭐ 1순위·후보
+  목록을 정상 표시한다. 화면 요약도 더 읽기 쉬워짐(`searchsploit: N건 — …`).
+
 ## [2.6.9] — 2026-10-09
 
 실전(connected.htb) 피드백 — PoC 후보가 터미널에 안 보이고, 요약된 출력에서 파싱이 어긋나던

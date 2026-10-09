@@ -76,6 +76,16 @@ def summarize_tool_output(cmd: str, stdout: str, stderr: str = "") -> str:
             r = parse_nxc_smb(stdout)
             if r.info:
                 return r.summary()
+        elif binary == "searchsploit":
+            # 기본 200자 트렁케이트는 익스 행('제목 | 경로')을 통째로 날린다 → 전용 요약으로
+            # 쌍을 보존한다(하류 _exploit_lookup_stage 가 이 요약을 재파싱해 PoC 후보를 추림).
+            from ..searchsploit import parse_searchsploit
+            hits = parse_searchsploit(stdout)
+            if hits:
+                shown = hits[:12]
+                body = "; ".join(f"{h.title} | {h.locator}" for h in shown)
+                more = f" …(+{len(hits) - 12})" if len(hits) > 12 else ""
+                return f"searchsploit: {len(hits)}건 — {body}{more}"
     except Exception:
         pass  # 파서 예외는 폴백으로 흡수(출력을 숨기지 않음)
     return _truncate(stdout, stderr)
