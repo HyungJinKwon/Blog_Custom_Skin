@@ -13,8 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 python3-pip python3-venv python3-requests python3-pwntools python3-pycryptodome \
         nmap curl wget netcat-openbsd socat dnsutils whatweb nikto \
         ffuf gobuster feroxbuster seclists sqlmap \
-        smbclient smbmap ldap-utils snmp ftp rsync redis-tools default-mysql-client postgresql-client \
-        netexec impacket-scripts enum4linux-ng sshpass openssh-client \
+        smbclient smbmap ldap-utils snmp onesixtyone ftp telnet rsync nfs-common redis-tools \
+        default-mysql-client postgresql-client \
+        netexec impacket-scripts enum4linux-ng evil-winrm bloodhound.py hydra wpscan sshpass openssh-client \
         gdb radare2 ltrace strace patchelf \
         binwalk foremost exiftool steghide tshark \
         john hashcat \

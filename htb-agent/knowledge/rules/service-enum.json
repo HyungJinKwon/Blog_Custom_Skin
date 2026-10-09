@@ -1,0 +1,36 @@
+[
+  {
+    "name": "NFS export 열거(showmount)",
+    "when": { "ports": [2049, 111], "services": ["nfs", "rpcbind", "nfs_acl", "mountd"] },
+    "suggest": [
+      "showmount -e {t}",
+      "nmap -p111,2049 -sV --script nfs-showmount,nfs-ls,nfs-statfs {t}"
+    ],
+    "note": "NFS(2049)·portmapper(111) 노출 시 export 된 공유를 showmount -e 로 열거한다. 접근 가능 export 는 'mkdir /mnt/nfs && mount -t nfs {t}:<export> /mnt/nfs -o nolock' 로 마운트해 파일·키·설정을 확인(수동). no_root_squash 설정이면 로컬 권한상승 단서가 될 수 있다. 일반 기법 — 관측된 export 명만 대상으로.",
+    "tags": ["nfs", "enum", "anon"],
+    "phase": "enum"
+  },
+  {
+    "name": "SNMP 커뮤니티 열거(snmpwalk/onesixtyone)",
+    "when": { "ports": [161], "services": ["snmp"] },
+    "suggest": [
+      "onesixtyone {t} public",
+      "snmpwalk -v2c -c public {t}",
+      "nmap -sU -p161 -sV --script snmp-info,snmp-processes,snmp-netstat {t}"
+    ],
+    "note": "UDP 161 SNMP 는 기본 커뮤니티 문자열(public/private)로 대량 정보(프로세스·사용자·네트워크·설치 SW)를 노출할 수 있다. onesixtyone 으로 커뮤니티 추정 → snmpwalk 로 MIB 전개. 유출된 프로세스 인자에 평문 자격이 섞여 있는 경우가 흔하다. 일반 기법.",
+    "tags": ["snmp", "enum", "default-cred"],
+    "phase": "enum"
+  },
+  {
+    "name": "WordPress 열거(wpscan)",
+    "when": { "ports": [80, 443, 8080], "services": ["http", "https"] },
+    "suggest": [
+      "wpscan --url http://{t}/ --enumerate u,vp,vt --no-banner",
+      "curl -s http://{t}/wp-login.php -o /dev/null -w '%{http_code}\\n'"
+    ],
+    "note": "WordPress(/wp-login.php·/wp-content 노출) 확인 시 wpscan 으로 사용자·취약 플러그인/테마를 열거한다. API 토큰 없이도 사용자 열거·버전 매칭 가능. 열거된 사용자 + 약한 비밀번호는 wpscan --passwords 로 점검(수동, 레이트리밋 유의). 일반 기법 — 관측된 호스트에만.",
+    "tags": ["http", "wordpress", "cms", "enum"],
+    "phase": "enum"
+  }
+]

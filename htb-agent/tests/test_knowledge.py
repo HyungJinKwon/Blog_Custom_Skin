@@ -98,5 +98,17 @@ with tempfile.TemporaryDirectory() as d:
           and any("정상 노트" in n for n in kb.notes))
     check("cp949 규칙 파일 → 경고 후 건너뜀", any("r.json" in w for w in kb.warnings))
 
+print("\n=== 서비스 열거 일반 규칙(service-enum.json) 로드·질의 ===")
+# 라이트업 역량 공백 분석으로 신설한 머신 비의존 정석 규칙(NFS·SNMP·WordPress).
+if os.path.isdir("knowledge"):
+    rkb = KnowledgeBase.load(base_dir="knowledge")
+    nfs = rkb.query("linux", [2049], ["nfs"], phase="enum")
+    snmp = rkb.query("linux", [161], ["snmp"], phase="enum")
+    check("NFS export 열거 규칙 질의됨", any("showmount" in r.rule_name or "NFS" in r.rule_name for r in nfs))
+    check("SNMP 커뮤니티 열거 규칙 질의됨", any("SNMP" in r.rule_name for r in snmp))
+    check("WordPress 규칙 존재", any("WordPress" in r.name for r in rkb.rules))
+else:
+    check("knowledge 디렉터리 없음 — 스킵(비레포 실행)", True)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
