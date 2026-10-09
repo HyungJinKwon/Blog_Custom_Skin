@@ -293,8 +293,36 @@ def render_summary(report) -> str:
             rest = len(items) - min(len(shown), _MANUAL_SHOW)
             if rest > 0:
                 lines.append("    " + ui.dim(f"… 외 {rest}개 (옵션 변형 포함) — 전체 목록: --html / --json 리포트"))
+    solved = render_solved(report)
+    if solved:
+        lines.append("\n" + solved)
     lines.append("\n" + report.glance())
     return "\n".join(lines)
+
+
+def render_solved(report) -> str | None:
+    """'다 풀었다(SOLVED)' 결과 패널 — 목표 달성 시 저장된 플래그 값을 크게 보여 준다.
+      · single(Jeopardy): 플래그 1개 획득 시
+      · boot2root      : user.txt + root.txt 둘 다 획득 시
+    미달성이면 None(패널 미표시). 값은 report.flags(저장 상태에서 복원됨)에서 읽는다."""
+    from . import ui
+    if report.flag_kind == "single":
+        if not report.flags:
+            return None
+        rows = [ui.kv("flag", ui.flag(report.flags[0].value), 9)]
+    else:
+        uf, rf = report.user_flag, report.root_flag
+        if not (uf and rf):
+            return None
+        rows = [ui.kv("user.txt", ui.flag(uf), 9),
+                ui.kv("root.txt", ui.flag(rf), 9)]
+    # 출처(정직성) — 전부 공략 유래면 '검증', 아니면 사람 확인 표식을 덧붙인다.
+    provs = {p.verdict for p in report.flag_provenance}
+    if provs and provs <= {"exploit-derived"}:
+        rows.append(ui.dim("출처: 공략 유래(검증) — 대상 상호작용 출력에서 추출"))
+    elif provs:
+        rows.append(ui.mark_warn("출처: 일부 '사람 확인' 필요 — 🔎 PROVENANCE 참고"))
+    return ui.panel("🏁 다 풀었다 (SOLVED)", rows, style="accent")
 
 
 def _compact_manual(items: list[str]) -> list[str]:
