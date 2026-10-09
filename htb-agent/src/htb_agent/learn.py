@@ -228,7 +228,7 @@ class LearnResult:
         return "\n".join(lines)
 
 
-def _default_fetcher(timeout: int = 6) -> Callable[[str], str | None]:
+def _default_fetcher(timeout: int = 10) -> Callable[[str], str | None]:
     def _get(url: str) -> str | None:
         from .util import network_blocked
         if network_blocked():
@@ -470,7 +470,7 @@ def _skip_rfc_header(t: str) -> str:
 class ReferenceLearner:
     def __init__(self, cache_dir: str = "knowledge/notes/learned",
                  fetch_fn: Callable[[str], str | None] | None = None,
-                 enabled: bool = True, timeout: int = 6):
+                 enabled: bool = True, timeout: int = 10):
         self.cache_dir = cache_dir
         self.enabled = enabled
         self.fetch = fetch_fn or _default_fetcher(timeout)
