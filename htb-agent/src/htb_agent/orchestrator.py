@@ -258,6 +258,7 @@ class Orchestrator:
         self.auto_poc = auto_poc
         self._exploit_looked_up: set[str] = set()   # 제품별 공개 익스 조회 1회 가드
         self._version_probed: set[str] = set()       # 제품별 버전 노출 프로브 1회 가드
+        self._web_secret_probed: set[str] = set()     # 웹 노출 비밀/백업 열거 1회 가드(베이스별)
         self.poc_commands = poc_commands or []
 
     def run(self) -> OrchestrationReport:
@@ -367,6 +368,9 @@ class Orchestrator:
                 # 3단계 기반: 핑거프린트된 웹앱 제품에 맞는 공개 익스 '조회'(searchsploit)를
                 # 게이트로 올린다(제품당 1회). 조회·무해 — 익스 실행 아님. 결과는 다음 분석에 되먹임.
                 self._exploit_lookup_stage(report, host)
+                # 발판 전 자격 수확: 웹 노출 비밀/백업 파일을 읽기전용 GET 으로 열거(호스트당 1회).
+                # 무해 — 본문에서 자격이 나오면 _harvest_creds 가 world 에 반영 → ①(b) 인증 PoC 폐루프.
+                self._web_secret_stage(report, host)
                 # 자율 지식 획득: 관측된 기술 중 '모르는 것'을 권위 출처에서 자동 학습해
                 # KB 에 즉시 반영한다(이후 분석가·명령생성이 바로 활용). P1 유지.
                 self._acquire_knowledge(report, host, prof)
@@ -776,8 +780,14 @@ class Orchestrator:
 
     def _harvest_creds(self, stdout: str, cmd: str, finding: EnumFinding) -> None:
         """출력에서 고신뢰 평문 자격을 수확한다. 월드엔 모두 반영(권한레벨 상승 →
-        A1 재진입 활성화), 실행 볼트엔 셸-안전한 값만 추가(인젝션 차단). 중복은 무시."""
-        pairs = harvest_creds(stdout)
+        A1 재진입 활성화), 실행 볼트엔 셸-안전한 값만 추가(인젝션 차단). 중복은 무시.
+        일반 harvest 에 더해, 노출된 설정파일 본문(FreePBX amportal 의 AMPDBUSER/AMPDBPASS 등
+        제품 특수 키)도 파싱한다 — 웹 노출 설정/백업에서 발판 전에 자격을 얻기 위함."""
+        from . import cred_sources
+        pairs = list(harvest_creds(stdout))
+        for _u, _p, _lbl in cred_sources.parse_config_creds(stdout):
+            if (_u, _p) not in pairs:
+                pairs.append((_u, _p))
         if not pairs:
             return
         from .creds import Credential
@@ -1269,6 +1279,32 @@ class Orchestrator:
                 self._attempt(report, report.enum_findings, cmd, phase=phase)
         # 프로브 출력에서 버전 즉시 추출(다음 _run_vuln 을 기다리지 않고 이번 스윕에 반영).
         self._run_vuln(report, host, self.world.target)
+
+    def _web_secret_stage(self, report: OrchestrationReport,
+                          host: NmapHost | None = None, phase: str = "access") -> None:
+        """웹 노출 비밀/백업 파일을 '읽기 전용 GET'으로 열거 → 발판 전에 HTTP 로 자격 수확.
+        무해한 curl -s 만 생성해 3관문에 올린다(gobuster/curl 열거와 동일 위험군, 실행 아님).
+        본문→자격 추출은 기존 _harvest_creds 가 원시출력에서 수행 → world.creds 에 반영되면
+        ①(b) 가 인증 필요 PoC 를 자동 발사 큐에 올릴 수 있다(자격 선확보 폐루프). 호스트당 1회.
+
+        공격 지향 열거라 자동 루트 시도(--exploit-exec/--auto-poc) 때만 돈다 — 기본·순수 정찰
+        모드의 명령 폭·예산을 늘리지 않기 위함(옵트인)."""
+        if host is None or self.world is None:
+            return
+        if not (self.exploit_exec or self.auto_poc):
+            return
+        bases = self._web_bases(host)
+        if not bases:
+            return
+        key = ",".join(sorted(bases))
+        if key in self._web_secret_probed:
+            return
+        self._web_secret_probed.add(key)
+        from .web_secrets import secret_read_commands
+        for cmd in secret_read_commands(bases, self.world.web_product or ""):
+            if self._goal_reached(report) or self._time_up():
+                break
+            self._attempt(report, report.enum_findings, cmd, phase=phase)
 
     def _exploit_lookup_stage(self, report: OrchestrationReport,
                               host: NmapHost | None = None, phase: str = "access") -> None:
