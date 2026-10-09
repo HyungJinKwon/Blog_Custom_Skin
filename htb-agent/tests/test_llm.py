@@ -93,5 +93,46 @@ orc = Orchestrator(guard(), FakeRunner(runner_responder), KnowledgeBase.load(),
 rep = orc.run()
 check("LLM 오류 시 graceful", rep.status == "done" and any("LLM 제안 실패" in s for s in rep.manual_suggestions))
 
+print("\n=== ① 분석가 티어 적응화: 첫 분석(기록 없음)은 STRONG ===")
+# analyze 호출(분석가 시스템 프롬프트)만 티어를 기록한다. 첫 분석은 가설 기록이 없어 STRONG.
+seen_analyst_tiers = []
+def tier_responder(system, user, tier, max_tokens=1024, tools=None):
+    from htb_agent.llm.base import LLMResponse
+    if "분석가" in system:
+        seen_analyst_tiers.append(tier)
+        return LLMResponse(text="가설:\n  H1 [우선:상] 테스트 — 근거 〔추정〕\n확신도: 중", model="m")
+    return LLMResponse(text="curl -i http://{t}/a", model="m")
+orc = Orchestrator(guard(), FakeRunner(runner_responder), KnowledgeBase.load(),
+                   auto_approve_in_scope, llm_router=LLMRouter(FakeProvider(tier_responder)),
+                   is_tool_available=ALL)
+orc.run()
+check("첫 분석가 호출은 STRONG(opus) 티어",
+      bool(seen_analyst_tiers) and seen_analyst_tiers[0] == Tier.STRONG)
+
+print("\n=== ④ 모든 가설 막힘이면 투기적 LLM 라운드 건너뜀 ===")
+from htb_agent.hypotheses import HypothesisLedger
+led = HypothesisLedger(replan_after=1)
+led.apply_text('가설기록: {"hypotheses":[{"id":"H1","text":"x","priority":"상",'
+               '"status":"testing","check":"c","expected":"sig","fallback":"f"}]}')
+led.record("H1", "cmd", "", ran=True, target_rejected=True)   # 대상 거부 → miss(replan_after=1 → 막힘)
+check("H1 막힘 처리", bool(led.stuck()) and led.focus() is None and bool(led.items))
+
+print("\n=== 캐시 친화: 시스템 프롬프트 고정 + 라운드 상한은 사용자 프롬프트로 ===")
+# suggest 가 호출마다 변하는 잔여 예산(max_items)을 시스템 프롬프트에 박지 않는다(ephemeral 캐시 적중).
+seen_systems = []
+def cap_responder(system, user, tier, max_tokens=1024, tools=None):
+    seen_systems.append(system)
+    from htb_agent.llm.base import LLMResponse
+    return LLMResponse(text="curl -i http://{t}/a", model="m")
+cap_router = LLMRouter(FakeProvider(cap_responder), max_items=5)
+cap_router.suggest_commands({}, "10.129.1.5", max_items=2)
+cap_router.suggest_commands({}, "10.129.1.5", max_items=4)
+check("시스템 프롬프트는 라운드 상한과 무관하게 동일(캐시 적중)",
+      len(seen_systems) == 2 and seen_systems[0] == seen_systems[1])
+
+from htb_agent.llm.router import LLMRouter as _LR
+up = _LR._user_prompt({}, "10.129.1.5", round_limit=2)
+check("라운드 상한은 사용자 프롬프트에 명시", "최대 2개" in up)
+
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

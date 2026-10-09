@@ -826,8 +826,14 @@ class Orchestrator:
             "stuck": [h.id for h in report.plan.stuck()],
             **self._exec_context(),
         }
+        # 분석가 티어 적응화: 추론 난이도가 높은 국면(첫 분석=기록 없음 · 막힌 가설 존재 ·
+        # 직전 확신도 낮음)에만 STRONG(opus), 평상시 갱신은 STANDARD(sonnet)로 비용 절감.
+        from .llm.base import Tier
+        hard = (not context["ledger"] or bool(context["stuck"])
+                or self._low_confidence(report))
+        tier = Tier.STRONG if hard else Tier.STANDARD
         try:
-            text = self.llm_router.analyze(context, target)
+            text = self.llm_router.analyze(context, target, tier=tier)
         except Exception as e:   # 분석 실패는 전체를 깨지 않는다
             self.audit.event("analyst_error", error=str(e))
             return
@@ -854,6 +860,13 @@ class Orchestrator:
         # 라운드 사이에 가설이 확인·기각·막힘이 되었으면 여기서 재계획(지문 기준, 변화 없으면 생략)
         self._refresh_analysis(report, prof, host, target)
         focus = report.plan.focus()
+        # ④ 논리적 흐름: 가설 원장이 있는데 쫓을 대상이 하나도 없고(focus 없음) 모든 열린
+        # 가설이 '막힘'이면, 같은 상태에서 투기적 LLM 제안을 또 돌리지 않는다(토큰 낭비 방지).
+        # KB 열거는 계속 돌고, 다음 스윕에서 상태가 자라면 분석가가 가설을 다시 연다.
+        if report.plan.items and focus is None and report.plan.stuck():
+            self.audit.event("llm_round_skipped", phase=phase,
+                             reason="all-hypotheses-stuck")
+            return 0
         services = [p.service for p in host.ports if p.state == "open" and p.service]
         recs = self.kb.query(prof.os_class.value, host.open_ports, services, phase=phase)
         prior = [f"{f.command} => {f.output}"
@@ -904,6 +917,10 @@ class Orchestrator:
             return 0
         meta = getattr(self.llm_router, "last_meta", {}) or {}
         attempted = 0
+        # 예산·중복·목표 선검사로 이번 라운드에 돌릴 후보를 모은다. 파일 액션(익스플로잇·솔버
+        # 스크립트)은 다단계일 수 있어 '순차'로, 파일 없는 일반 프로브는 enum 과 동일하게 '병렬'로.
+        files: list[tuple[str, dict]] = []
+        plain: list[tuple[str, dict]] = []
         for cmd in cmds:
             m = meta.get(cmd) or {}
             # 같은 실행 명령이라도 스크립트 본문이 바뀌었으면 새 시도(익스플로잇 반복 개선)
@@ -917,29 +934,52 @@ class Orchestrator:
             if attempted >= budget or self._goal_reached(report):
                 break
             seen.add(key)
-            written: str | None = ""
-            if m.get("file"):
-                written = self._write_file_action(report, cmd, m["file"])
-                if written is None:      # 파일을 못 쓰면 그 파일을 실행하는 명령도 돌리지 않음
-                    continue
-            n_before = len(report.llm_findings)
-            self._attempt(report, report.llm_findings, cmd, phase)
-            if written and len(report.llm_findings) > n_before:
-                f0 = report.llm_findings[-1]
-                f0.note = (f0.note + " · " if f0.note else "") + f"📝 파일 작성: {written}"
-            # B4: 구조화 출력의 가설·근거를 finding 비고에 덧붙임(어느 가설을 검증했는지 추적)
-            tags = [t for t in (("가설 " + m["hypothesis"]) if m.get("hypothesis") else "",
-                                ("근거: " + m["rationale"]) if m.get("rationale") else "") if t]
-            if report.llm_findings:
-                f = report.llm_findings[-1]
-                sig = self._record_signal(report, f, m, focus)
-                if sig:
-                    tags.append(sig)
-                if tags:
-                    f.note = (f.note + " · " if f.note else "") + " · ".join(tags)
+            (files if m.get("file") else plain).append((cmd, m))
             if self._tool_ok(cmd):
                 attempted += 1
+        # 일반 명령: 병렬 배치(게이트 순차→I/O 동시→처리 순차). 게이트는 cmd 당 finding 을 하나씩
+        # 순서대로 쌓으므로, 제출 순서로 zip 해 가설·근거·신호 비고를 올바른 finding 에 붙인다.
+        if plain:
+            n0 = len(report.llm_findings)
+            if self.max_parallel > 1 and len(plain) > 1:
+                self._attempt_batch(report, report.llm_findings, [c for c, _ in plain], phase)
+            else:
+                for c, _m in plain:
+                    if self._goal_reached(report):
+                        break
+                    self._attempt(report, report.llm_findings, c, phase)
+            for (_c, m), f in zip(plain, report.llm_findings[n0:]):
+                self._tag_llm_finding(report, f, m, focus)
+        # 파일 액션: 순차 — 작성→실행→태깅(파일을 못 쓰면 그 파일을 쓰는 명령도 돌리지 않음)
+        for cmd, m in files:
+            if self._goal_reached(report):
+                break
+            written = self._write_file_action(report, cmd, m["file"])
+            if written is None:
+                continue
+            n_before = len(report.llm_findings)
+            self._attempt(report, report.llm_findings, cmd, phase)
+            ff: "EnumFinding | None" = (report.llm_findings[-1]
+                                        if len(report.llm_findings) > n_before else None)
+            self._tag_llm_finding(report, ff, m, focus, written)
         return attempted
+
+    def _tag_llm_finding(self, report: OrchestrationReport, f: "EnumFinding | None",
+                         m: dict, focus, written: str = "") -> None:
+        """실행된 LLM 명령 finding 에 파일작성·가설·근거·기대신호 대조 비고를 덧붙인다
+        (순차·병렬 공용). f 가 None(실행 전 목표 달성 등)이면 no-op."""
+        if f is None:
+            return
+        if written:
+            f.note = (f.note + " · " if f.note else "") + f"📝 파일 작성: {written}"
+        # B4: 구조화 출력의 가설·근거(어느 가설을 검증했는지 추적)
+        tags = [t for t in (("가설 " + m["hypothesis"]) if m.get("hypothesis") else "",
+                            ("근거: " + m["rationale"]) if m.get("rationale") else "") if t]
+        sig = self._record_signal(report, f, m, focus)
+        if sig:
+            tags.append(sig)
+        if tags:
+            f.note = (f.note + " · " if f.note else "") + " · ".join(tags)
 
     def _exec_context(self) -> dict:
         """LLM 프롬프트용 실행 환경(셸 문법·작업공간 쓰기 가능 여부) + 작업공간 파일 발췌."""

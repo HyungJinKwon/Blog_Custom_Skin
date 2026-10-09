@@ -217,8 +217,11 @@ class LLMRouter:
                          tier: Tier | None = None,
                          max_items: int | None = None) -> list[str]:
         limit = max_items or self.max_items
-        system = build_system_prompt(context, limit)
-        user = self._user_prompt(context, target)
+        # 캐시 적중(ephemeral prefix): 시스템 프롬프트는 호출마다 변하지 않게 '고정 상한'
+        # (self.max_items)으로 만든다. 라운드별 실제 상한(limit)은 캐시 대상이 아닌
+        # 사용자 프롬프트·도구 스키마·파싱 절단으로 전달 → 큰 시스템 블록이 매 호출 재청구되지 않음.
+        system = build_system_prompt(context, self.max_items)
+        user = self._user_prompt(context, target, round_limit=limit)
         # 스크립트(file 액션)를 쓸 수 있으면 본문이 길어지므로 출력 상한을 넉넉히
         max_tokens = 8192 if (context.get("exec") or {}).get("workspace") else 2048
         kw: dict = {"max_tokens": max_tokens}
@@ -292,8 +295,10 @@ class LLMRouter:
         return "\n\n".join(lines)
 
     @staticmethod
-    def _user_prompt(context: dict, target: str) -> str:
+    def _user_prompt(context: dict, target: str, round_limit: int | None = None) -> str:
         lines = [f"타겟: {target}"]
+        if round_limit:
+            lines.append(f"이번 라운드엔 최대 {round_limit}개까지만 제안하라(가장 가치 높은 것부터).")
         if context.get("phase"):
             lines.append(f"현재 모의해킹 단계: {context['phase']} — 이 단계에 맞는 명령만 제안하라.")
         if context.get("profile"):
