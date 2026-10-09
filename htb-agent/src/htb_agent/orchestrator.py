@@ -455,6 +455,11 @@ class Orchestrator:
                                          cves=[e.id for e in report.enriched])
                 except Exception as e:   # noqa: BLE001 — 수집 실패는 진행 방해 금지
                     self.audit.event("enrich_error", error=str(e))
+        # 모든 스윕·enum 종료 시점에서 ⭐ 버전매칭 PoC 숏리스트를 최종 재평가 — 버전이 enum
+        # 단계에서 늦게 확정돼 조기 평가가 '매칭 없음'으로 굳는 문제 교정. auto-poc 큐잉도 여기서
+        # 확정(아래 실행 스테이지가 소비). exploit-exec 와 무관하게 제안은 항상 최신화. 생성 전용.
+        if not interrupted:
+            self._refresh_exploit_shortlist(report, host)
         # PHASE 3.9 직전: PoC 실행(3단계) → exploit-exec 발판(1단계)
         if self.exploit_exec and not interrupted:
             self._exploit_run_stage(report, host)     # 3단계: PoC 실행 → 자격
@@ -1280,7 +1285,6 @@ class Orchestrator:
         if not cmds:
             return
         self._exploit_looked_up.add(prod)
-        before = len(report.enum_findings)
         for cmd in cmds:
             if self._goal_reached(report) or self._time_up():
                 break
@@ -1290,65 +1294,102 @@ class Orchestrator:
             f"# {prod} 공개 익스 후보 — searchsploit 결과에서 '대상 버전'에 맞는 PoC 를 "
             f"골라 3관문(검증·범위·승인)으로 실행하세요(권한 확인 대상 전용)"
             + (f"\n#   ↳ {note}" if note else ""))
-        # searchsploit 출력을 파싱해 '대상 버전에 맞는 PoC'를 추려 제시(생성 전용 — 파싱만).
-        # 버전 미상이면 상위 후보를, 알면 버전 접두 호환분을 앞세워 사람/LLM 의 선택지를 좁힌다.
-        from .searchsploit import parse_searchsploit, shortlist
+        # ⭐ 버전매칭 PoC 숏리스트/제안은 '전체 searchsploit 증거 + 최종 버전'으로 재평가한다
+        # (제품은 잡혔으나 버전이 enum 단계에서 늦게 확정되는 경우가 많아, 조기 1회 평가가
+        # '매칭 없음'으로 굳는 것을 막기 위함). 생성 전용 — 파싱·제안·--poc 큐잉만.
+        self._refresh_exploit_shortlist(report, host)
+
+    def _refresh_exploit_shortlist(self, report: OrchestrationReport,
+                                   host: NmapHost | None = None) -> None:
+        """searchsploit 결과 '전체'를 모아 대상 버전 매칭 PoC 숏리스트/⭐ 제안을 (재)계산한다.
+        _exploit_lookup_stage 가 제품당 1회만 도는 것과 달리, 이 패스는 버전·searchsploit
+        증거가 나중에 더 채워져도(버전은 enum 단계에서 늦게 잡히는 경우가 많다) 반영되도록
+        호출 시마다 '전체 증거'로 다시 평가한다. 생성 전용 — 파싱·제안·--poc 큐잉만(실행 아님).
+
+        정직성: ⭐ 1순위는 '대상 버전 실제 접두 매칭'이 있을 때만. 매칭 PoC 가 '인증 필요'
+        (제목에 Authenticated 등)인데 보유 자격이 없으면, 자동 발사하지 않고 '자격 선확보'로
+        안내한다(무인증 자동 익스로 뚫리지 않는 대상을 '매칭 없음'으로 오표기하지 않는다)."""
+        if self.world is None or not self.world.web_product:
+            return
+        from .searchsploit import has_version_match, parse_searchsploit, shortlist
+        # 특정 조회 창(before:)이 아니라, 리포트 전체의 searchsploit 산출을 모은다 — 조회
+        # 단계 외(LLM·수동 참고 등)에서 돈 searchsploit 결과도 포함해 증거 결손을 없앤다.
         hits: list = []
         seen_titles: set[str] = set()
-        for f in report.enum_findings[before:]:
+        for f in report.enum_findings:
+            if "searchsploit" not in (f.command or ""):
+                continue
             for h in parse_searchsploit(f.output or ""):
                 if h.title not in seen_titles:
                     seen_titles.add(h.title)
                     hits.append(h)
-        from .searchsploit import has_version_match
+        if not hits:
+            return
+        prod = self.world.web_product
         version = self.world.web_version
         picks = shortlist(hits, version, limit=6)
-        if picks:
-            # ⭐ 자동 선택은 '대상 버전과 실제 접두 매칭'이 있을 때만(1순위 신뢰). 버전 미상이면
-            # 임의의 첫 결과를 ⭐로 오해시키지 않고, 버전 확인 후 고르라고 안내한다(정직성).
-            matched = has_version_match(hits, version)
-            rows = []
-            for i, h in enumerate(picks):
-                star = (i == 0 and matched)
-                rows.append(f"#   {'⭐ 추천' if star else '      '} - {h}")
-            if matched:
-                # ⭐ 1순위 PoC 의 '받기 + 실행 계획(제안)'을 구체화한다(생성 전용 — 문자열 생성만,
-                # 실행 아님). locator 로 PocPlan 초안을 만들고 plan_poc_command 로 --poc 초안을 짠다.
-                # 실제 소스 정밀 분석(transport/LHOST)은 받은 뒤 analyze_poc 로(사용자 실행 스테이지).
-                from .exploit_fetch import PocPlan, fetch_command, plan_poc_command, poc_language
-                top = picks[0]
-                edb_id = re.search(r"(\d{4,6})", top.locator)
-                eid = edb_id.group(1) if edb_id else ""
-                fetch = f"\n#   ↳ 1순위 받아 검토: {fetch_command(eid)}" if eid else ""
-                # 웹앱 PoC 는 대개 http(s) — 베이스 스킴을 알면 그 스킴으로, 모르면 http 로 초안.
-                bases = self._web_bases(host) if host is not None else []
-                scheme = "https" if any(b.startswith("https") for b in bases) else "http"
-                draft = plan_poc_command(
-                    PocPlan(edb_id=eid, language=poc_language(top.locator), transport=scheme,
-                            needs_target=True),
-                    self.world.target)
-                if draft:
-                    fetch += (f"\n#   ↳ 실행 계획(제안 — 받은 소스 검토 후 조정): "
-                              f"--exploit-exec --poc \"{draft}\"")
-                    # ⚠️ RCE 표면 — --auto-poc 옵트인 + 치명작업 y/n 확인 하에서만 자동 발사.
-                    if self.exploit_exec and self.auto_poc and draft not in self.poc_commands:
-                        self.poc_commands.append(draft)
+        if not picks:
+            return
+        matched = has_version_match(hits, version)
+        # 이 패스가 이전에 남긴 숏리스트 제안을 먼저 제거(마커로 식별) — 중복 누적 방지, 최신본만.
+        marker = "PoC 후보(버전"
+        report.manual_suggestions[:] = [
+            s for s in report.manual_suggestions if marker not in s]
+        rows = []
+        for i, h in enumerate(picks):
+            star = (i == 0 and matched)
+            rows.append(f"#   {'⭐ 추천' if star else '      '} - {h}")
+        fetch = ""
+        if matched:
+            # ⭐ 1순위 PoC 의 '받기 + 실행 계획(제안)' 구체화(생성 전용 — 문자열 생성, 실행 아님).
+            from .exploit_fetch import PocPlan, fetch_command, plan_poc_command, poc_language
+            top = picks[0]
+            # 인증 필요 PoC 판별 — 제목의 'auth' 신호. searchsploit 요약이 제목을 잘라
+            # '(Authenticated)' 가 '(Au' 로 끊기는 경우(실전 connected.htb)까지 잡는다.
+            auth_required = bool(re.search(r"auth|\(au", top.title, re.I))
+            have_creds = bool(self.world.creds)
+            edb_id = re.search(r"(\d{4,6})", top.locator)
+            eid = edb_id.group(1) if edb_id else ""
+            fetch = f"\n#   ↳ 1순위 받아 검토: {fetch_command(eid)}" if eid else ""
+            bases = self._web_bases(host) if host is not None else []
+            scheme = "https" if any(b.startswith("https") for b in bases) else "http"
+            draft = plan_poc_command(
+                PocPlan(edb_id=eid, language=poc_language(top.locator), transport=scheme,
+                        needs_target=True),
+                self.world.target)
+            if draft:
+                fetch += (f"\n#   ↳ 실행 계획(제안 — 받은 소스 검토 후 조정): "
+                          f"--exploit-exec --poc \"{draft}\"")
+                # ⚠️ RCE 표면 — --auto-poc 옵트인 + 치명작업 y/n 확인 하에서만 자동 발사.
+                # '인증 필요' PoC 를 자격 없이 발사하면 반드시 실패 → 큐잉하지 않는다(헛발사 방지).
+                can_fire = (self.exploit_exec and self.auto_poc
+                            and (have_creds or not auth_required))
+                if can_fire and draft not in self.poc_commands:
+                    self.poc_commands.append(draft)
+            if auth_required and not have_creds:
+                fetch += ("\n#   ↳ ⚠ 이 1순위 PoC 는 '인증 필요(Authenticated)' — 관리자 자격이 "
+                          "있어야 동작한다. 먼저 자격 확보(기본·약한 자격 점검, 로그인 폼 대입, "
+                          "노출된 설정/백업)한 뒤 --cred 로 넣고 재실행하면 이 PoC 가 발사된다. "
+                          "자격 없이 자동 발사하지 않음(헛발사 방지).")
+                head = (f"# {prod} PoC 후보(버전 {version} 대조) — ⭐=버전매칭 1순위(단, 인증 필요 → "
+                        f"자격 선확보 후 발사). 권한 확인 대상 전용:")
+            else:
                 head = (f"# {prod} PoC 후보(버전 {version} 대조) — ⭐=자동 선택된 1순위. 받아 검토 후 "
                         f"--exploit-exec --poc \"<실행 명령>\" 로 실행(권한 확인 대상 전용):")
-            elif version:
-                # 버전은 '확인'됐으나 searchsploit 결과 중 이 버전과 접두 매칭되는 PoC 가 없음.
-                # '버전 미상'이 아니다(①이 버전을 잡았음) — 정직하게 구분해 안내한다.
-                fetch = (f"\n#   ↳ 확인된 버전 {version} 과 접두 매칭되는 PoC 가 목록에 없음. "
-                         f"major 계열(예: 상위 버전대) PoC 를 사람이 직접 대조하거나, "
-                         f"'searchsploit {prod} {version.split('.')[0]}' 로 재검색 권장.")
-                head = (f"# {prod} PoC 후보(버전 {version} 확인됨 · 단 매칭 PoC 없음) — 아래에서 버전대에 "
-                        f"맞는 것을 골라 searchsploit -m <id> 로 받아 --exploit-exec --poc 로 실행(권한 확인 대상 전용):")
-            else:
-                fetch = ("\n#   ↳ 버전 확인 먼저: curl -sk https://<타겟>/admin/config.php | "
-                         "grep -oiE 'freepbx[^0-9]*[0-9][0-9.]*'  (확인 후 맞는 PoC 를 searchsploit -m <id> 로)")
-                head = (f"# {prod} PoC 후보(버전 미상 — 확인 후 대조 필요) — 아래에서 대상 버전에 맞는 것을 "
-                        f"골라 searchsploit -m <id> 로 받아 --exploit-exec --poc 로 실행(권한 확인 대상 전용):")
-            report.manual_suggestions.append(head + "\n" + "\n".join(rows) + fetch)
+        elif version:
+            # 버전은 '확인'됐으나 searchsploit 결과 중 이 버전과 접두 매칭되는 PoC 가 없음.
+            # '버전 미상'이 아니다 — 정직하게 구분해 안내한다.
+            fetch = (f"\n#   ↳ 확인된 버전 {version} 과 접두 매칭되는 PoC 가 목록에 없음. "
+                     f"major 계열(예: 상위 버전대) PoC 를 사람이 직접 대조하거나, "
+                     f"'searchsploit {prod} {version.split('.')[0]}' 로 재검색 권장.")
+            head = (f"# {prod} PoC 후보(버전 {version} 확인됨 · 단 매칭 PoC 없음) — 아래에서 버전대에 "
+                    f"맞는 것을 골라 searchsploit -m <id> 로 받아 --exploit-exec --poc 로 실행(권한 확인 대상 전용):")
+        else:
+            fetch = ("\n#   ↳ 버전 확인 먼저: curl -sk https://<타겟>/admin/config.php | "
+                     "grep -oiE 'freepbx[^0-9]*[0-9][0-9.]*'  (확인 후 맞는 PoC 를 searchsploit -m <id> 로)")
+            head = (f"# {prod} PoC 후보(버전 미상 — 확인 후 대조 필요) — 아래에서 대상 버전에 맞는 것을 "
+                    f"골라 searchsploit -m <id> 로 받아 --exploit-exec --poc 로 실행(권한 확인 대상 전용):")
+        report.manual_suggestions.append(head + "\n" + "\n".join(rows) + fetch)
 
     def _exploit_run_stage(self, report, host):
         """3단계: 주입된 공개 PoC(--poc)를 게이트로 실행 → 자격 캡처 → world 반영."""
