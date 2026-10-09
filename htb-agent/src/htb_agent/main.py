@@ -184,7 +184,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="--sandbox vm: 명령을 실행할 VM 의 SSH 접속 대상(예: kali@192.168.56.10)")
     g_mode.add_argument("--vm-ssh-key", default=None, metavar="KEYFILE",
                    help="--sandbox vm: SSH 개인키 파일(미지정 시 ssh 기본·에이전트 사용)")
-    g_mode.add_argument("--vm-ssh-port", type=int, default=22, metavar="PORT",
+    g_mode.add_argument("--vm-ssh-port", type=int, default=None, metavar="PORT",
                    help="--sandbox vm: SSH 포트(기본 22)")
     g_mode.add_argument("--vm-sudo", action="store_true",
                    help="--sandbox vm: VM 에서 egress 정책 적용 등에 sudo 사용(--vm-confine 과 함께)")
@@ -273,10 +273,14 @@ def _start_guide() -> str:
     return ui.panel("ASSASSIN 시작하기 — 타겟이 필요합니다", [
         ui.accent2("1) ") + ui.bold("assassin --doctor") + ui.dim("        준비 상태 점검(도구·VPN·LLM)"),
         ui.accent2("2) ") + ui.bold("assassin --setup-llm") + ui.dim("     (선택) LLM 연결 마법사"),
-        ui.accent2("3) ") + ui.bold("assassin 10.129.x.x") + ui.dim("      HTB 머신 풀이 시작"),
+        ui.accent2("3) ") + ui.bold("assassin 10.129.x.x")
+        + ui.dim("      풀이 시작(위험한 것만 y/n 확인)"),
         "",
-        ui.dim("CTF 문제:      assassin chall.host:1337 --platform ctf"),
+        ui.accent2("완전 자동(무프롬프트): ") + ui.bold("assassin 10.129.x.x --autonomous")
+        + ui.dim("   → 끝까지 자동 진행 후 결과·플래그 값 출력"),
         ui.dim("배우며 실행:   assassin 10.129.x.x --manual   (모든 명령을 보고 승인)"),
+        ui.dim("격리 실행:     --sandbox docker   또는   --sandbox vm --vm-ssh user@host"),
+        ui.dim("CTF 문제:      assassin chall.host:1337 --platform ctf"),
         ui.dim("이어서 하기:   assassin 10.129.x.x --resume"),
         ui.dim("전체 옵션:     assassin --help    ·    1쪽 안내: docs/QUICKSTART.md"),
     ], style="navy")
@@ -731,7 +735,7 @@ def _run_target(args, cfg, knowledge_dir, runner) -> int:
     elif runner is None and sandbox_kind == "vm":
         from .tools.sandbox import SandboxError, VMSandbox, allowlist_for
         assert workspace is not None   # sandbox_kind != "none" → 위에서 생성됨
-        vm_ssh = args.vm_ssh
+        vm_ssh = args.vm_ssh or cfg.vm_ssh   # 설정파일로 기본 VM 지정 가능(sandbox=vm)
         if not vm_ssh:
             print(ui.panel("VM 샌드박스 — 접속 정보가 필요합니다", [
                 "명령을 실행할 VM 의 SSH 대상을 지정하세요.",
@@ -742,9 +746,12 @@ def _run_target(args, cfg, knowledge_dir, runner) -> int:
             return 2
         try:
             cidrs, hosts = allowlist_for(guard)
-            sandbox = VMSandbox(vm_ssh, workspace.root, cidrs, ssh_key=args.vm_ssh_key,
-                                ssh_port=args.vm_ssh_port, lports=[args.lport],
-                                sudo=args.vm_sudo, confine=args.vm_confine, hosts=hosts)
+            sandbox = VMSandbox(vm_ssh, workspace.root, cidrs,
+                                ssh_key=pick(args.vm_ssh_key, cfg.vm_ssh_key, None),
+                                ssh_port=pick(args.vm_ssh_port, cfg.vm_ssh_port, 22),
+                                lports=[args.lport],
+                                sudo=args.vm_sudo or bool(cfg.vm_sudo),
+                                confine=args.vm_confine or bool(cfg.vm_confine), hosts=hosts)
             sandbox.start()
         except SandboxError as e:
             print(ui.panel("VM 샌드박스 시작 실패 — 실행하지 않습니다", [

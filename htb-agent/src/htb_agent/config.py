@@ -18,14 +18,16 @@ class ConfigError(Exception):
 
 
 _INT_KEYS = ("max_attempts", "max_enum", "max_llm", "max_rounds", "max_sweeps",
-             "max_parallel", "max_variants")
+             "max_parallel", "max_variants", "vm_ssh_port")
+_BOOL_KEYS = ("vm_sudo", "vm_confine")
 # 분/USD 는 소수 허용(CLI 도 type=float, dataclass 도 float) — 정수 강제하면 설정 파일의
 # time_budget: 30.5 / max_cost: 1.5 가 잘못 거부된다.
 _FLOAT_KEYS = ("time_budget", "max_cost")
 _LIST_KEYS = ("allowed_ranges", "attacker_ips")
 _STR_KEYS = ("platform", "knowledge_dir", "knowledge", "state_dir", "llm_backend", "llm_tier",
-             "sandbox")
-_KNOWN_KEYS = set(_INT_KEYS) | set(_FLOAT_KEYS) | set(_LIST_KEYS) | set(_STR_KEYS) | {"llm"}
+             "sandbox", "vm_ssh", "vm_ssh_key")
+_KNOWN_KEYS = (set(_INT_KEYS) | set(_FLOAT_KEYS) | set(_LIST_KEYS) | set(_STR_KEYS)
+               | set(_BOOL_KEYS) | {"llm"})
 _LLM_KEYS = {"backend", "tier", "ollama_model", "ollama_host"}
 LLM_BACKENDS = ("none", "claude", "ollama", "hybrid")
 LLM_TIERS = ("cheap", "standard", "strong")
@@ -44,6 +46,10 @@ def _validate(d: dict) -> list[str]:
         v = d.get(k)
         if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float))):
             raise ConfigError(f"'{k}' 는 숫자여야 합니다 (받은 값: {v!r})")
+    for k in _BOOL_KEYS:
+        v = d.get(k)
+        if v is not None and not isinstance(v, bool):
+            raise ConfigError(f"'{k}' 는 true/false 여야 합니다 (받은 값: {v!r})")
     for k in _LIST_KEYS:
         v = d.get(k)
         if v is None:
@@ -100,7 +106,12 @@ class Config:
     max_cost: float | None = None
     knowledge_dir: str | None = None
     state_dir: str | None = None
-    sandbox: str | None = None            # none / shell / docker
+    sandbox: str | None = None            # none / shell / docker / vm (기본 실행 환경)
+    vm_ssh: str | None = None             # --sandbox vm 기본값: user@host
+    vm_ssh_key: str | None = None
+    vm_ssh_port: int | None = None
+    vm_sudo: bool | None = None
+    vm_confine: bool | None = None
     warnings: list[str] = field(default_factory=list)   # 무해한 문제(알 수 없는 키 등)
 
     @classmethod
@@ -129,6 +140,11 @@ class Config:
             knowledge_dir=d.get("knowledge_dir") or d.get("knowledge"),
             state_dir=d.get("state_dir"),
             sandbox=d.get("sandbox"),
+            vm_ssh=d.get("vm_ssh"),
+            vm_ssh_key=d.get("vm_ssh_key"),
+            vm_ssh_port=d.get("vm_ssh_port"),
+            vm_sudo=d.get("vm_sudo"),
+            vm_confine=d.get("vm_confine"),
         )
 
 

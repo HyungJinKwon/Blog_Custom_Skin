@@ -66,6 +66,9 @@ _PHASE_LABEL = dict(PENTEST_PHASES)
 # 길어질 수 있어 하드 실링을 둬 '보관 출력 총량 = 시도 수(예산 제한) × 이 값' 으로 명시적 bound.
 _MAX_FINDING_OUTPUT = 4000
 
+# 리다이렉트 출력(요약)에서 vhost 추출: "→ http://connected.htb/" → connected.htb
+_REDIRECT_HOST_RE = re.compile(r"→\s*https?://([A-Za-z0-9.-]+?\.[A-Za-z]{2,})(?:[:/]|\s|$)")
+
 
 @dataclass
 class EnumFinding:
@@ -266,6 +269,7 @@ class Orchestrator:
                 sec = c.password or c.nt_hash or ""
                 self.world.add_cred(f"{c.username}:{sec}" if sec else c.username)
         self._found_hashes: list[str] = []   # 실행 원시출력에서 수집한 크래킹 대상 해시
+        self._vhost_seen: set[str] = set()   # 리다이렉트에서 자동 등록한 vhost(중복 방지)
         self.audit.event("session_start", target=target, resume=self.resume,
                          ranges=[str(n) for n in self.guard.allowed_target_cidrs])
 
@@ -1425,6 +1429,55 @@ class Orchestrator:
         # 크리덴셜 자동 수확 — 원시출력에서 고신뢰 평문 자격 추출. 월드엔 모두 반영,
         # 실행 볼트엔 셸-안전한 값만(신뢰불가 출처 인젝션 차단). A1 재진입을 활성화.
         self._harvest_creds(out.stdout, cmd, finding)
+        # vhost 자동 등록 — 리다이렉트(→ http://connected.htb/)에서 발견한 호스트명을
+        # '타겟 IP' 로 스코프 해석맵에 자동 등록(이후 그 vhost 명령이 범위 안으로 인식됨).
+        self._maybe_register_vhost(report, finding.output)
+
+    def _maybe_register_vhost(self, report: OrchestrationReport, text: str) -> None:
+        """리다이렉트 출력에서 vhost 를 발견하면 타겟 IP 로 스코프 해석맵(hosts_map)에
+        자동 등록한다 → 프롬프트·스킵 없이 진행. OS 이름해석(/etc/hosts)은 권한 있으면
+        자동 추가, 없으면 '조용한 반복 실패' 대신 1회 또렷한 안내를 남긴다.
+        스코프는 '타겟 IP' 로만 묶으므로 범위를 넓히지 않는다(안전)."""
+        if not text or self.guard.bound_target is None:
+            return
+        ip = str(self.guard.bound_target)
+        for m in _REDIRECT_HOST_RE.finditer(text):
+            host = m.group(1).lower().rstrip(".")
+            if (not host or host in self._vhost_seen or not re.search(r"[a-z]", host)
+                    or (self.hosts_map or {}).get(host)):
+                continue
+            self._vhost_seen.add(host)
+            if self.hosts_map is None:
+                self.hosts_map = {}
+            self.hosts_map[host] = ip   # vhost → 타겟 IP (스코프 in-scope 로 인식)
+            self.audit.event("vhost_registered", host=host, ip=ip)
+            self._ensure_name_resolution(report, host, ip,
+                                         getattr(self, "_hosts_path", "/etc/hosts"))
+
+    def _ensure_name_resolution(self, report: OrchestrationReport, host: str, ip: str,
+                                hosts_path: str = "/etc/hosts") -> None:
+        """가능하면 /etc/hosts 에 자동 등록(쓰기 권한 있을 때만 — 보통 root 실행). 권한이
+        없으면 조용히 실패하지 않고, '한 번만' 실행할 명령을 수동 제안에 1회 남긴다."""
+        import os as _os
+        line = f"{ip} {host}"
+        try:
+            existing = ""
+            if _os.path.exists(hosts_path):
+                with open(hosts_path, encoding="utf-8", errors="replace") as f:
+                    existing = f.read()
+            if re.search(rf"(?m)^\s*\S+\s+.*\b{re.escape(host)}\b", existing):
+                return   # 이미 등록됨
+            if _os.access(hosts_path, _os.W_OK):   # 권한 있음(root) → 자동 추가
+                with open(hosts_path, "a", encoding="utf-8") as f:
+                    f.write(f"{line}\n")
+                self.audit.event("etc_hosts_added", host=host, ip=ip)
+                return
+        except OSError:
+            pass
+        hint = (f"이름해석 1회 설정(그러면 {host} 명령이 완전 자동 진행): "
+                f"echo '{line}' | sudo tee -a /etc/hosts")
+        if hint not in report.manual_suggestions:
+            report.manual_suggestions.append(hint)
 
     def _classify_flag(self, report: OrchestrationReport, hit, cmd: str, phase: str):
         """출처 분류 + 작업공간 보정.
