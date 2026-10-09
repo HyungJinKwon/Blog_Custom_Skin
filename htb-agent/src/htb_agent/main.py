@@ -195,6 +195,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="완전 자동: 범위내+검증통과만 실행, 범위 밖은 조용히 건너뜀(무프롬프트)")
     g_mode.add_argument("--manual", action="store_true",
                    help="완전 수동: 모든 명령을 실행 전 확인(승인제 최대)")
+    g_mode.add_argument("--dry-run", action="store_true", dest="dry_run",
+                   help="계획 미리보기: 정찰·분석은 하되 제안된 명령은 '실행하지 않고' 보여만 준다(무해 점검)")
     g_kb.add_argument("--no-enrich", action="store_true",
                    help="CVE/CWE 자동 수집(NVD/GitHub) 비활성")
     g_kb.add_argument("--learn-gaps", action="store_true", dest="learn_gaps",
@@ -758,6 +760,7 @@ def _run_target(args, cfg, knowledge_dir, runner) -> int:
         approver = auto_approve_contained
     orchestrator = Orchestrator(guard, runner or SubprocessRunner(), kb, approver,
                                 workspace=workspace,
+                                dry_run=args.dry_run,
                                 observer=observer,
                                 max_enum=max_enum,
                                 max_llm=pick(None, cfg.max_llm, 5),

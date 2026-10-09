@@ -193,6 +193,7 @@ class Orchestrator:
                  is_tool_available: Callable[[str], bool] | None = None,
                  recon_extra_ports: "list[int] | None" = None,
                  fix_commands: bool = True,
+                 dry_run: bool = False,
                  workspace=None):
         self.guard = guard
         self.runner = runner
@@ -244,6 +245,8 @@ class Orchestrator:
         self.recon_extra_ports = [int(p) for p in (recon_extra_ports or [])]
         # Results Verifier: 범위 밖 명령의 타겟 자동 교정 복구(AutoPentester). 끄려면 False.
         self.fix_commands = fix_commands
+        # 계획 미리보기: 정찰·분석은 하되 제안된 enum/LLM/파일 명령은 '실행하지 않고' 보여만 준다.
+        self.dry_run = dry_run
 
     def run(self) -> OrchestrationReport:
         # 경과 시간은 정찰부터 포함, 마감 확인은 스윕 루프에서(정찰은 유한 폴백으로 별도 관리)
@@ -374,6 +377,15 @@ class Orchestrator:
                                                     else ("진행" if grew else "점검함"))
                     self._run_vuln(report, host, target)   # 다음 단계가 새 취약점을 보도록
                 sweeps_run += 1
+                # 무인 자율 진행 투명성(heartbeat): 스윕마다 1줄 요약 — 폭주 감시·발표 시연용
+                if not self.quiet:
+                    from . import ui
+                    fl = f"user={'O' if report.user_flag else 'X'} root={'O' if report.root_flag else 'X'}"
+                    spent = float(getattr(self.llm_router, "total_cost", 0.0) or 0.0)
+                    print("  " + ui.dim(
+                        f"⏱ 스윕 {sweeps_run}/{self.max_sweeps} · 경과 {self._clock() - self._start:.0f}초 · "
+                        f"enum {len(report.enum_findings)} · LLM {len(report.llm_findings)} · "
+                        f"플래그 {fl} · 비용 ${spent:.3f}"))
                 # 이번 스윕에서 상태가 더 자라지 않았으면(새 관측·예산 소진) 조기 종료 — 유한
                 if self._world_fingerprint(report) == before_fp:
                     break
@@ -1011,6 +1023,8 @@ class Orchestrator:
         정적 범위 검사는 스크립트 본문 속 접속 대상을 볼 수 없으므로, 네트워크가 실행 계층에서
         강제되는(contained) 실행기에서만 자동으로 쓰고 실행한다."""
         path = str(fobj.get("path", ""))[:200]
+        if self.dry_run:   # 계획 미리보기 — 파일을 쓰지 않고 경로만 반환(이후 명령도 실행 안 됨)
+            return path or None
         content = str(fobj.get("content", ""))
         if self.workspace is None or not getattr(self.runner, "contained", False):
             reason = ("작업공간 없음" if self.workspace is None
@@ -1451,6 +1465,10 @@ class Orchestrator:
         finding = self._gate(report, findings, cmd, phase)
         if finding is None:
             return
+        if self.dry_run:   # 계획 미리보기 — 게이트까지 통과했으나 실행하지 않음
+            finding.note = (finding.note + " · " if finding.note else "") + "dry-run: 제안만(미실행)"
+            report.gate_stats["dry_run"] = report.gate_stats.get("dry_run", 0) + 1
+            return
         out = self._safe_run(finding.command)
         self._process(report, finding, out)
 
@@ -1466,6 +1484,11 @@ class Orchestrator:
                 gated.append(f)
         if not gated:
             return []
+        if self.dry_run:   # 계획 미리보기 — 게이트 통과분을 실행하지 않고 표시만
+            for f in gated:
+                f.note = (f.note + " · " if f.note else "") + "dry-run: 제안만(미실행)"
+            report.gate_stats["dry_run"] = report.gate_stats.get("dry_run", 0) + len(gated)
+            return gated
         from concurrent.futures import ThreadPoolExecutor
         workers = max(1, min(self.max_parallel, len(gated)))
         with ThreadPoolExecutor(max_workers=workers) as ex:
