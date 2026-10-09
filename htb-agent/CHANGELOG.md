@@ -2,6 +2,24 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.31] — 2026-10-09
+
+### 추가(Added) — ③ 발판 전 자격 수확(웹 노출 비밀/백업) + 폐루프
+- **`web_secrets` 모듈 + `_web_secret_stage`** — 자동 루트 실패의 한 축(인증 필요 RCE 는 자격
+  선확보가 전제)을 겨냥. 웹에 잘못 노출된 설정/백업 파일(`.env`, `config.php.bak`, `.git/config`,
+  FreePBX `amportal.conf` 등)을 **읽기 전용 GET**(`curl -s`)으로 열거한다. 본문에서 평문 자격이
+  나오면 기존 `_harvest_creds` 가 원시출력에서 `world.creds` 로 수확 → **①(b) 가 인증 필요 PoC
+  (예: FreePBX 16 → 52031)를 자동 발사 큐에 올린다**(자격 선확보 → 인증 익스 폐루프 완성).
+- **`_harvest_creds` 확장** — 일반 harvest 에 더해 설정파일 특수 키(FreePBX amportal 의
+  `AMPDBUSER`/`AMPDBPASS` 등)도 파싱해, 노출된 설정 본문에서 자격을 놓치지 않는다.
+
+### 안전(Safety)
+- 전부 **읽기 전용 GET**(쓰기·인증·주입·실행 없음) — gobuster/curl 열거와 동일 위험군, 3관문 통과.
+- **옵트인 전용**: 공격 지향 열거라 `--exploit-exec`/`--auto-poc` 일 때만 돈다 → 기본·순수 정찰
+  모드의 명령 폭·예산은 불변. 호스트당 1회(멱등).
+- 회귀 테스트 `test_web_secrets.py`(16건): 생성 데이터·GET 경계·폐루프(amportal→자격→인증 PoC
+  큐잉)·멱등·옵트인 가드·웹 포트 부재 처리.
+
 ## [2.6.30] — 2026-10-09
 
 ### 수정(Fixed) — ⭐ PoC 자동선택 근본 교정 (connected.htb 회귀)
