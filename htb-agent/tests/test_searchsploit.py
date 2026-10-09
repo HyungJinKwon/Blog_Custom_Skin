@@ -29,6 +29,16 @@ check("제목에서 버전 추출", any("13.0.188" in h.versions for h in hits))
 check("빈 입력 안전", parse_searchsploit("") == [])
 check("무결과 → 빈 목록", parse_searchsploit("Exploits: No Results") == [])
 
+# 회귀 가드: 요약기가 줄바꿈을 공백으로 합친 collapsed 출력도 항목을 정확히 분리해야 한다.
+collapsed = ("Exploit Title | Path  FreePBX 13.0.188 - Remote Command Execution | "
+             "php/remote/40434.rb  FreePBX 2.10 / 2.9 (Elastix) - RCE | php/webapps/18650.py")
+ch = parse_searchsploit(collapsed)
+check("collapsed 출력 2개로 분리", len(ch) == 2)
+check("collapsed 제목에 헤더(Path) 안 섞임", ch[0].title == "FreePBX 13.0.188 - Remote Command Execution")
+check("collapsed locator 정확", ch[0].locator == "php/remote/40434.rb" and ch[1].locator == "php/webapps/18650.py")
+check("-w URL locator 파싱", parse_searchsploit("FreePBX | https://www.exploit-db.com/exploits/40434")[0].locator
+      == "https://www.exploit-db.com/exploits/40434")
+
 print("\n=== shortlist (버전 매칭) ===")
 check("대상 13.0.188 → 그 익스가 1순위",
       shortlist(hits, "13.0.188")[0].versions == ["13.0.188"])

@@ -27,22 +27,28 @@ class SploitHit:
         return f"{self.title}  →  {self.locator}" if self.locator else self.title
 
 
+# 한 항목 = '제목 | locator'. locator 는 exploit-db 경로(platform/type/NNNNN.ext) 또는
+# -w 의 URL. 요약기가 줄바꿈을 공백으로 합쳐도(정상 동작) 각 locator 가 고유 토큰이라
+# finditer 로 항목을 안전히 분리한다(라인 기반이 아니라 토큰 기반 → collapsed 출력에도 견고).
+_ROW_RE = re.compile(r"([^|]+?)\s*\|\s*((?:https?://\S+)|(?:[\w./+-]+/\d{3,7}\.\w+))")
+
+
 def parse_searchsploit(text: str) -> list[SploitHit]:
-    """searchsploit 표 출력 → SploitHit 목록(제목·locator·버전). 빈 입력·무결과는 []
-    (무결과면 데이터 행이 없어 자연히 [] — 'No Results' 문자열에 전역 의존하지 않는다)."""
+    """searchsploit 표 출력 → SploitHit 목록(제목·locator·버전). 빈/무결과는 [].
+    라인 기반이 아니라 '제목 | locator' 토큰을 정규식으로 뽑아, 요약으로 줄바꿈이 공백이
+    된 출력에서도 각 항목을 정확히 분리한다(헤더 'Exploit Title | Path'·구분선은 locator 가
+    경로/URL 아니라 자연히 제외)."""
     if not text:
         return []
     hits: list[SploitHit] = []
     seen: set[str] = set()
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or "|" not in line:
-            continue
-        if set(line) <= set("- "):          # 구분선
-            continue
-        title, _, locator = line.rpartition("|")
-        title, locator = title.strip(), locator.strip()
-        if not title or title.lower() in _SKIP or locator.lower() in ("path", "url"):
+    for m in _ROW_RE.finditer(text):
+        title = re.sub(r"\s+", " ", m.group(1)).strip()
+        # collapsed/raw 출력에서 우측 컬럼 헤더('Path'/'URL')·구분선 대시가 제목 앞에 붙을 수
+        # 있어 제거(제목 중간의 ' - ' 는 보존 — 선행만 정리).
+        title = re.sub(r"^(?:Exploit Title|Path|URL)\b\s*", "", title).lstrip("- ").strip()
+        locator = m.group(2).strip()
+        if not title or title.lower() in _SKIP:
             continue
         if title in seen:
             continue

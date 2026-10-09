@@ -1231,10 +1231,19 @@ class Orchestrator:
         picks = shortlist(hits, self.world.web_version, limit=6)
         if picks:
             ver = self.world.web_version or "미상(확인 필요)"
-            lines = "\n".join(f"#   - {h}" for h in picks)
+            # 1순위 자동 선택(⭐): 버전 접두 매칭이 있으면 그걸, 없으면 상위 후보를 shortlist 가 이미
+            # 앞세워 뒀다. 받아올 명령(searchsploit -m <edb-id>)까지 제시 — 받기·검토는 로컬·무해.
+            # 실제 실행은 사람이 --exploit-exec --poc 로(생성 전용 경계 유지).
+            rows = []
+            for i, h in enumerate(picks):
+                rows.append(f"#   {'⭐ 추천' if i == 0 else '      '} - {h}")
+            top = picks[0]
+            edb = re.search(r"(\d{4,6})", top.locator)
+            fetch = f"\n#   ↳ 1순위 받아 검토: searchsploit -m {edb.group(1)}" if edb else ""
             report.manual_suggestions.append(
-                f"# {prod} PoC 후보(버전 {ver} 대조) — 아래에서 골라 권한 확인 대상에 실행:\n"
-                + lines)
+                f"# {prod} PoC 후보(버전 {ver} 대조) — ⭐=자동 선택된 1순위. 받아 검토 후 "
+                f"--exploit-exec --poc \"<실행 명령>\" 로 실행(권한 확인 대상 전용):\n"
+                + "\n".join(rows) + fetch)
 
     def _exploit_run_stage(self, report, host):
         """3단계: 주입된 공개 PoC(--poc)를 게이트로 실행 → 자격 캡처 → world 반영."""
