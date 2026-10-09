@@ -2,29 +2,20 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
-## [미출시]
+## [2.5.0] — 2026-10-09
 
-### 추가 (자동화 투명성·안전)
+### 추가
 - **`--dry-run` 계획 미리보기**: 정찰·분석은 수행하되 제안된 enum/LLM/파일 명령은 **실행하지 않고
   보여만** 준다(게이트까지 통과 → `dry-run: 제안만(미실행)` 비고). 자율 실행 전 무해 점검용.
 - **무인 진행 heartbeat**: 스윕마다 1줄 요약(스윕 N/M·경과·enum/LLM 수·플래그·비용) 출력 —
   장시간 완전자율 실행의 폭주 감시·발표 시연 가시성. 비대화형(`quiet`)에선 억제.
-
-### 추가 (초보자 친화)
 - **오타 옵션 제안**: 알 수 없는 CLI 옵션에 `difflib`로 가장 가까운 실제 옵션을 제안
   (예: `--prt` → "혹시 `--lport`?"). 거리가 먼 오타엔 제안하지 않음. `argparse` 기본 오류를 보강.
-
-### 추가 (툴·방법론 보강)
 - **틈새 기법 일반 규칙**(`knowledge/rules/niche-techniques.json`): AD CS 취약 템플릿 탐색(certipy
   ESC)·NoSQL 인젝션·JWT 약점(alg none/키 혼동) — 서비스 키 기반 정석 규칙. 모두 관측 타겟 한정.
 - **패킷 분석·웹 프록시 도구 사용성**: 샌드박스에 `tcpdump` 추가(헤드리스 CLI). Wireshark·Burp Suite 는
   GUI 라 자율 실행 대상이 아니며, 자동화 등가물(`tshark`·`tcpdump`·`mitmproxy`·`zaproxy`)로 커버됨을
   `docs/USAGE.md §10.1`에 정리(모든 도구는 레지스트리 등록·`--doctor`/`--install-missing` 연동).
-
-### 수정 (방법론 위생)
-- `knowledge/rules/example.json` 규칙에 `phase` 명시 — KB 전 규칙의 phase 결측 0 보장.
-
-### 추가 (성장형·최신화 — 환경/사용자 편차 완화)
 - **성장 공유(G1)** — `--export-stats`/`--import-stats`: 실행 학습 통계(변형 성공률)를 파일로
   주고받아 사용자 간 성장을 compounding. 통계는 `binary+fragment→succ/att` 뿐이라 명령 전체·타겟·
   출력이 담기지 않아 공유해도 안전. `VariantStats.merge()`로 succ/att 합산.
@@ -33,8 +24,6 @@
 - **통합 최신화(G3)** — `--update`: 공유 시드 동기화 + 권위출처 재학습·승격을 한 명령으로
   (`--offline`이면 네트워크 생략). CVE/CWE 는 실행 시 자동 수집·캐시.
 - **KB 버전 태깅(G4)** — `knowledge.KB_VERSION` 신설, `--doctor` 푸터에 표시(동기화 호환·진단 가시화).
-
-### 추가 (역량 보강)
 - **서비스 열거 일반 규칙 신설**(`knowledge/rules/service-enum.json`): NFS(showmount/마운트)·
   SNMP(snmpwalk/onesixtyone)·WordPress(wpscan) — 머신 비의존 정석 기법 규칙. 업로드 라이트업群의
   **역량 공백 분석**(다루는 서비스·기법 발자국 ↔ 우리 KB/툴 커버리지 대조)으로 식별한 공백만 보강.
@@ -43,28 +32,6 @@
 - **샌드박스 툴 커버리지 확대**(`sandbox/Dockerfile`·`scripts/install_tools.sh`): evil-winrm·
   bloodhound.py·wpscan·hydra·telnet·ftp·nfs-common(showmount)·onesixtyone 추가 — 라이트업群이 자주
   쓰는 범용 도구(Windows 셸·AD 경로분석·CMS 열거·NFS/SNMP 열거)의 미설치 공백 해소.
-
-### 최신화
-- **anthropic SDK 플로어 상향**: `anthropic>=0.40` → `anthropic>=1.0`(현행 메이저 1.x 반영;
-  `messages.create`·시스템 캐시 블록·tool use 사용은 1.x 호환). requirements 주석도 동반 갱신.
-- **OWASP 카탈로그 URL 정규화**: `owasp.org/www-community/*` → `community.owasp.org/*`(OWASP 가
-  308 영구 이전). 사전학습 카탈로그 8건 + 승격된 시드 노트 8건 동시 갱신 → 리다이렉트 1홉 절약,
-  카탈로그↔시드 정합. `.owasp.org` 하위도메인이라 allowlist 그대로 통과.
-- **가격표 출처 스탬프 갱신**(2026-09 → 2026-10; 요율 값은 이미 현행).
-
-### 정리(품질)
-- **`main()` 갓-함수 분해(591줄 → 65줄)**: CLI 진입부를 얇게 — 단독 명령 디스패치는
-  `_dispatch_standalone`, 타겟 실행 경로는 `_run_target` 로 분리(동작 불변). 가독성·기여 용이성↑.
-- **핫패스 메서드 분리**: `_llm_round` 의 컨텍스트 조립을 `_suggest_context` 로, `_gate` 의 타겟
-  자동교정을 `_apply_command_fix` 로 추출(로직 밀도 완화, 동작 불변).
-- **마라톤 세션 메모리 상한**: `finding.output` 1건당 하드 실링(`_MAX_FINDING_OUTPUT`)을 둬
-  '보관 출력 총량 = 시도 수(예산 제한) × 상한' 으로 명시적 bound(유일하게 미제한이던 성장 지점 차단).
-- **Provider 예외 계약 문서화**: `LLMProvider.complete`/`ClaudeProvider.complete` 가 API 오류를
-  예외로 전파함을 명시(HybridRouter 폴백·서킷브레이커·오케스트레이터 라운드 격리가 의존). 직접
-  호출자는 try/except 필요 — 삼키지 않음으로써 하이브리드 복원력 보존.
-- 핫패스 private 헬퍼(`_tool_ok`·`_run_vuln`) 의도 docstring 보강.
-
-### 추가
 - **네이티브 tool use(구조화 명령 제안)**: Claude 백엔드에서 `propose_commands` 도구를 강제 호출해
   명령 후보를 스키마대로 JSON 으로 받는다(텍스트 파싱 취약성 제거). tool_calls 가 있으면 우선 사용,
   없으면 기존 텍스트 파싱으로 폴백 — Ollama·구버전 프로바이더 호환.
@@ -87,6 +54,12 @@
   (`tests/test_docs_consistency.py`): `assassin` 예시에 쓰인 `--옵션`이 실제 CLI 에 있는지 검사.
 
 ### 변경
+- **anthropic SDK 플로어 상향**: `anthropic>=0.40` → `anthropic>=1.0`(현행 메이저 1.x 반영;
+  `messages.create`·시스템 캐시 블록·tool use 사용은 1.x 호환). requirements 주석도 동반 갱신.
+- **OWASP 카탈로그 URL 정규화**: `owasp.org/www-community/*` → `community.owasp.org/*`(OWASP 가
+  308 영구 이전). 사전학습 카탈로그 8건 + 승격된 시드 노트 8건 동시 갱신 → 리다이렉트 1홉 절약,
+  카탈로그↔시드 정합. `.owasp.org` 하위도메인이라 allowlist 그대로 통과.
+- **가격표 출처 스탬프 갱신**(2026-09 → 2026-10; 요율 값은 이미 현행).
 - **분석가 티어 적응화**: `analyze()`가 항상 STRONG(opus)을 쓰던 것을, 추론 난이도가 높은 국면
   (첫 분석=가설 기록 없음 · 막힌 가설 존재 · 직전 확신도 '하')에만 STRONG, 평상시 갱신은
   STANDARD(sonnet)로 라우팅 → 분석 비용 절감(난이도-티어 정합). 하이브리드는 여전히 Claude 우선.
@@ -116,12 +89,23 @@
 - 화면 잡음 축소(초보자): 리버스쉘 자동 준비는 대표 3종만 표시하고 전체는 `--json`/`--html` 로.
 
 ### 수정
+- `knowledge/rules/example.json` 규칙에 `phase` 명시 — KB 전 규칙의 phase 결측 0 보장.
 - **설정 파일 `sandbox: vm` 거부되던 문제**: `config.SANDBOX_KINDS` 에 `vm` 누락으로, CLI·구현은
   지원하는데 설정 파일로는 거부됐다 — `vm` 추가로 CLI·설정 경로 일치.
 - **설정 파일 `time_budget`/`max_cost` 소수 거부되던 문제**: 두 키가 정수 검증(`_INT_KEYS`)에 묶여
   CLI(`type=float`)·dataclass(`float`)와 어긋났다 — 숫자(정수·소수) 검증으로 분리.
 
-### 정리(내부)
+### 정리
+- **`main()` 갓-함수 분해(591줄 → 65줄)**: CLI 진입부를 얇게 — 단독 명령 디스패치는
+  `_dispatch_standalone`, 타겟 실행 경로는 `_run_target` 로 분리(동작 불변). 가독성·기여 용이성↑.
+- **핫패스 메서드 분리**: `_llm_round` 의 컨텍스트 조립을 `_suggest_context` 로, `_gate` 의 타겟
+  자동교정을 `_apply_command_fix` 로 추출(로직 밀도 완화, 동작 불변).
+- **마라톤 세션 메모리 상한**: `finding.output` 1건당 하드 실링(`_MAX_FINDING_OUTPUT`)을 둬
+  '보관 출력 총량 = 시도 수(예산 제한) × 상한' 으로 명시적 bound(유일하게 미제한이던 성장 지점 차단).
+- **Provider 예외 계약 문서화**: `LLMProvider.complete`/`ClaudeProvider.complete` 가 API 오류를
+  예외로 전파함을 명시(HybridRouter 폴백·서킷브레이커·오케스트레이터 라운드 격리가 의존). 직접
+  호출자는 try/except 필요 — 삼키지 않음으로써 하이브리드 복원력 보존.
+- 핫패스 private 헬퍼(`_tool_ok`·`_run_vuln`) 의도 docstring 보강.
 - 미사용·중복 코드 제거: `ScopeGuard.detect_attacker_ips`(= `environment.detect_vpn_ips` 중복 사본),
   `observation.compressor.summarize_nmap_host`·`render_observation`·`recommend_followup`,
   `command_validator.validate_hex`, `ui.color_enabled`(getter). HTTP fetcher 중복
