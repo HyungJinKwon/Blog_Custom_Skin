@@ -198,7 +198,8 @@ class Orchestrator:
                  recon_extra_ports: "list[int] | None" = None,
                  fix_commands: bool = True,
                  dry_run: bool = False,
-                                  exploit_exec: bool = False,
+                 exploit_exec: bool = False,
+                 auto_poc: bool = False,
                  poc_commands: "list[str] | None" = None,
                  workspace=None):
         self.guard = guard
@@ -1329,7 +1330,7 @@ class Orchestrator:
                 if draft:
                     fetch += (f"\n#   ↳ 실행 계획(제안 — 받은 소스 검토 후 조정): "
                               f"--exploit-exec --poc \"{draft}\"")
-                                      # ⚠️ RCE 표면 — --auto-poc 옵트인 + 치명작업 y/n 확인 하에서만 자동 발사.
+                    # ⚠️ RCE 표면 — --auto-poc 옵트인 + 치명작업 y/n 확인 하에서만 자동 발사.
                     if self.exploit_exec and self.auto_poc and draft not in self.poc_commands:
                         self.poc_commands.append(draft)
                 head = (f"# {prod} PoC 후보(버전 {version} 대조) — ⭐=자동 선택된 1순위. 받아 검토 후 "
@@ -1404,7 +1405,7 @@ class Orchestrator:
                     self.world.raise_access("root")
                     self._attempt(report, report.enum_findings,
                                   sh.command("cat /root/root.txt 2>/dev/null"), phase="privesc")
-                    break      
+                    break
     def _prepare_revshells(self, report: OrchestrationReport) -> None:
         """공격자 IP(VPN tun0 등)가 확보되면 리버스쉘 페이로드를 자동 생성해
         리포트에 담는다. 생성 전용 — 실행은 하지 않는다(안전 경계 유지).

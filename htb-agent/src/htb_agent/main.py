@@ -177,7 +177,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="옵트인: searchsploit 결과에서 고른 '공개 PoC 한 줄'을 게이트로 실행"
                         "(반복 가능). 권한 확인 대상 전용. 버전 대조 후 사용")
     g_mode.add_argument("--auto-poc", action="store_true", dest="auto_poc",
-                    help="⭐ 버전매칭 1순위 PoC 실행계획을 자동으로 --poc 큐에 투입(권한 확인 대상 전용)")  
+                    help="⭐ 버전매칭 1순위 PoC 실행계획을 자동으로 --poc 큐에 투입(권한 확인 대상 전용)")
     g_mode.add_argument("--sandbox", choices=["none", "shell", "docker", "vm"], default=None,
                    help="명령을 '어디서' 실행할지: none=로컬 셸 비경유(기본, 파이프 불가) · "
                         "shell=로컬 bash(파이프 O, 네트워크 강제 X) · docker=Kali 컨테이너+egress 방화벽 · "
@@ -780,7 +780,7 @@ def _run_target(args, cfg, knowledge_dir, runner) -> int:
         approver = auto_approve_contained
     orchestrator = Orchestrator(guard, runner or SubprocessRunner(), kb, approver,
                                 workspace=workspace,
-                                auto_poc=args.auto_poc,                                
+                                auto_poc=args.auto_poc,
                                 exploit_exec=args.exploit_exec,
                                 poc_commands=args.poc_commands or [],
                                 dry_run=args.dry_run,

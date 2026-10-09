@@ -2,6 +2,24 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.16] — 2026-10-09
+
+### 수정(Fixed)
+- **치명: `Orchestrator` 생성 불가(NameError)** — `--auto-poc`(②d) 실행 배선에서 `__init__`
+  본문의 `self.auto_poc = auto_poc` 는 추가됐으나 **시그니처에 `auto_poc` 파라미터가 누락**돼
+  모든 `Orchestrator()` 생성이 `NameError: name 'auto_poc' is not defined` 로 깨지던 문제
+  수정(에이전트 전체 실행 불가 상태였음). 시그니처에 `auto_poc: bool = False` 추가.
+- 후행 공백(W291) 3곳 정리(`main.py`·`orchestrator.py`), RCE-표면 주석 들여쓰기 정리.
+- `--auto-poc` 플래그 추가 반영해 **README CLI 옵션 표 재생성**(gen_cli_docs).
+
+### 추가(Added)
+- **테스트**: `test_auto_poc_wiring.py`(6) — `auto_poc` 파라미터 수용(기본 False)·`exploit_exec`
+  +`auto_poc` 시 ⭐ 계획 `poc_commands` 자동 투입·꺼짐 시 제안만. NameError 회귀 가드.
+
+### 참고(Note)
+- `--auto-poc`/privesc 폐루프 발사 로직은 사용자 리포 커밋(RCE/권한상승 실행 표면). 본 릴리스는
+  그 배선의 **실행 차단 버그 수정 + 린트/문서 정합 + 회귀 가드**까지만 포함한다.
+
 ## [2.6.15] — 2026-10-09
 
 ### 추가(Added)
