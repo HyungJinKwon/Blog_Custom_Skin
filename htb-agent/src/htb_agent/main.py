@@ -85,6 +85,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="로컬 학습 노트(learned-<주제>.md) 중 품질 관문을 통과한 항목을 번들 시드의 "
                         "'최신 보강(승격)' 섹션으로 승격. 결과를 커밋·PR 하면 모든 사용자에게 공유. "
                         "예: --promote sqli / 전체: --promote all")
+    g_kb.add_argument("--list-sessions", action="store_true", dest="list_sessions",
+                   help="저장된 세션(타겟) 목록 출력 — --resume 대상 확인용(타겟 없이 단독 실행)")
     g_kb.add_argument("--kb-sync", action="store_true", dest="kb_sync",
                    help="공유 저장소의 최신 번들 시드를 지금 동기화(검증 통과분만 로컬 캐시에 적용). "
                         "타겟 실행 시에는 하루 1회 자동")
@@ -140,6 +142,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "'user:pass:domain:nthash' (반복 가능). Pass-the-Hash 는 "
                         "'user:<32hex>' 또는 'user::domain:<NT|LM:NT>'. "
                         "{user}/{pass}/{domain}/{hash} 제안을 실행 후보로 승격")
+    g_target.add_argument("--cred-file", dest="cred_file", default=None, metavar="경로",
+                   help="자격증명 JSON 파일에서 일괄 로드(인라인 --cred 와 함께 사용 가능). "
+                        "형식: {\"username\":..,\"password\":..,\"domain\":..,\"nt_hash\":..} 또는 그 목록")
     g_mode.add_argument("--config", help="설정 파일(.json/.yaml). 우선순위: CLI > 설정파일 > 기본값")
     g_mode.add_argument("--autonomous", "--hackathon", action="store_true", dest="autonomous",
                    help="능동적 완전자동 모드: 범위내 자동승인 + 깊은 재진입 스윕 + 병렬 열거 + "
@@ -467,6 +472,7 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         ("--revshell", args.revshell), ("--cloud", args.cloud),
         ("--privesc", args.privesc), ("--crack", args.crack), ("--ingest", args.ingest),
         ("--kb-sync", args.kb_sync), ("--promote", args.promote), ("--learn", args.learn),
+        ("--list-sessions", args.list_sessions),
         ("--bench", args.bench), ("--live-bench", args.live_bench), ("--replay", args.replay))
         if v not in (None, False)]
     if len(standalone) > 1:
@@ -533,6 +539,18 @@ def main(argv: list[str] | None = None, runner=None) -> int:
         return rc
 
     # 환경 자가진단(스캔 안 함) — 완전 초보자 권장 첫 실행
+    if args.list_sessions:
+        from .state import StateStore
+        sdir = pick(args.state_dir, cfg.state_dir, "state")
+        targets = StateStore(sdir).list_targets()
+        if targets:
+            print(ui.accent2(f"저장된 세션 {len(targets)}개 ({sdir}):"))
+            for t in targets:
+                print("  " + t)
+        else:
+            print(ui.dim(f"저장된 세션 없음 ({sdir}) — 실행하면 자동 저장됩니다."))
+        return 0
+
     if args.doctor or args.llm_test:
         from .doctor import run_doctor
         text, ok = run_doctor(llm_test=args.llm_test, **_ollama_opts(cfg))
@@ -785,6 +803,12 @@ def main(argv: list[str] | None = None, runner=None) -> int:
     from .state import StateStore
     store = None if args.no_save else StateStore(state_dir)
     vault = CredentialVault.from_cli(args.creds)
+    if args.cred_file:   # 파일에서 자격증명 일괄 로드(인라인 --cred 와 합쳐짐)
+        loaded = CredentialVault.load_file(args.cred_file)
+        for c in loaded.creds:
+            vault.add(c)
+        if not loaded.creds:
+            print(ui.mark_warn(f"--cred-file: '{args.cred_file}' 에서 읽은 자격증명 없음(형식·경로 확인)"))
     # 실행 결과 기반 변형 학습(세션 넘어 누적) — <state-dir>/variant_stats.json
     import os as _osvs
 

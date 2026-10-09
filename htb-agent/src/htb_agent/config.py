@@ -18,15 +18,18 @@ class ConfigError(Exception):
 
 
 _INT_KEYS = ("max_attempts", "max_enum", "max_llm", "max_rounds", "max_sweeps",
-             "max_parallel", "max_variants", "time_budget", "max_cost")
+             "max_parallel", "max_variants")
+# 분/USD 는 소수 허용(CLI 도 type=float, dataclass 도 float) — 정수 강제하면 설정 파일의
+# time_budget: 30.5 / max_cost: 1.5 가 잘못 거부된다.
+_FLOAT_KEYS = ("time_budget", "max_cost")
 _LIST_KEYS = ("allowed_ranges", "attacker_ips")
 _STR_KEYS = ("platform", "knowledge_dir", "knowledge", "state_dir", "llm_backend", "llm_tier",
              "sandbox")
-_KNOWN_KEYS = set(_INT_KEYS) | set(_LIST_KEYS) | set(_STR_KEYS) | {"llm"}
+_KNOWN_KEYS = set(_INT_KEYS) | set(_FLOAT_KEYS) | set(_LIST_KEYS) | set(_STR_KEYS) | {"llm"}
 _LLM_KEYS = {"backend", "tier", "ollama_model", "ollama_host"}
 LLM_BACKENDS = ("none", "claude", "ollama", "hybrid")
 LLM_TIERS = ("cheap", "standard", "strong")
-SANDBOX_KINDS = ("none", "shell", "docker")
+SANDBOX_KINDS = ("none", "shell", "docker", "vm")
 
 
 def _validate(d: dict) -> list[str]:
@@ -37,6 +40,10 @@ def _validate(d: dict) -> list[str]:
         v = d.get(k)
         if v is not None and (isinstance(v, bool) or not isinstance(v, int)):
             raise ConfigError(f"'{k}' 는 정수여야 합니다 (받은 값: {v!r})")
+    for k in _FLOAT_KEYS:
+        v = d.get(k)
+        if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float))):
+            raise ConfigError(f"'{k}' 는 숫자여야 합니다 (받은 값: {v!r})")
     for k in _LIST_KEYS:
         v = d.get(k)
         if v is None:

@@ -59,10 +59,6 @@ def set_color_enabled(enabled: bool) -> None:
     _ENABLED = bool(enabled)
 
 
-def color_enabled() -> bool:
-    return _ENABLED
-
-
 def paint(text: str, *styles: str) -> str:
     """지정 스타일로 텍스트를 감싼다(색 비활성 시 원문 그대로)."""
     if not _ENABLED or not styles:
