@@ -254,6 +254,7 @@ class Orchestrator:
         self.dry_run = dry_run
         self.exploit_exec = exploit_exec
         self._exploit_looked_up: set[str] = set()   # 제품별 공개 익스 조회 1회 가드
+        self._version_probed: set[str] = set()       # 제품별 버전 노출 프로브 1회 가드
         self.poc_commands = poc_commands or []
 
     def run(self) -> OrchestrationReport:
@@ -356,6 +357,10 @@ class Orchestrator:
                 # 지금까지의 출력에서 취약점(CVE/CWE·버전 매칭)을 먼저 반영 — 학습·분석·
                 # 명령 생성이 '확인 취약점'을 보고 판단하도록(이전엔 루프가 끝난 뒤에야 계산)
                 self._run_vuln(report, host, target)
+                # 버전 노출 능동 프로브: 제품은 식별됐는데 버전이 미상이면, 문서화된 제품별
+                # 버전 노출 경로를 무해한 GET 으로 긁어 버전을 집어낸다(제품당 1회). 익스 아님.
+                # → 버전이 잡히면 바로 아래 _exploit_lookup_stage 에서 ⭐ 자동 선택이 가능해진다.
+                self._version_probe_stage(report, host)
                 # 3단계 기반: 핑거프린트된 웹앱 제품에 맞는 공개 익스 '조회'(searchsploit)를
                 # 게이트로 올린다(제품당 1회). 조회·무해 — 익스 실행 아님. 결과는 다음 분석에 되먹임.
                 self._exploit_lookup_stage(report)
@@ -1199,6 +1204,63 @@ class Orchestrator:
                 ids = " ".join(m.cve + m.cwe)
                 self.world.add_vuln(f"{m.name}" + (f" ({ids})" if ids else ""),
                                     source="버전 매칭(VulnKB)")
+    def _web_bases(self, host: NmapHost) -> list[str]:
+        """관측된 열린 웹 포트에서 'scheme://ip[:port]' 베이스 URL 목록을 만든다.
+        표준 포트(80/http, 443/https)는 포트를 생략. TLS 판정은 서비스명(https/ssl)·
+        포트(443/8443)로. https 베이스를 http 보다 앞에 둔다(FreePBX 등은 주로 TLS)."""
+        ip = (self.world.target if self.world else "") or host.address
+        if not ip:
+            return []
+        https: list[str] = []
+        http: list[str] = []
+        for p in host.ports:
+            if p.state != "open":
+                continue
+            svc = (p.service or "").lower()
+            banner = (p.banner or "").lower()
+            is_web = ("http" in svc or p.port in (80, 443, 8080, 8443, 8000, 8888)
+                      or "http" in banner)
+            if not is_web:
+                continue
+            tls = (svc in ("https", "ssl/http") or "ssl" in svc or "https" in banner
+                   or p.port in (443, 8443))
+            if tls:
+                base = f"https://{ip}" if p.port == 443 else f"https://{ip}:{p.port}"
+                if base not in https:
+                    https.append(base)
+            else:
+                base = f"http://{ip}" if p.port == 80 else f"http://{ip}:{p.port}"
+                if base not in http:
+                    http.append(base)
+        return https + http
+
+    def _version_probe_stage(self, report: OrchestrationReport, host: NmapHost,
+                             phase: str = "enum") -> None:
+        """웹앱 제품은 식별됐으나 버전이 미상일 때, 문서화된 '버전 노출' 경로를 무해한 GET 으로
+        긁어 버전을 집어낸다(제품당 1회·멱등). 익스/RCE 아님 — 조회 GET 뿐(생성 전용 경계).
+        프로브 출력은 enum_findings 에 남고, 이어 _run_vuln 재실행이 fingerprint_webapp 으로
+        버전을 추출해 월드에 반영한다 → 다음 _exploit_lookup_stage 에서 ⭐ 자동 선택 가능.
+        버전이 끝내 안 보이면 '미상' 을 유지한다(섣부른 단정 금지 — 정직성)."""
+        if self.world is None:
+            return
+        prod = self.world.web_product
+        # 제품 미식별 / 이미 버전 확보 / 이미 프로브함 → 아무것도 안 함(멱등·노이즈 억제)
+        if not prod or self.world.web_version or prod in self._version_probed:
+            return
+        from .exploits import probes_for
+        bases = self._web_bases(host)
+        if not bases:
+            return
+        self._version_probed.add(prod)
+        # 베이스당 프로브 — 과도한 요청 방지를 위해 상위 2개 베이스로 제한.
+        for base in bases[:2]:
+            for cmd in probes_for(prod, base):
+                if self._goal_reached(report) or self._time_up():
+                    break
+                self._attempt(report, report.enum_findings, cmd, phase=phase)
+        # 프로브 출력에서 버전 즉시 추출(다음 _run_vuln 을 기다리지 않고 이번 스윕에 반영).
+        self._run_vuln(report, host, self.world.target)
+
     def _exploit_lookup_stage(self, report: OrchestrationReport, phase: str = "access") -> None:
         """핑거프린트된 웹앱 제품(world.web_product)에 맞는 공개 익스 '조회' 명령
         (searchsploit)을 게이트로 올린다. 조회·로컬·무해 — 익스 실행이 아니다(생성 경계).
