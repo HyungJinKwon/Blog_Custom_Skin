@@ -6,13 +6,19 @@ import sys
 sys.path.insert(0, "src")
 from htb_agent.shell_session import (                               # noqa: E402
     CommandRunnerSession, ReverseShellSession, ShellSession, ShellState,
-    frame_command, strip_marker)
+    WebRceSession, frame_command, strip_marker)
 
 passed = failed = 0
 def check(name, cond):
     global passed, failed
     if cond: passed += 1; print(f"  ✅ {name}")
     else:    failed += 1; print(f"  ❌ {name}")
+
+def _raises(fn, exc=Exception):
+    try:
+        fn(); return False
+    except exc:
+        return True
 
 print("=== ShellSession ABC ===")
 try:
@@ -80,10 +86,44 @@ check("종료코드 기록", rs.last_rc == 0)
 rs.close()
 check("close 후 CLOSED", rs.state == ShellState.CLOSED)
 
+print("\n=== WebRceSession (웹 RCE 명령 채널, C) ===")
+wr = WebRceSession("http://connected.htb/admin/config.php", "cmd", method="POST", inject="body")
+check("http_fn 미주입 → INIT", wr.state == ShellState.INIT)
+check("http_fn 미주입 → alive False", wr.alive is False)
+spec = wr.build_request("id")
+check("POST body 에 cmd 주입", spec["method"] == "POST" and spec["data"]["cmd"] == "id")
+check("url 유지", spec["url"].endswith("/admin/config.php"))
+try:
+    wr.run("id"); check("미주입 run 거부", False)
+except RuntimeError as e:
+    check("미주입 run 거부(명확한 메시지)", "http_fn 미주입" in str(e))
+
+# query 주입 + extra_params
+wq = WebRceSession("http://t/x.php", "c", inject="query", extra_params={"auth": "1"})
+sq = wq.build_request("whoami")
+check("query 에 cmd 주입", sq["params"]["c"] == "whoami")
+check("extra_params 병합", sq["params"]["auth"] == "1")
+
+# header 주입
+wh = WebRceSession("http://t/x", "X-Cmd", inject="header")
+check("header 에 cmd 주입", wh.build_request("id")["headers"]["X-Cmd"] == "id")
+check("잘못된 inject 거부", _raises(lambda: WebRceSession("u", "c", inject="bad")))
+
+# 가짜 http_fn 주입 → 프레이밍/파싱 동작
+def fake_http(spec):
+    framed = spec["data"]["cmd"]                 # "id; echo __WEB_$?"
+    tok = framed.split("echo ", 1)[1].replace("$?", "")
+    return f"<pre>uid=33(www-data)\n{tok}0\n</pre>"
+wr.attach(fake_http)
+check("attach 후 CONNECTED", wr.state == ShellState.CONNECTED and wr.alive is True)
+res = wr.run("id")
+check("웹 RCE run 본문만(마커·HTML 잔재 처리)", "uid=33(www-data)" in res and "__HTBWEB" not in res)
+check("종료코드 기록", wr.last_rc == 0)
+
 print("\n=== 생성 전용 경계(불변) 자기점검 ===")
 import htb_agent.shell_session as ss  # noqa: E402
-for mod in ("socket", "subprocess", "requests", "pty", "os"):
-    check(f"소켓/실행 모듈 미임포트: {mod!r}", not hasattr(ss, mod))
+for mod in ("socket", "subprocess", "requests", "pty", "os", "urllib", "http"):
+    check(f"소켓/HTTP/실행 모듈 미임포트: {mod!r}", not hasattr(ss, mod))
 
 print(f"\n결과: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
