@@ -43,6 +43,12 @@ for g in ("시작하기", "대상 · 플랫폼", "실행 방식", "LLM 두뇌", 
     check(f"그룹: {g}", g in h)
 check("시작하기가 맨 앞", h.index("시작하기") < h.index("대상 · 플랫폼") < h.index("단독 도구"))
 check("예시(epilog)", "처음 사용하는 순서" in h and "--autonomous --time-budget 45" in h)
+
+print("\n=== 오타 옵션 → 가장 가까운 실제 옵션 제안(초보자) ===")
+_, _, err_typo = run(["10.129.1.5", "--prt"])
+check("오타 옵션에 '혹시' 제안", "혹시" in err_typo and "--help" in err_typo)
+_, _, err_far = run(["10.129.1.5", "--zzzzzzzz"])
+check("전혀 다른 오타엔 과한 제안 안 함", "혹시" not in err_far)
 check("도움말 문구 한국어", "show this help" not in h and "이 도움말" in h)
 check("읽기 쉬운 자리표시(USER:PASS·CIDR·IP)", "--cred USER:PASS" in h and "--range CIDR" in h
       and "--attacker-ip IP" in h)
