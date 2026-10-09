@@ -251,7 +251,7 @@ class Orchestrator:
         self.fix_commands = fix_commands
         # 계획 미리보기: 정찰·분석은 하되 제안된 enum/LLM/파일 명령은 '실행하지 않고' 보여만 준다.
         self.dry_run = dry_run
-                self.exploit_exec = exploit_exec           
+        self.exploit_exec = exploit_exec           
 
     def run(self) -> OrchestrationReport:
         # 경과 시간은 정찰부터 포함, 마감 확인은 스윕 루프에서(정찰은 유한 폴백으로 별도 관리)
