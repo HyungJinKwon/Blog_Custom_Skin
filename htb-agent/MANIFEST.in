@@ -1,0 +1,10 @@
+# 소스 배포(sdist)에 지식베이스·벤치 문제·문서를 포함한다.
+# (wheel 설치는 KB 를 site-packages 로 넣지 않는다 — 소스 트리/pip install -e . /
+#  --knowledge <경로> 사용. pyproject 의 package-data 주석 참고.)
+graft knowledge
+graft bench
+include README.md
+include USAGE.md
+include CHANGELOG.md
+global-exclude __pycache__/*
+global-exclude *.py[cod]

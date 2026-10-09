@@ -175,21 +175,47 @@ def validate_hash(s: str, expected: str | None = None) -> tuple[bool, str]:
 
 
 # ── 파괴적(로컬 공격기 손상) 명령 차단 ──────────────────────────────
+# 쓰기 시 치명적인 원시 블록디바이스(읽기전용 /dev/null·zero·urandom 은 제외).
+_DEV_ALT = r"(?:sd|nvme|vd|hd|mmcblk|xvd|loop|dm-|md|ram|sr|disk/|mapper/)"
+# 덮어쓰기/삭제 시 호스트를 망가뜨리는 절대 시스템 경로의 첫 구성요소.
+_SYS_PATH_PREFIXES = {"/etc", "/boot", "/bin", "/sbin", "/lib", "/lib64",
+                      "/usr", "/root", "/sys", "/proc", "/dev", "/var", "/run"}
+# 재귀 삭제·권한변경 시 '전체'를 날리는 대상(루트/홈).
+_NUKE_TARGETS = {"/", "/*", "~", "$HOME", "/home"}
+
 _DESTRUCTIVE = [
-    # rm 재귀+루트/홈은 플래그 철자·순서에 둔감해야 하므로 별도 토큰 검사(_rm_destructive)로 처리.
+    # rm 재귀+루트/홈, 그리고 shred/wipefs/mkfs족·find -delete·chmod/chown -R 등은 플래그
+    # 철자·순서·분리에 둔감해야 하므로 별도 토큰 검사(_rm_destructive·_destructive_cmd)로 처리.
     (re.compile(r"--no-preserve-root"), "rm 루트 보호 해제(--no-preserve-root)"),
-    (re.compile(r"\bmkfs(\.\w+)?\b"), "파일시스템 포맷"),
-    (re.compile(r"\bdd\b[^|]*\bof=/dev/(sd|nvme|vd|hd|mmcblk|xvd)\w*"), "블록디바이스 덮어쓰기"),
-    # tee/cp 로 원시 블록디바이스 덮어쓰기(리다이렉트 외 경로)
-    (re.compile(r"\b(tee|cp|dd)\b[^|;&]*\s/dev/(sd|nvme|vd|hd|mmcblk|xvd)\w*"), "블록디바이스 덮어쓰기"),
-    (re.compile(r">\s*/dev/(sd|nvme|vd|hd|mmcblk|xvd)\w*"), "블록디바이스로 리다이렉트"),
+    (re.compile(rf"\b(tee|cp|dd)\b[^|;&]*\s/dev/{_DEV_ALT}\w*"), "블록디바이스 덮어쓰기"),
+    (re.compile(rf">\s*/dev/{_DEV_ALT}\w*"), "블록디바이스로 리다이렉트"),
+    # 단일 '>' 로 시스템 경로(인증·부트·바이너리·디바이스) 절단 — 셸 러너에서도 차단되게
+    # 검증기 자체에서 막는다(셸연산자 가드는 shell=False 러너에만 적용되므로).
+    (re.compile(r"(?<![>\d])>\s*/(?:etc|boot|bin|sbin|lib|lib64|usr|root|sys|proc|dev)(?:/|\b)"),
+     "시스템 경로 덮어쓰기(리다이렉트 절단)"),
     # 포크 폭탄: `:` 전용 + 임의 함수명 일반형(name(){ name|name& };name)
     (re.compile(r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:"), "포크 폭탄"),
     (re.compile(r"(\w+)\s*\(\s*\)\s*\{[^}]*\|[^}]*&[^}]*\}\s*;\s*\1\b"), "포크 폭탄"),
-    (re.compile(r"\bchmod\s+-R\s+0*777\s+/(\s|$)"), "루트 권한 전면 개방"),
 ]
 
 _RM_DANGER_TARGETS = {"/", "/*", "~", "$HOME"}
+
+
+def _is_nuke_target(t: str) -> bool:
+    """재귀 삭제·권한변경이 '전체'를 날리는 대상(루트/홈)인가."""
+    return t in _NUKE_TARGETS or t.rstrip("/") in ("", "~", "$HOME", "/home")
+
+
+def _is_system_path(t: str) -> bool:
+    """덮어쓰기/삭제 시 호스트를 망가뜨리는 절대 시스템 경로/디바이스인가."""
+    if not t.startswith("/"):
+        return False
+    first = "/" + t.lstrip("/").split("/", 1)[0]
+    return first in _SYS_PATH_PREFIXES
+
+
+def _is_danger_target(t: str) -> bool:
+    return _is_nuke_target(t) or _is_system_path(t)
 
 
 def _rm_destructive(cmd: str) -> bool:
@@ -219,6 +245,53 @@ def _rm_destructive(cmd: str) -> bool:
                 continue
             if t in _RM_DANGER_TARGETS or t.rstrip("/") in ("", "~", "$HOME"):
                 return True   # /, //, /*, ~, ~/, $HOME, $HOME/ …
+    return False
+
+
+# rm 외 파괴적 바이너리: 디바이스 포맷/와이프, 대량 삭제, 루트/홈 재귀 권한변경, 시스템
+# 파일 절단·덮어쓰기. 정규식 철자매칭의 우회(플래그 순서·분리)를 토큰 단위로 막는다.
+_FS_FORMAT = {"mkfs", "mke2fs", "mkdosfs", "mkntfs", "mkswap", "wipefs", "shred"}
+
+
+def _destructive_cmd(cmd: str) -> bool:
+    """rm 이외의 파괴적 명령을 플래그 철자·순서에 둔감하게 탐지한다.
+    디바이스/시스템 경로 대상에 한정해 차단하고, 작업공간·상대경로 대상은 통과(오탐 방지).
+      · shred/wipefs/mkfs족 → 시스템경로/디바이스 대상
+      · dd of=<시스템경로/디바이스>, truncate <시스템파일>
+      · find <루트/시스템경로> … -delete|-exec rm
+      · chmod/chown/chgrp -R <루트/홈>"""
+    for seg in re.split(r"[;&|\n]+", cmd):
+        toks = seg.split()
+        k = 0
+        while k < len(toks) and (toks[k] in ("sudo", "doas", "env")
+                                 or (not toks[k].startswith("-") and "=" in toks[k]
+                                     and not toks[k].startswith("/"))):
+            k += 1   # 선행 env 할당·sudo/doas 건너뛰기
+        if k >= len(toks):
+            continue
+        b = toks[k].rsplit("/", 1)[-1]
+        args = toks[k + 1:]
+        non_flags = [a for a in args if not a.startswith("-")]
+        if b in _FS_FORMAT or b.startswith("mkfs."):
+            if any(_is_danger_target(a) for a in non_flags):
+                return True
+        elif b == "dd":
+            for a in args:
+                if a.startswith("of=") and _is_danger_target(a[3:]):
+                    return True
+        elif b == "truncate":
+            if any(_is_danger_target(a) for a in non_flags):
+                return True
+        elif b == "find":
+            nukes = "-delete" in args or ("-exec" in args and "rm" in args)
+            if nukes and any(_is_danger_target(a) for a in non_flags):
+                return True
+        elif b in ("chmod", "chown", "chgrp"):
+            recursive = any(a == "--recursive"
+                            or (a.startswith("-") and not a.startswith("--") and "R" in a)
+                            for a in args)
+            if recursive and any(_is_nuke_target(a) for a in non_flags):
+                return True
     return False
 
 
@@ -334,6 +407,9 @@ def validate(command: str, require_known_binary: bool = False) -> ValidationRepo
     if _rm_destructive(cmd):
         report.issues.append(ValidationIssue("error", "DESTRUCTIVE",
                                              "파괴적 명령 차단: 루트/홈 재귀 삭제"))
+    if _destructive_cmd(cmd):
+        report.issues.append(ValidationIssue("error", "DESTRUCTIVE",
+                                             "파괴적 명령 차단: 디바이스/시스템 경로 파괴"))
 
     # 1-b) 동적·원격 코드 실행 — 검토 필요(자동실행 금지, 차단은 아님)
     for pat, desc in _EXEC_RISK:

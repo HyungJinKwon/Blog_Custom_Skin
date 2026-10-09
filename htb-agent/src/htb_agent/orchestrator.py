@@ -285,12 +285,24 @@ class Orchestrator:
         self._llm_base = len(report.llm_findings)
 
         # ── PHASE 1: RECON (유한 폴백) — 재개로 host 확보 시 생략 ──
+        # 정찰(nmap)은 스윕 루프의 KeyboardInterrupt 처리 '밖'에서 돌므로, 가장 흔한
+        # 중단 지점(첫 스캔 중 Ctrl+C)이 raw 트레이스백 + 상태 유실로 이어졌다. 여기서
+        # 받아 상태를 저장하고 정상 종료한다(--resume 약속 유지 — 품질검수 MED).
         if host is None:
-            recon = ReconExecutor(self.guard, self.runner, self.approver,
-                                  max_attempts=self.recon_max_attempts,
-                                  hosts_map=self.hosts_map,
-                                  is_tool_available=self.is_tool_available,
-                                  extra_ports=self.recon_extra_ports).run_portscan()
+            try:
+                recon = ReconExecutor(self.guard, self.runner, self.approver,
+                                      max_attempts=self.recon_max_attempts,
+                                      hosts_map=self.hosts_map,
+                                      is_tool_available=self.is_tool_available,
+                                      extra_ports=self.recon_extra_ports).run_portscan()
+            except KeyboardInterrupt:
+                report.status = "interrupted"
+                report.elapsed_sec = round(self._clock() - self._start, 1)
+                report.message += "사용자 중단(정찰 단계) — 진행 상태 저장(--resume 으로 이어서 진행). "
+                self.audit.event("interrupted", phase="recon")
+                self._persist(report, prior)
+                self.audit.event("session_end", status=report.status, message=report.message)
+                return report
             report.recon = recon
             host = recon.host
         report.host = host
@@ -489,8 +501,16 @@ class Orchestrator:
             if not value or value in {f.value for f in report.flags}:
                 continue
             report.flags.append(FlagHit(value, kind, fd.get("source", "")))
-            report.flag_provenance.append(
-                _prov.classify(kind, value, fd.get("source", "")))
+            if fd.get("verdict"):
+                # 첫 실행에서 정한 출처 판정을 그대로 복원한다. 재계산하면 in_external
+                # (라이트업·학습 유래)·오프라인 첨부 보정이 사라져, 정직성 표시가 조용히
+                # 바뀌고(goal 상태가 뒤집혀) provenance 기능이 resume 에서 무력화된다(MED-2).
+                report.flag_provenance.append(_prov.FlagProvenance(
+                    kind, value, fd.get("prov_command", ""), fd.get("phase", ""),
+                    fd["verdict"], fd.get("reason", "")))
+            else:   # 구버전 상태(verdict 미저장) 호환 — 보수적 재계산
+                report.flag_provenance.append(
+                    _prov.classify(kind, value, fd.get("source", "")))
             if self.world is not None:
                 self.world.add_flag(kind, value)
         for m in prior.manual_suggestions or []:
@@ -581,6 +601,7 @@ class Orchestrator:
             len(w.creds) if w else 0,
             len(w.services) if w else 0,
             len(w.loot) if w else 0,
+            len(w.learned) if w else 0,   # 자율학습 성장도 '상태 성장'으로 인정(다음 스윕 유도)
             len(w.proven_vulns) if w else 0,
             w.access_level if w else "none",
             len(report.flags),
@@ -619,8 +640,16 @@ class Orchestrator:
         if self.vault is not None and self.vault.creds:
             st.credentials = self.vault.to_list()
         if report.flags:
-            st.flags = [{"value": f.value, "kind": f.kind, "source": f.source}
-                        for f in report.flags]
+            provmap = {(p.kind, p.value): p for p in report.flag_provenance}
+
+            def _flag_dict(f):
+                d = {"value": f.value, "kind": f.kind, "source": f.source}
+                p = provmap.get((f.kind, f.value))
+                if p is not None:   # 출처 판정을 보존(resume 시 재계산하지 않도록 — MED-2)
+                    d.update(verdict=p.verdict, prov_command=p.command,
+                             phase=p.phase, reason=p.reason)
+                return d
+            st.flags = [_flag_dict(f) for f in report.flags]
         if report.plan:
             st.plan = report.plan.to_dict()
         if report.analysis:
@@ -804,7 +833,9 @@ class Orchestrator:
                 report.acquired_knowledge.append(line)
                 self.audit.event("knowledge_acquired", detail=line)
                 if self.world is not None:
-                    self.world.add_loot(f"자율학습: {line}")
+                    # loot 이 아니라 learned 로 — 학습 토픽은 측면이동 수단이 아니므로
+                    # lateral 전제(bool(loot))를 충족시키면 안 된다(MED-1 상태오염 수정).
+                    self.world.add_learned(f"자율학습: {line}")
         for term in out.unresolved:
             if term not in report.knowledge_gaps:
                 report.knowledge_gaps.append(term)
@@ -1189,6 +1220,7 @@ class Orchestrator:
             len(w.creds) if w else 0,
             len(w.services) if w else 0,
             len(w.loot) if w else 0,
+            len(w.learned) if w else 0,
             len(w.proven_vulns) if w else 0,
             w.access_level if w else "none",
         )

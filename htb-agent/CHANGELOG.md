@@ -2,6 +2,35 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.5.1] — 2026-10-09
+
+최종 마무리 검수(차원별 심층 검수)에서 재현 확인한 결함 수정 + 파괴적 명령 차단 확대.
+
+### 수정(Fixed)
+- **자율학습 상태 오염(lateral 전제)**: `_acquire_knowledge` 가 학습 토픽을 `world.loot`
+  에 적재해, 자격증명·발판이 없어도 lateral 단계 전제가 충족돼 투기적 LLM 라운드를
+  소모하고 성장 지표를 왜곡하던 문제 수정. 학습 지식을 `world.learned` 로 분리.
+- **`--resume` 시 provenance 판정 손실**: 재개 시 flag 출처(verdict)를 재계산해
+  `looked-up`(라이트업·학습 유래 의심)이 `exploit-derived` 로 승격되거나, 오프라인 공략
+  플래그가 `local-derived` 로 강등되던 문제 수정. 첫 실행의 판정을 상태에 보존·복원.
+- **정찰 중 Ctrl+C**: 첫 포트스캔 도중 중단 시 raw 트레이스백 + 상태 유실로 `--resume`
+  약속이 깨지던 문제 수정. 정찰을 중단 처리로 감싸 상태 저장 후 정상 종료하고, 최상위
+  진입점에 Ctrl+C·예외 가드 추가(전체 추적은 `ASSASSIN_DEBUG=1`).
+
+### 안전(Safety)
+- **파괴적 명령 차단 확대**: `shred`·`wipefs`·`mkfs`족(`mke2fs`/`mkswap`/`mkfs.*`)·
+  `find … -delete|-exec rm`·루트/홈 `chmod`·`chown -R`·디바이스/시스템경로 `dd`·`truncate`·
+  리다이렉트 절단(`> /etc/…`)을 토큰 단위로 차단(auto 모드 자동실행 fail-open 해소).
+  디바이스 매칭을 loop/dm-/md/sr/disk-by-id/mapper 로 확대. 상대·작업공간 경로는 오탐 없이 통과.
+
+### 추가(Added)
+- **`--max-llm`**: LLM 제안 명령 최대 개수 플래그(기본 5, 자율모드 8) — 기존 config 필드를
+  CLI 로 노출하고 자율 램프에 포함(다른 한계값과 대칭).
+
+### 변경(Changed)
+- 소스 배포(sdist)에 `knowledge/`·`bench/`·문서 포함(`MANIFEST.in`). wheel 은 KB 를 포함하지
+  않는다는 제약을 pyproject 주석에 명확화(소스 트리·`pip install -e .`·`--knowledge` 사용).
+
 ## [2.5.0] — 2026-10-09
 
 ### 추가

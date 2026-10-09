@@ -45,6 +45,7 @@ class WorldModel:
     services: list[ServiceEntry] = field(default_factory=list)
     creds: list[str] = field(default_factory=list)        # "user:pass" / "user:<hash>"
     loot: list[str] = field(default_factory=list)          # 해시·민감파일·노출정보
+    learned: list[str] = field(default_factory=list)       # 자율학습 지식(수집물 아님 — 측면이동 수단으로 치지 않음)
     flags: dict[str, str] = field(default_factory=dict)    # kind(user/root/..) -> value
     proven_vulns: list[str] = field(default_factory=list)  # CVE/CWE(+근거)
     evidence: dict = field(default_factory=dict)           # 사실(크리덴셜/수집물/취약점) → 출처(어느 명령에서 나왔나)
@@ -91,6 +92,15 @@ class WorldModel:
         if item and source:
             self.evidence.setdefault(item, source)
 
+    def add_learned(self, item: str, source: str = "") -> None:
+        """자율학습으로 얻은 지식. loot 과 분리한다 — 학습 토픽은 '측면이동 수단'이
+        아니므로 lateral 전제조건(bool(loot))을 충족시키면 안 된다(상태 오염 방지)."""
+        item = (item or "").strip()
+        if item and item not in self.learned:
+            self.learned.append(item)
+        if item and source:
+            self.evidence.setdefault(item, source)
+
     def add_flag(self, kind: str, value: str) -> None:
         if value and self.flags.get(kind) != value:
             self.flags[kind] = value
@@ -126,6 +136,8 @@ class WorldModel:
                        + ", ".join(self._with_src(c) for c in self.creds[:5]))
         if self.loot:
             out.append("수집물: " + "; ".join(self.loot[:5]))
+        if self.learned:
+            out.append("학습한 지식: " + "; ".join(self.learned[:5]))
         if self.proven_vulns:
             out.append("확인 취약점: " + ", ".join(self.proven_vulns[:6]))
         if self.flags:
