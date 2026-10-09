@@ -2,6 +2,26 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.14] — 2026-10-09
+
+### 추가(Added)
+- **PoC 정적 분석·실행 '계획 생성'**(② 기반, 생성 전용 `exploit_fetch`): ⭐ 버전 매칭된
+  1순위 PoC 에 대해 **받기 명령**(`searchsploit -m <id>`)과 **실행 계획 초안**
+  (`--exploit-exec --poc "<인터프리터> <PoC> <타겟/URL> [LHOST]"`)을 자동으로 만들어
+  수동 제안에 붙인다. 사람이 `--poc` 문자열을 손으로 타이핑하지 않아도 되도록 '초안'을 생성.
+  - `extract_edb_id`/`poc_language`/`analyze_poc`/`fetch_command`/`plan_poc_command`:
+    PoC locator·소스에서 EDB-ID·언어·전송방식(http/https/tcp)·필요 인자(RHOST/LHOST)·대상
+    버전·위험유형(rce/authbypass/lfi)을 **파싱**하고, 실행 명령 문자열을 **생성**.
+  - 웹앱 PoC 는 관측된 베이스 스킴(https 우선)으로 타겟을 URL 화, 역쉘 PoC 는 LHOST
+    placeholder(`<공격자 VPN IP>`)를 남긴다.
+- **테스트**: `test_exploit_fetch.py`(33) — EDB-ID/언어 추정·정적 분석·계획 생성·경계
+  자기점검(실행/네트워크 모듈 미임포트). `test_exploit_lookup.py` 에 실행 계획 제시 가드 추가.
+
+### 안전(Safety)
+- `exploit_fetch` 는 **파싱·문자열 생성만** 한다 — PoC 를 **다운로드·실행하지 않는다**
+  (RCE 표면 없음, 생성 전용 경계). 생성된 계획은 사람 검토 + 3관문 + `--poc` 로만 실행된다.
+  실제 자동 실행(계획 → 발사) 연결은 사용자 리포의 `--exploit-exec` 스테이지 몫으로 남긴다.
+
 ## [2.6.13] — 2026-10-09
 
 ### 추가(Added)
