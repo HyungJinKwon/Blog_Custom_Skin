@@ -4,6 +4,18 @@
 
 ## [미출시]
 
+### 정리(품질)
+- **`main()` 갓-함수 분해(591줄 → 65줄)**: CLI 진입부를 얇게 — 단독 명령 디스패치는
+  `_dispatch_standalone`, 타겟 실행 경로는 `_run_target` 로 분리(동작 불변). 가독성·기여 용이성↑.
+- **핫패스 메서드 분리**: `_llm_round` 의 컨텍스트 조립을 `_suggest_context` 로, `_gate` 의 타겟
+  자동교정을 `_apply_command_fix` 로 추출(로직 밀도 완화, 동작 불변).
+- **마라톤 세션 메모리 상한**: `finding.output` 1건당 하드 실링(`_MAX_FINDING_OUTPUT`)을 둬
+  '보관 출력 총량 = 시도 수(예산 제한) × 상한' 으로 명시적 bound(유일하게 미제한이던 성장 지점 차단).
+- **Provider 예외 계약 문서화**: `LLMProvider.complete`/`ClaudeProvider.complete` 가 API 오류를
+  예외로 전파함을 명시(HybridRouter 폴백·서킷브레이커·오케스트레이터 라운드 격리가 의존). 직접
+  호출자는 try/except 필요 — 삼키지 않음으로써 하이브리드 복원력 보존.
+- 핫패스 private 헬퍼(`_tool_ok`·`_run_vuln`) 의도 docstring 보강.
+
 ### 추가
 - **네이티브 tool use(구조화 명령 제안)**: Claude 백엔드에서 `propose_commands` 도구를 강제 호출해
   명령 후보를 스키마대로 JSON 으로 받는다(텍스트 파싱 취약성 제거). tool_calls 가 있으면 우선 사용,

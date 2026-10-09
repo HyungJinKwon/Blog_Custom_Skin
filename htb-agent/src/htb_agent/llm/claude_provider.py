@@ -26,6 +26,8 @@ class ClaudeProvider(LLMProvider):
     def complete(self, system: str, user: str,
                  tier: Tier = Tier.STANDARD, max_tokens: int = 1024,
                  tools: "list | None" = None) -> LLMResponse:
+        # 계약: API 오류는 예외로 전파한다(HybridRouter 폴백·서킷브레이커, 오케스트레이터
+        # 라운드 격리가 이 예외에 의존). 직접 호출자는 try/except 로 감쌀 것. (base.py 참고)
         import anthropic
         client = anthropic.Anthropic()
         model = self.model_for(tier)
