@@ -2,6 +2,17 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.28] — 2026-10-09
+
+### 문서(Docs)
+- **사용법/README 최신화** — 자동 루트 체인(`--exploit-exec` + `--auto-poc`)을 초보자도 바로 쓰도록 보강:
+  - README: `--exploit-exec` 절의 구버전 문구("침입은 아직 자동화 안 함") 갱신 + **`--auto-poc` 설명 추가**
+    (⭐ 버전매칭 PoC 자동선택·발사 → 발판 세션 → 자격수확 → 플래그, 발판 성립 검증으로 헛발판 배제).
+    **초보자용 완전 자동 루트 한 줄**과 각 플래그 뜻을 명시.
+  - QUICKSTART: 상황별 한 줄 표에 `🚀 완전 자동 루트 시도` 행 + 플래그 의미 설명 추가.
+  - USAGE: **§10.3 PoC 자동 선택·발사(`--auto-poc`)** 신설(켜는 법·하는 일·발판 성립 검증·채널·승인·비고).
+- 반영 명령: `assassin <t> --autonomous --llm claude --exploit-exec --auto-poc --html --json`.
+
 ## [2.6.27] — 2026-10-09
 
 ### 수정(Fixed)
