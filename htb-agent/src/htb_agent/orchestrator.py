@@ -1201,7 +1201,7 @@ class Orchestrator:
         prod = self.world.web_product
         if not prod or prod in self._exploit_looked_up:
             return
-        from .exploits import lookups_for
+        from .exploits import lookups_for, note_for
         cmds = lookups_for(prod)
         if not cmds:
             return
@@ -1210,9 +1210,11 @@ class Orchestrator:
             if self._goal_reached(report) or self._time_up():
                 break
             self._attempt(report, report.enum_findings, cmd, phase=phase)
+        note = note_for(prod)
         report.manual_suggestions.append(
             f"# {prod} 공개 익스 후보 — searchsploit 결과에서 '대상 버전'에 맞는 PoC 를 "
-            f"골라 3관문(검증·범위·승인)으로 실행하세요(권한 확인 대상 전용)")
+            f"골라 3관문(검증·범위·승인)으로 실행하세요(권한 확인 대상 전용)"
+            + (f"\n#   ↳ {note}" if note else ""))
 
     def _exploit_exec_stage(self, report, host):
         if not self.exploit_exec or self.world is None or self.dry_run:
