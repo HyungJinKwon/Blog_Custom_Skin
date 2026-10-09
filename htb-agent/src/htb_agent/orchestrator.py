@@ -267,6 +267,9 @@ class Orchestrator:
         self.world = WorldModel(target=target,
                                 hostname=(self.hosts_map or {}).get(target, ""))
         report.world = self.world
+              if self.exploit_exec and not interrupted:
+            self._exploit_run_stage(report, host)     # 3단계: PoC 실행 → 자격
+            self._exploit_exec_stage(report, host)    # 1단계: 자격 → 발판 → 플래그
         if self.vault is not None:
             for c in self.vault.creds:
                 sec = c.password or c.nt_hash or ""
@@ -445,7 +448,23 @@ class Orchestrator:
                                          cves=[e.id for e in report.enriched])
                 except Exception as e:   # noqa: BLE001 — 수집 실패는 진행 방해 금지
                     self.audit.event("enrich_error", error=str(e))
-
+    def _exploit_run_stage(self, report, host):
+        """3단계: 레지스트리가 특정한 공개 PoC(파라미터)를 게이트로 실행 → 자격 캡처 →
+        world 에 반영(다음 _exploit_exec_stage 가 발판·플래그로 이어받음). 옵트인 전용."""
+        if not self.exploit_exec or self.world is None or self.dry_run:
+            return
+        # PoC 후보는 '명시적으로 주입된 것'만 실행한다(자동 임의 익스 금지).
+        # 예: self.poc_commands = ["<operator가 searchsploit 결과에서 고른 한 줄>"]
+        for poc in getattr(self, "poc_commands", []) or []:
+            if self._goal_reached(report) or self._time_up():
+                return
+            # 게이트(검증·범위·승인) 통과해야 실행 — 범위 밖/파괴면 자동 거부
+            before = len(report.enum_findings)
+            self._attempt(report, report.enum_findings, poc, phase="access")
+            from .exploit_run import harvest_creds
+            for f in report.enum_findings[before:]:
+                for u, p in harvest_creds(f.output or ""):
+                    self.world.add_cred(f"{u}:{p}", source="PoC 출력")
         # PHASE 3.9(리버스쉘 준비) 직전: exploit-exec 발판 시도
         if self.exploit_exec and not interrupted:
             self._exploit_exec_stage(report, host)
