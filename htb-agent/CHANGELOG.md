@@ -2,6 +2,20 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.7.2] — 2026-10-10
+
+### 수정(Fixed) — S0. capture≠evaluate 구조 버그 교정 (⭐ 버전매칭 근본 수정)
+구조 감사 결과: "고립 재현은 매칭되는데 런타임은 '매칭 없음'" 증상의 근본 원인은 **평가를
+원본이 아니라 손실 요약본으로** 했기 때문. 핑거프린트/searchsploit 매칭 경로를 원본 증거로 전환.
+- **`EnumFinding.raw_output` 신설** — 요약(`output`)과 분리된 분석 전용 원본(상한 20000, 비영속).
+- **핑거프린트를 원본에서 수행** — `_run_vuln` 이 `finding.output`(parse_http 엄격 정규식으로 버전이
+  걸러진 요약) 대신 `raw_output` 에서 `fingerprint_webapp` 실행 → `web_version` 이 비던 문제 해소.
+- **searchsploit 매칭을 원본에서 파싱** — 요약 상위 12행 캡으로 13위 밖 PoC 가 소실되던 문제 해소
+  (`_refresh_exploit_shortlist`).
+- **`set_web_app` write-once 고착 해소** — 더 구체적 버전(기존을 점표기 접두로 포함, 예 16→16.0.40.7)
+  으로 보강. docstring 과 코드 일치. 역방향·무관 값은 기존 유지.
+- 회귀 테스트 `test_s0_raweval.py`(11건). 전부 내부 분석 로직 — 실행 경계 불변.
+
 ## [2.7.1] — 2026-10-10
 
 ### 추가(Added) — D. 공격↔방어 미러 라이트업 (ARTEX 아이디어, 클린룸)
