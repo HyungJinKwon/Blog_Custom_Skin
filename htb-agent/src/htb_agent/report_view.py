@@ -189,6 +189,13 @@ def render_summary(report) -> str:
         if susp:
             lines.append("  " + ui.warn(
                 f"※ {len(susp)}건은 공략 유래가 아닐 수 있음 — 사람이 실제 공략 경로 확인"))
+        # 적대적 재검증(skeptic) 확신도 — 독립 재현 여부(재현됨/단일 출처/미신뢰/미확정)
+        conf = getattr(report, "flag_confidence", None) or {}
+        if conf:
+            lines.append("  " + ui.dim("재검증(skeptic) — 독립 재현 기준 확신도:"))
+            for (kind, _val), c in conf.items():
+                cmark = ui.ok if c.level == "reproduced" else ui.warn
+                lines.append("    " + cmark(f"[{c.label}] ") + f"{kind} flag")
     from . import recommend as _recommend
     _recs = _recommend.propose(report, repetition=_rr)   # 반복 분석 1회만
     if _recs.has_items:
