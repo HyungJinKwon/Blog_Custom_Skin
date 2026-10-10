@@ -2,6 +2,19 @@
 
 형식: 추가(Added) · 변경(Changed) · 수정(Fixed) · 안전(Safety). 버전은 [SemVer](https://semver.org/lang/ko/)를 따릅니다.
 
+## [2.6.34] — 2026-10-09
+
+### 수정(Fixed)/진단 — ⭐ 매칭 누락 하드닝 + 진단
+connected.htb 재실행에서 핑거프린트·vhost 열거는 정상인데 ⭐52031 이 여전히 '매칭 없음'으로
+나오는 현상 추적. 파서·매처·숏리스트는 실제 저장 출력으로 재현 시 정상 매칭(has_version_match=
+True)인데 런타임은 불일치 → 런타임 상태(version/hits)가 다르다는 뜻. 두 잠재 결함 교정 + 진단 추가:
+- **`_refresh_exploit_shortlist` 가 `llm_findings` 도 스캔** — searchsploit 가 LLM 제안으로 실행되면
+  llm_findings 에 저장돼 enum 만 보던 집계가 증거를 놓치던 가능성 제거.
+- **`web_version` 공백 제거**(`.strip()`) — 접두 매칭 시 공백 혼입에 의한 오불일치 방어.
+- **진단 노출**: 매칭 실패 시 제안에 `[진단] version=… · hits=… · hit_versions=[…]` 를 덧붙이고,
+  감사 로그에 `shortlist_eval`(version·n_hits·matched·hit_versions) 이벤트 기록 → 다음 실행에서
+  실제 런타임 값으로 원인을 특정.
+
 ## [2.6.33] — 2026-10-09
 
 ### 수정(Fixed) — vhost 미대응으로 자격 수확·핑거프린트가 헛돌던 문제 (connected.htb 재실행)
