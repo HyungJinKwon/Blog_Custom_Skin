@@ -133,6 +133,8 @@ class OrchestrationReport:
     blockers: list = field(default_factory=list)
     # 플래그 출처 검증(실행 트레이스 기반) — list[provenance.FlagProvenance]
     flag_provenance: list = field(default_factory=list)
+    # 적대적 재검증(skeptic) — 독립 재현 기반 확신도. {(kind,value): verify.Confidence}
+    flag_confidence: dict = field(default_factory=dict)
     goal_reached: bool = False        # 신뢰 가능한 플래그로 목표 달성 → 남은 단계 조기 종료
     timed_out: bool = False           # 시간 예산 소진 → 남은 단계 조기 종료(상태 저장)
     cost_capped: bool = False         # LLM 비용 상한 도달 → 이후 규칙 기반으로만 진행
@@ -492,6 +494,10 @@ class Orchestrator:
         # 워드리스트가 필요해 에이전트는 준비만(생성 전용) 한다.
         self._prepare_crack(report)
 
+        # 적대적 재검증(skeptic): 포착된 플래그를 '독립 재현' 관점에서 재채점해 확신도를
+        # 보고에 싣고, 단일 출처면 독립 재읽기 명령을 수동 제안으로 남긴다(생성 전용 — 실행 아님).
+        self._assess_flags(report)
+
         # ── PHASE 4: REPORT ──
         report.status = "interrupted" if interrupted else "done"
         if report.timed_out:
@@ -586,6 +592,22 @@ class Orchestrator:
             return any(not pref or f.value.split("{", 1)[0].lower() in pref for f in hits)
         kinds = {f.kind for f in hits}
         return "user" in kinds and "root" in kinds
+
+    def _assess_flags(self, report: OrchestrationReport) -> None:
+        """포착된 플래그를 '독립 재현' 관점에서 재채점(verify.assess)해 report.flag_confidence
+        에 싣는다. 공략 유래지만 단일 출처면, 다른 방법으로 재읽기하는 독립 명령을 수동 제안에
+        1회 남겨 사람이 재확인하도록 한다(생성 전용 — 실행은 3관문). 신뢰 판정을 바꾸지 않는다."""
+        from . import verify
+        for f in report.flags:
+            conf = verify.assess(f.kind, f.value, report.flag_provenance)
+            report.flag_confidence[(f.kind, f.value)] = conf
+            if conf.level == "single-source" and conf.sources:
+                rereads = verify.reread_commands(conf.sources[0])
+                if rereads:
+                    report.manual_suggestions.append(
+                        f"# 🔎 재검증(단일 출처 플래그 {f.kind}) — 같은 값을 '다른 방법'으로 "
+                        f"재읽기해 재현되면 신뢰도 상승(권한 확인 대상 전용):\n"
+                        + "\n".join(f"#   - {c}" for c in rereads))
 
     def _cost_capped(self, report: OrchestrationReport) -> bool:
         """LLM 누적 추정 비용이 상한에 도달했으면 True(처음 도달 시 1회 기록). 이후엔 규칙 기반만."""
