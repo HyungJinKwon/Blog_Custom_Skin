@@ -22,6 +22,20 @@ ACCESS_ORDER: dict[str, int] = {
 }
 
 
+def _more_specific_version(new: str, old: str) -> bool:
+    """`new` 가 `old` 를 '대체할 만큼 더 구체적'이면 True. 멀쩡한 값을 무관한 값으로 덮지 않도록
+    보수적: 기존이 비었거나 / 기존이 새 값의 점표기 접두(예: old=16, new=16.0.40.7)일 때만 True.
+    역방향(16.0.40.7 → 16)·무관한 값은 False(기존 유지)."""
+    new = (new or "").strip()
+    old = (old or "").strip()
+    if not new or new == old:
+        return False
+    if not old:
+        return True
+    no, oo = new.split("."), old.split(".")
+    return len(no) > len(oo) and no[:len(oo)] == oo   # old 가 new 의 점표기 접두
+
+
 @dataclass
 class ServiceEntry:
     port: int
@@ -69,11 +83,14 @@ class WorldModel:
                                  getattr(p, "version", "") or "")
 
     def set_web_app(self, product: str, version: str = "") -> None:
-        """관측된 웹앱 제품/버전을 기록(한 번 잡히면 유지, 더 구체적 버전으로만 보강)."""
+        """관측된 웹앱 제품/버전을 기록. 제품은 처음 식별값을 유지하되, 버전은 **더 구체적인
+        값(기존을 점표기 접두로 포함)으로 보강**한다(docstring 과 코드 일치). 과거의 write-once
+        고착(빈/거친 버전이 고정돼 정확한 값으로 못 바뀌던 버그) 교정."""
         if product and not self.web_product:
             self.web_product = product
-        if product and product == self.web_product and version and not self.web_version:
-            self.web_version = version
+        if product and product == self.web_product and version:
+            if _more_specific_version(version, self.web_version):
+                self.web_version = version
 
     def add_service(self, port: int, proto: str = "tcp", name: str = "",
                     product: str = "", version: str = "") -> None:

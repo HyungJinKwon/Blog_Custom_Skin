@@ -65,6 +65,8 @@ _PHASE_LABEL = dict(PENTEST_PHASES)
 # finding.output 1건당 보관 상한(바이트 아님 — 문자 길이). 요약기가 이미 줄이지만, 전용 분기가
 # 길어질 수 있어 하드 실링을 둬 '보관 출력 총량 = 시도 수(예산 제한) × 이 값' 으로 명시적 bound.
 _MAX_FINDING_OUTPUT = 4000
+# 분석용 원본 출력 상한 — 요약보다 크게(버전/searchsploit 전체 행 보존) 두되 메모리는 bound.
+_MAX_RAW_OUTPUT = 20000
 
 # 리다이렉트 출력(요약)에서 vhost 추출: "→ http://connected.htb/" → connected.htb
 _REDIRECT_HOST_RE = re.compile(r"→\s*https?://([A-Za-z0-9.-]+?\.[A-Za-z]{2,})(?:[:/]|\s|$)")
@@ -75,9 +77,13 @@ class EnumFinding:
     command: str
     ran: bool = False
     note: str = ""
-    output: str = ""
+    output: str = ""        # 표시·저장용 요약(손실 가능) — summarize_tool_output 결과
     phase: str = "enum"
     skipped: bool = False   # 도구 미설치로 시도조차 안 함 — 예산(max_enum/max_llm)을 쓰지 않는다
+    # 분석 전용 원본 출력(요약 전). 핑거프린트·searchsploit 매칭은 '요약'이 아니라 이 원본을
+    # 봐야 한다 — 요약기(parse_http 등)의 엄격 정규식·상위 N개 캡으로 버전/매칭이 소실되던
+    # 구조적 버그(capture≠evaluate) 교정용. 영속화하지 않음(세션 내 분석 한정).
+    raw_output: str = ""
 
 
 GATE_KEYS = ("proposed", "executed", "run_failed", "tool_missing", "rejected_validate",
@@ -1232,13 +1238,22 @@ class Orchestrator:
         # 으로 치환돼 자동 실행 후보가 된다(식별 전엔 placeholder 로 남아 수동 제안).
         if self.world is not None:
             from .vuln import fingerprint_webapp
-            # searchsploit(익스 DB) 출력은 제외한다 — 그 출력엔 여러 버전의 익스 제목
-            # ('FreePBX 17.0.2 - RCE' 등)이 들어 있어 타겟 버전으로 오탐된다. 버전은
-            # 실제 타겟 응답(HTTP 제목·배너·헤더)에서만 신뢰한다.
-            ss_out = {f.output for f in (report.enum_findings + report.llm_findings)
-                      if f.output and f.command.strip().startswith("searchsploit")}
-            fp_text = "\n".join(c for c in corpus_parts if c not in ss_out)
-            prod, ver = fingerprint_webapp(fp_text)
+            # 핑거프린트는 '요약(finding.output)'이 아니라 '원본(raw_output)'에서 한다 — 요약기
+            # (parse_http 등)의 엄격 정규식에 버전이 걸러져 web_version 이 비는 구조적 버그 교정.
+            # searchsploit 출력은 제외(여러 버전 익스 제목이 타겟 버전으로 오탐되는 것 방지).
+            fp_parts = list(host.hostscripts.values())
+            for p in host.ports:
+                if p.state == "open":
+                    if p.banner:
+                        fp_parts.append(p.banner)
+                    fp_parts.extend(p.scripts.values())
+            for f in report.enum_findings + report.llm_findings:
+                if f.command.strip().startswith("searchsploit"):
+                    continue
+                txt = f.raw_output or f.output
+                if txt:
+                    fp_parts.append(txt)
+            prod, ver = fingerprint_webapp("\n".join(fp_parts))
             if prod:
                 self.world.set_web_app(prod, ver)
         # 월드 모델에 확인 취약점 반영(단일 상태원)
@@ -1420,7 +1435,8 @@ class Orchestrator:
         for f in list(report.enum_findings) + list(report.llm_findings):
             if "searchsploit" not in (f.command or ""):
                 continue
-            for h in parse_searchsploit(f.output or ""):
+            # 요약은 상위 12행만 보존 → 매칭 PoC 가 13위 밖이면 소실. 원본(raw)에서 전체 파싱.
+            for h in parse_searchsploit(f.raw_output or f.output or ""):
                 if h.title not in seen_titles:
                     seen_titles.add(h.title)
                     hits.append(h)
@@ -1907,6 +1923,9 @@ class Orchestrator:
         finding.output = summarize_tool_output(cmd, out.stdout, out.stderr)
         if len(finding.output) > _MAX_FINDING_OUTPUT:   # 마라톤 세션 메모리 상한(명시적)
             finding.output = finding.output[:_MAX_FINDING_OUTPUT] + "…(출력 상한 초과 — 생략)"
+        # 분석 전용 원본 보존 — 핑거프린트/searchsploit 매칭이 요약 손실을 겪지 않도록(요약과 분리).
+        raw = (out.stdout or "")
+        finding.raw_output = raw[:_MAX_RAW_OUTPUT] if len(raw) > _MAX_RAW_OUTPUT else raw
         self.audit.event("executed", cmd=cmd, launched=True,
                          returncode=out.returncode, summary=finding.output)
         # 실패 진단(사람 확인용) — 404/403/타임아웃 등 원인 분류. 자동 재공격 아님.
