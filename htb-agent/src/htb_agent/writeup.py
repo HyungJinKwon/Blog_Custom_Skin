@@ -294,6 +294,12 @@ def _blue_team(host) -> str:
     return "\n".join(lines)
 
 
+def _defense_mirror(report) -> str:
+    """취약점별 탐지·완화 미러(공격↔방어). defense 모듈에 위임(생성 전용)."""
+    from . import defense
+    return defense.render_markdown(report)
+
+
 def generate_writeup(report, machine_name: str = "<머신명>",
                      attacker_ip: str | None = None,
                      difficulty: str = "<난이도>",
@@ -380,7 +386,11 @@ def generate_writeup(report, machine_name: str = "<머신명>",
 
 ## 7. 블루팀 탐지 지표 (Blue Team)
 
+### 7.1 포트 기준 탐지 지표
 {_blue_team(report.host)}
+
+### 7.2 취약점별 탐지·완화 미러 (공격↔방어)
+{_defense_mirror(report)}
 
 ## 8. 마무리 체크리스트
 
@@ -531,6 +541,11 @@ def generate_tistory(report, machine_name: str = "<머신명>",
 {_blue_team(report.host)}
 
 ## 12. 완화 · 대응 방안
+
+### 12.1 취약점별 탐지·완화 미러 (공격↔방어)
+{_defense_mirror(report)}
+
+### 12.2 공통 하드닝
 - 불필요한 포트/서비스 비활성화, 최신 패치 적용(위 CVE)
 - 강력한 인증(키/MFA), 계정 잠금·로깅, 네트워크 세분화
 - IDS/SIEM 룰 적용 및 정기 점검(위 탐지 지표)
